@@ -60,6 +60,10 @@ export const Search = styled.div`
   width: 320px;
   color: #6b7280;
 
+  .material-symbols-outlined {
+    font-size: 20px;
+  }
+
   input {
     background: transparent;
     border: 0;
@@ -78,6 +82,10 @@ export const Avatar = styled.div`
   display: grid;
   place-items: center;
   color: #6b7280;
+
+  .material-symbols-outlined {
+    font-size: 24px;
+  }
 `
 
 export const Container = styled.div`
@@ -107,13 +115,13 @@ export const Modules = styled.section`
   }
 `
 
-export const ModuleTile = styled.button<{ active?: boolean }>`
+export const ModuleTile = styled.button`
   appearance: none;
   border: 0;
   padding: 28px 16px;
   border-radius: 8px;
-  background: ${({ active }) => (active ? '#1eb79a' : '#ffffff')};
-  color: ${({ active }) => (active ? '#ffffff' : '#111827')};
+  background: #ffffff;
+  color: #111827;
   border: 1px solid rgba(0, 0, 0, 0.08);
   cursor: pointer;
   font-weight: 800;
@@ -123,11 +131,15 @@ export const ModuleTile = styled.button<{ active?: boolean }>`
   place-items: center;
   gap: 10px;
 
-  svg { width: 48px; height: 48px; }
+  .material-symbols-outlined {
+    font-size: 48px;
+  }
 
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
+    background: #1eb79a;
+    color: #ffffff;
   }
 `
 

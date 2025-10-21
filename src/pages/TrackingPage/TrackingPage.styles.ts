@@ -27,7 +27,8 @@ export const Search = styled.div`
   min-width: 300px;
   color: #6b7280;
 
-  svg {
+  .material-symbols-outlined {
+    font-size: 20px;
     flex-shrink: 0;
   }
 
@@ -84,7 +85,8 @@ export const Button = styled.button<{ variant?: 'primary' | 'secondary' }>`
     }
   `}
 
-  svg {
+  .material-symbols-outlined {
+    font-size: 18px;
     flex-shrink: 0;
   }
 `
@@ -103,4 +105,5 @@ export const PlaceholderText = styled.p`
   text-align: center;
   margin: 120px 0;
 `
+
 

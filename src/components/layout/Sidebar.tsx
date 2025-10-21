@@ -58,13 +58,12 @@ const NavItem = styled(NavLink)<{ $collapsed?: boolean }>`
     color: #1eb79a;
   }
 
-  svg {
-    width: 20px;
-    height: 20px;
+  .material-symbols-outlined {
+    font-size: 24px;
     flex-shrink: 0;
   }
 
-  span {
+  span:not(.material-symbols-outlined) {
     display: ${({ $collapsed }) => ($collapsed ? 'none' : 'block')};
     white-space: nowrap;
     opacity: ${({ $collapsed }) => ($collapsed ? '0' : '1')};
@@ -80,13 +79,12 @@ const UserSection = styled.div<{ $collapsed: boolean }>`
   align-items: center;
   gap: 12px;
 
-  svg {
-    width: 24px;
-    height: 24px;
+  .material-symbols-outlined {
+    font-size: 28px;
     flex-shrink: 0;
   }
 
-  span {
+  span:not(.material-symbols-outlined) {
     display: ${({ $collapsed }) => ($collapsed ? 'none' : 'block')};
     font-weight: 600;
     white-space: nowrap;
@@ -99,55 +97,6 @@ const Content = styled.main`
   background: #e8ecef;
   min-height: 100vh;
 `
-
-function IconBox() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="8" width="18" height="12" rx="2" />
-      <path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" />
-    </svg>
-  )
-}
-
-function IconMonitor() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="2" y="3" width="20" height="14" rx="2" />
-      <path d="M8 21h8" />
-      <path d="M12 17v4" />
-    </svg>
-  )
-}
-
-function IconDatabase() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
-    </svg>
-  )
-}
-
-function IconReport() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M8 13h8" />
-      <path d="M8 17h8" />
-    </svg>
-  )
-}
-
-function IconUser() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="8" r="5" />
-      <path d="M3 21c0-4 4-7 9-7s9 3 9 7" />
-    </svg>
-  )
-}
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(true)
@@ -163,25 +112,25 @@ export function Sidebar() {
         
         <Nav>
           <NavItem to="/envios" $collapsed={collapsed}>
-            <IconBox />
+            <span className="material-symbols-outlined">box</span>
             <span>Envíos</span>
           </NavItem>
           <NavItem to="/monitoreo" $collapsed={collapsed}>
-            <IconMonitor />
+            <span className="material-symbols-outlined">connecting_airports</span>
             <span>Monitoreo</span>
           </NavItem>
           <NavItem to="/datos" $collapsed={collapsed}>
-            <IconDatabase />
+            <span className="material-symbols-outlined">database</span>
             <span>Datos</span>
           </NavItem>
           <NavItem to="/reportes" $collapsed={collapsed}>
-            <IconReport />
+            <span className="material-symbols-outlined">description</span>
             <span>Reportes</span>
           </NavItem>
         </Nav>
 
         <UserSection $collapsed={collapsed}>
-          <IconUser />
+          <span className="material-symbols-outlined">account_circle</span>
           <span>El Mono</span>
         </UserSection>
       </SidebarContainer>
@@ -192,4 +141,5 @@ export function Sidebar() {
     </Shell>
   )
 }
+
 

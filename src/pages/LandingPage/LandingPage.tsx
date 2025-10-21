@@ -1,44 +1,5 @@
 import * as S from './LandingPage.styles'
 
-function IconBox() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="4" y="7" width="16" height="12" rx="2" />
-      <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-    </svg>
-  )
-}
-
-function IconMonitor() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="3" y="4" width="18" height="12" rx="2" />
-      <path d="M7 16l-1 4h12l-1-4" />
-      <path d="M5 11l3-3 3 3 3-3 3 3" />
-    </svg>
-  )
-}
-
-function IconDatabase() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <ellipse cx="12" cy="6" rx="7" ry="3" />
-      <path d="M5 6v6c0 1.657 3.134 3 7 3s7-1.343 7-3V6" />
-      <path d="M5 12v6c0 1.657 3.134 3 7 3s7-1.343 7-3v-6" />
-    </svg>
-  )
-}
-
-function IconReport() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M7 3h8l4 4v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-      <path d="M15 3v4h4" />
-      <path d="M9 13h6M9 17h6M9 9h2" />
-    </svg>
-  )
-}
-
 export function LandingPage() {
   return (
     <S.Page>
@@ -52,17 +13,11 @@ export function LandingPage() {
         </S.Menus>
         <S.TopRight>
           <S.Search>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M20 20l-3.5-3.5" />
-            </svg>
+            <span className="material-symbols-outlined">search</span>
             <input placeholder="Buscar" />
           </S.Search>
           <S.Avatar>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-            </svg>
+            <span className="material-symbols-outlined">account_circle</span>
           </S.Avatar>
         </S.TopRight>
       </S.TopBar>
@@ -71,20 +26,20 @@ export function LandingPage() {
         <S.Title>Seleccione un módulo</S.Title>
 
         <S.Modules>
-          <S.ModuleTile>
-            <IconBox />
+          <S.ModuleTile onClick={() => window.location.href = '/envios'}>
+            <span className="material-symbols-outlined">box</span>
             ENVIOS
           </S.ModuleTile>
-          <S.ModuleTile>
-            <IconMonitor />
+          <S.ModuleTile onClick={() => window.location.href = '/monitoreo'}>
+            <span className="material-symbols-outlined">connecting_airports</span>
             MONITOREO
           </S.ModuleTile>
-          <S.ModuleTile>
-            <IconDatabase />
+          <S.ModuleTile onClick={() => window.location.href = '/datos'}>
+            <span className="material-symbols-outlined">database</span>
             DATOS
           </S.ModuleTile>
-          <S.ModuleTile>
-            <IconReport />
+          <S.ModuleTile onClick={() => window.location.href = '/reportes'}>
+            <span className="material-symbols-outlined">description</span>
             REPORTES
           </S.ModuleTile>
         </S.Modules>
