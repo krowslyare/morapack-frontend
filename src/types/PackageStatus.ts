@@ -1,0 +1,7 @@
+export enum PackageStatus {
+  PENDING = 'PENDING',
+  IN_TRANSIT = 'IN_TRANSIT',
+  ARRIVED = 'ARRIVED',
+  DELIVERED = 'DELIVERED',
+  DELAYED = 'DELAYED',
+}
