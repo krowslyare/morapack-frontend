@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { FlightMonitor } from '../../components/FlightMonitor'
 import { SimulationControls } from '../../components/SimulationControls'
 import type { FlightSimulationMode } from '../../hooks/useFlightSimulation'
+import { useDataStore } from '../../store/useDataStore'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -31,18 +32,20 @@ const Title = styled.h2`
 
 export function MonitoringPage() {
   const [mode, setMode] = useState<FlightSimulationMode>('realtime')
+  const { simulationResults } = useDataStore()
 
   return (
     <Wrapper>
       <ContentPanel>
         <div>
           <Title>Monitoreo y Simulación</Title>
-          <p style={{ margin: '4px 0 0', color: '#6b7280' }}>
-            Visualización en tiempo real de operaciones y controles para iniciar una simulación.
+          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '14px' }}>
+            <strong>Mapa:</strong> {simulationResults ? 'Mostrando resultados de la simulación' : 'Visualización demo'}. 
+            <strong style={{ marginLeft: '12px' }}>Simulación:</strong> Ejecuta algoritmos de optimización abajo.
           </p>
         </div>
         
-        <FlightMonitor mode={mode} />
+        <FlightMonitor mode={mode} simulationResults={simulationResults} />
         <SimulationControls mode={mode} setMode={setMode} />
 
       </ContentPanel>
