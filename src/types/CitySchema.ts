@@ -1,4 +1,4 @@
-import { Continent } from './Continent';
+import type { Continent } from './Continent';
 
 export interface CitySchema {
   id: number;
