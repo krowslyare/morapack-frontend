@@ -11,4 +11,3 @@ export type { CheckboxProps } from './Checkbox'
 
 export { GoogleButton } from './GoogleButton'
 export type { GoogleButtonProps } from './GoogleButton'
-

@@ -39,8 +39,7 @@ export function useLoginForm() {
       }
 
       // Verificamos si las credenciales coinciden con el usuario simulado
-      const isAuthenticated =
-        email === fakeUser.email && password === fakeUser.password
+      const isAuthenticated = email === fakeUser.email && password === fakeUser.password
 
       if (!isAuthenticated) {
         // ❌ Error de credenciales
@@ -53,7 +52,6 @@ export function useLoginForm() {
 
       // Redirección simulada (opcional)
       // window.location.href = '/dashboard'
-
     } catch (error) {
       console.error('Error durante el login:', error)
       toast.error('Ocurrió un error inesperado al iniciar sesión.')

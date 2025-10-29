@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useState, useRef } from 'react'
 import styled from 'styled-components'
-import { useDataStore } from '../../store/useDataStore'
+import { uploadAirports, uploadFlights, uploadOrders, type ImportResultData } from '../../api'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -25,50 +25,62 @@ const Title = styled.h2`
   font-weight: 600;
 `
 
-const SectionLabel = styled.label`
-  display: block;
-  font-size: 14px;
+const Description = styled.p`
+  margin: 0 0 32px 0;
   color: #6b7280;
-  margin-bottom: 8px;
-  margin-top: 24px;
+  font-size: 14px;
 `
 
-const VersionInput = styled.input`
-  width: 100%;
-  max-width: 350px;
-  padding: 12px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #374151;
-  
-  &:focus {
-    outline: none;
+const UploadSection = styled.div`
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  transition: all 0.2s;
+
+  &:hover {
     border-color: #14b8a6;
+    background: #f0fdfa;
   }
 `
 
-const ActionButtons = styled.div`
+const UploadHeader = styled.div`
   display: flex;
-  gap: 12px;
-  margin-top: 16px;
-  margin-bottom: 32px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 `
 
-const Button = styled.button<{ $variant?: 'primary' | 'secondary' }>`
+const UploadTitle = styled.h3`
+  font-size: 16px;
+  color: #111827;
+  margin: 0;
+  font-weight: 600;
+`
+
+const UploadDescription = styled.p`
+  margin: 0 0 16px 0;
+  color: #6b7280;
+  font-size: 13px;
+`
+
+const HiddenInput = styled.input`
+  display: none;
+`
+
+const UploadButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  border: 1px solid ${p => p.$variant === 'primary' ? '#14b8a6' : '#d1d5db'};
-  background: ${p => p.$variant === 'primary' ? '#14b8a6' : 'white'};
-  color: ${p => p.$variant === 'primary' ? 'white' : '#374151'};
+  border: 1px solid ${(p) => (p.$variant === 'primary' ? '#14b8a6' : '#d1d5db')};
+  background: ${(p) => (p.$variant === 'primary' ? '#14b8a6' : 'white')};
+  color: ${(p) => (p.$variant === 'primary' ? 'white' : '#374151')};
 
   &:hover {
-    background: ${p => p.$variant === 'primary' ? '#0d9488' : '#f3f4f6'};
+    background: ${(p) => (p.$variant === 'primary' ? '#0d9488' : '#f3f4f6')};
   }
 
   &:disabled {
@@ -77,255 +89,378 @@ const Button = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   }
 `
 
-const SectionTitle = styled.h3`
-  font-size: 16px;
-  color: #111827;
-  margin: 24px 0 16px 0;
-  font-weight: 600;
-`
-
-const DatasetCard = styled.div`
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
-  background: white;
-  transition: box-shadow 0.2s;
-
-  &:hover {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  }
-`
-
-const CardHeader = styled.div`
+const SelectedFile = styled.div`
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
+  align-items: center;
 `
 
-const CardTitle = styled.h4`
-  font-size: 16px;
-  color: #111827;
-  margin: 0;
-  font-weight: 600;
+const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: ${(p) => {
+    if (p.$type === 'success') return '#d1fae5'
+    if (p.$type === 'error') return '#fee2e2'
+    return '#dbeafe'
+  }};
+  color: ${(p) => {
+    if (p.$type === 'success') return '#065f46'
+    if (p.$type === 'error') return '#991b1b'
+    return '#1e3a8a'
+  }};
+  border: 1px solid
+    ${(p) => {
+      if (p.$type === 'success') return '#6ee7b7'
+      if (p.$type === 'error') return '#fca5a5'
+      return '#93c5fd'
+    }};
 `
 
-const CardMeta = styled.div`
-  font-size: 13px;
-  color: #6b7280;
-  margin-top: 4px;
-`
-
-const CardActions = styled.div`
+const ButtonGroup = styled.div`
   display: flex;
   gap: 8px;
 `
 
-const SmallButton = styled.button`
-  padding: 6px 16px;
-  border: 1px solid #d1d5db;
-  background: white;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: #f3f4f6;
-  }
-`
-
-const CardFooter = styled.div`
-  font-size: 12px;
-  color: #9ca3af;
+const FormatInfo = styled.div`
   margin-top: 8px;
-`
-
-const ProgressBar = styled.div`
-  width: 100%;
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 8px 0;
-`
-
-const ProgressFill = styled.div<{ $percentage: number }>`
-  width: ${p => p.$percentage}%;
-  height: 100%;
-  background: #14b8a6;
-  transition: width 0.3s;
-`
-
-const ProgressLabel = styled.div`
-  text-align: right;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-left: 3px solid #14b8a6;
   font-size: 12px;
   color: #6b7280;
-  margin-top: 4px;
+  font-family: monospace;
 `
 
-const SummarySection = styled.div`
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid #e5e7eb;
-`
-
-const SummaryGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 24px;
-  margin-top: 16px;
-`
-
-const SummaryItem = styled.div`
-  text-align: center;
-`
-
-const SummaryLabel = styled.div`
-  font-size: 13px;
-  color: #6b7280;
-  margin-bottom: 4px;
-`
-
-const SummaryValue = styled.div`
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
-`
-
-interface Dataset {
-  id: string;
-  name: string;
-  records: number;
-  version: string;
-  lastUpdate: string;
-  progress?: number;
+interface UploadState {
+  file: File | null
+  loading: boolean
+  result: ImportResultData | null
 }
 
 export function DataPage() {
-  const { datasets, datasetVersion, setDatasetVersion, setDatasets } = useDataStore()
+  const [airportsState, setAirportsState] = useState<UploadState>({
+    file: null,
+    loading: false,
+    result: null,
+  })
 
-  useEffect(() => {
-    // Inicializar datasets si es necesario
-    if (datasets.length === 0) {
-      setDatasets([
-    {
-      id: '1',
-      name: 'Vuelos',
-      records: 1275,
-      version: 'v2',
-      lastUpdate: '2024-08-24 14:30'
-    },
-    {
-      id: '2',
-      name: 'Aeropuertos Globales',
-      records: 45,
-      version: 'v2',
-      lastUpdate: '2024-08-24 14:30'
-    },
-    {
-      id: '3',
-      name: 'Pedidos Históricos Q2',
-      records: 8934,
-      version: 'v1.0',
-      lastUpdate: '2024-08-24 14:30',
-      progress: 89
-    },
-    {
-      id: '4',
-      name: 'Paquetes MPE',
-      records: 0,
-      version: 'v0',
-      lastUpdate: '2024-08-24 14:30'
-    }
-      ])
-    }
-  }, [datasets.length, setDatasets])
+  const [flightsState, setFlightsState] = useState<UploadState>({
+    file: null,
+    loading: false,
+    result: null,
+  })
 
-  const totalSets = datasets.length
-  const totalRecords = datasets.reduce((sum, ds) => sum + ds.records, 0)
-  const readyCount = datasets.filter(ds => ds.records > 0).length
-  const errorCount = datasets.filter(ds => ds.records === 0).length
+  const [ordersState, setOrdersState] = useState<UploadState>({
+    file: null,
+    loading: false,
+    result: null,
+  })
+
+  const airportsInputRef = useRef<HTMLInputElement>(null)
+  const flightsInputRef = useRef<HTMLInputElement>(null)
+  const ordersInputRef = useRef<HTMLInputElement>(null)
+
+  // Airports handlers
+  const handleAirportsFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAirportsState({ file: e.target.files[0], loading: false, result: null })
+    }
+  }
+
+  const handleAirportsUpload = async () => {
+    if (!airportsState.file) return
+
+    setAirportsState((prev) => ({ ...prev, loading: true, result: null }))
+
+    try {
+      const result = await uploadAirports(airportsState.file)
+      setAirportsState((prev) => ({ ...prev, loading: false, result }))
+
+      // Clear file if successful
+      if (result.success) {
+        setTimeout(() => {
+          setAirportsState({ file: null, loading: false, result: null })
+          if (airportsInputRef.current) airportsInputRef.current.value = ''
+        }, 3000)
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string }
+      setAirportsState((prev) => ({
+        ...prev,
+        loading: false,
+        result: {
+          success: false,
+          message: err.response?.data?.message || 'Error al cargar aeropuertos',
+          error: err.message,
+        },
+      }))
+    }
+  }
+
+  // Flights handlers
+  const handleFlightsFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFlightsState({ file: e.target.files[0], loading: false, result: null })
+    }
+  }
+
+  const handleFlightsUpload = async () => {
+    if (!flightsState.file) return
+
+    setFlightsState((prev) => ({ ...prev, loading: true, result: null }))
+
+    try {
+      const result = await uploadFlights(flightsState.file)
+      setFlightsState((prev) => ({ ...prev, loading: false, result }))
+
+      if (result.success) {
+        setTimeout(() => {
+          setFlightsState({ file: null, loading: false, result: null })
+          if (flightsInputRef.current) flightsInputRef.current.value = ''
+        }, 3000)
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string }
+      setFlightsState((prev) => ({
+        ...prev,
+        loading: false,
+        result: {
+          success: false,
+          message: err.response?.data?.message || 'Error al cargar vuelos',
+          error: err.message,
+        },
+      }))
+    }
+  }
+
+  // Orders handlers
+  const handleOrdersFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setOrdersState({ file: e.target.files[0], loading: false, result: null })
+    }
+  }
+
+  const handleOrdersUpload = async () => {
+    if (!ordersState.file) return
+
+    setOrdersState((prev) => ({ ...prev, loading: true, result: null }))
+
+    try {
+      const result = await uploadOrders(ordersState.file)
+      setOrdersState((prev) => ({ ...prev, loading: false, result }))
+
+      if (result.success) {
+        setTimeout(() => {
+          setOrdersState({ file: null, loading: false, result: null })
+          if (ordersInputRef.current) ordersInputRef.current.value = ''
+        }, 3000)
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string }
+      setOrdersState((prev) => ({
+        ...prev,
+        loading: false,
+        result: {
+          success: false,
+          message: err.response?.data?.message || 'Error al cargar pedidos',
+          error: err.message,
+        },
+      }))
+    }
+  }
 
   return (
     <Wrapper>
       <ContentPanel>
         <Title>Carga de Datos</Title>
-        
-        <SectionLabel>Versión de Dataset a Utilizar</SectionLabel>
-        <VersionInput 
-          type="text" 
-          value={datasetVersion}
-          onChange={(e) => setDatasetVersion(e.target.value)}
-          placeholder="Dataset V2 - 25/08/25"
-        />
+        <Description>
+          Importe datos desde archivos de texto (.txt) a la base de datos. Asegúrese de seguir el
+          formato correcto para cada tipo de dato.
+        </Description>
 
-        <ActionButtons>
-          <Button $variant="primary">Importar CSV</Button>
-          <Button $variant="secondary">Descargar Plantilla</Button>
-          <Button $variant="secondary">Validar Esquemas</Button>
-          <Button $variant="secondary">Datos Ejemplo</Button>
-        </ActionButtons>
+        {/* Airports Upload Section */}
+        <UploadSection>
+          <UploadHeader>
+            <UploadTitle>📍 Aeropuertos</UploadTitle>
+            <ButtonGroup>
+              <UploadButton
+                onClick={() => airportsInputRef.current?.click()}
+                disabled={airportsState.loading}
+              >
+                Seleccionar Archivo
+              </UploadButton>
+              <UploadButton
+                $variant="primary"
+                onClick={handleAirportsUpload}
+                disabled={!airportsState.file || airportsState.loading}
+              >
+                {airportsState.loading ? 'Cargando...' : 'Cargar Aeropuertos'}
+              </UploadButton>
+            </ButtonGroup>
+          </UploadHeader>
 
-        <SectionTitle>Conjunto de Datos Disponibles</SectionTitle>
+          <UploadDescription>Formato requerido: Mismo que airportInfo.txt</UploadDescription>
 
-        {datasets.map(dataset => (
-          <DatasetCard key={dataset.id}>
-            <CardHeader>
-              <div>
-                <CardTitle>{dataset.name}</CardTitle>
-                <CardMeta>
-                  {dataset.records.toLocaleString()} registros • {dataset.version}
-                </CardMeta>
-              </div>
-              <CardActions>
-                <SmallButton>Ver Detalles</SmallButton>
-                <SmallButton>Recargar</SmallButton>
-              </CardActions>
-            </CardHeader>
-            
-            {dataset.progress !== undefined && (
-              <>
-                <ProgressBar>
-                  <ProgressFill $percentage={dataset.progress} />
-                </ProgressBar>
-                <ProgressLabel>{dataset.progress}%</ProgressLabel>
-              </>
-            )}
-            
-            <CardFooter>
-              Última actualización: {dataset.lastUpdate}
-            </CardFooter>
-          </DatasetCard>
-        ))}
+          <FormatInfo>
+            ID CodeIATA City Country Alias Timezone Capacity Latitude: X.XXXX Longitude: Y.YYYY
+          </FormatInfo>
 
-        <SummarySection>
-          <SectionTitle>Resumen de Importación</SectionTitle>
-          <SummaryGrid>
-            <SummaryItem>
-              <SummaryLabel>Total conjuntos:</SummaryLabel>
-              <SummaryValue>{totalSets}</SummaryValue>
-            </SummaryItem>
-            <SummaryItem>
-              <SummaryLabel>Registros Totales:</SummaryLabel>
-              <SummaryValue>{totalRecords.toLocaleString()}</SummaryValue>
-            </SummaryItem>
-            <SummaryItem>
-              <SummaryLabel>Listos:</SummaryLabel>
-              <SummaryValue style={{ color: '#059669' }}>{readyCount}</SummaryValue>
-            </SummaryItem>
-            <SummaryItem>
-              <SummaryLabel>Errores:</SummaryLabel>
-              <SummaryValue style={{ color: '#dc2626' }}>{errorCount}</SummaryValue>
-            </SummaryItem>
-          </SummaryGrid>
-        </SummarySection>
+          <HiddenInput
+            ref={airportsInputRef}
+            type="file"
+            accept=".txt"
+            onChange={handleAirportsFileSelect}
+          />
+
+          {airportsState.file && (
+            <SelectedFile>
+              <span>📄 {airportsState.file.name}</span>
+              <span>{(airportsState.file.size / 1024).toFixed(2)} KB</span>
+            </SelectedFile>
+          )}
+
+          {airportsState.result && (
+            <Message $type={airportsState.result.success ? 'success' : 'error'}>
+              <strong>{airportsState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
+              {airportsState.result.message}
+              {airportsState.result.count !== undefined &&
+                ` (${airportsState.result.count} aeropuertos)`}
+              {airportsState.result.cities !== undefined &&
+                ` (${airportsState.result.cities} ciudades)`}
+            </Message>
+          )}
+        </UploadSection>
+
+        {/* Flights Upload Section */}
+        <UploadSection>
+          <UploadHeader>
+            <UploadTitle>✈️ Vuelos</UploadTitle>
+            <ButtonGroup>
+              <UploadButton
+                onClick={() => flightsInputRef.current?.click()}
+                disabled={flightsState.loading}
+              >
+                Seleccionar Archivo
+              </UploadButton>
+              <UploadButton
+                $variant="primary"
+                onClick={handleFlightsUpload}
+                disabled={!flightsState.file || flightsState.loading}
+              >
+                {flightsState.loading ? 'Cargando...' : 'Cargar Vuelos'}
+              </UploadButton>
+            </ButtonGroup>
+          </UploadHeader>
+
+          <UploadDescription>
+            Formato requerido: Mismo que flights.txt (requiere aeropuertos previamente cargados)
+          </UploadDescription>
+
+          <FormatInfo>
+            ORIGIN-DESTINATION-DEPARTURE-ARRIVAL-CAPACITY
+            <br />
+            Ejemplo: BOG-UIO-0830-1045-250
+          </FormatInfo>
+
+          <HiddenInput
+            ref={flightsInputRef}
+            type="file"
+            accept=".txt"
+            onChange={handleFlightsFileSelect}
+          />
+
+          {flightsState.file && (
+            <SelectedFile>
+              <span>📄 {flightsState.file.name}</span>
+              <span>{(flightsState.file.size / 1024).toFixed(2)} KB</span>
+            </SelectedFile>
+          )}
+
+          {flightsState.result && (
+            <Message $type={flightsState.result.success ? 'success' : 'error'}>
+              <strong>{flightsState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
+              {flightsState.result.message}
+              {flightsState.result.count !== undefined && ` (${flightsState.result.count} vuelos)`}
+            </Message>
+          )}
+        </UploadSection>
+
+        {/* Orders Upload Section */}
+        <UploadSection>
+          <UploadHeader>
+            <UploadTitle>📦 Pedidos y Productos</UploadTitle>
+            <ButtonGroup>
+              <UploadButton
+                onClick={() => ordersInputRef.current?.click()}
+                disabled={ordersState.loading}
+              >
+                Seleccionar Archivo
+              </UploadButton>
+              <UploadButton
+                $variant="primary"
+                onClick={handleOrdersUpload}
+                disabled={!ordersState.file || ordersState.loading}
+              >
+                {ordersState.loading ? 'Cargando...' : 'Cargar Pedidos'}
+              </UploadButton>
+            </ButtonGroup>
+          </UploadHeader>
+
+          <UploadDescription>
+            Formato requerido: Mismo que products.txt (requiere aeropuertos previamente cargados)
+          </UploadDescription>
+
+          <FormatInfo>
+            dd hh mm dest ### IdClien
+            <br />
+            dd: días de prioridad (01/04/12/24)
+            <br />
+            hh: hora (01-23), mm: minuto (01-59)
+            <br />
+            dest: código aeropuerto, ###: cantidad productos, IdClien: ID cliente
+            <br />
+            Ejemplo: 01 10 30 BOG 005 1234567
+          </FormatInfo>
+
+          <HiddenInput
+            ref={ordersInputRef}
+            type="file"
+            accept=".txt"
+            onChange={handleOrdersFileSelect}
+          />
+
+          {ordersState.file && (
+            <SelectedFile>
+              <span>📄 {ordersState.file.name}</span>
+              <span>{(ordersState.file.size / 1024).toFixed(2)} KB</span>
+            </SelectedFile>
+          )}
+
+          {ordersState.result && (
+            <Message $type={ordersState.result.success ? 'success' : 'error'}>
+              <strong>{ordersState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
+              {ordersState.result.message}
+              {ordersState.result.orders !== undefined && ` (${ordersState.result.orders} pedidos)`}
+              {ordersState.result.products !== undefined &&
+                ` (${ordersState.result.products} productos)`}
+            </Message>
+          )}
+        </UploadSection>
+
+        <Message $type="info">
+          <strong>ℹ️ Importante:</strong> Los archivos deben seguir exactamente el mismo formato que
+          los archivos de ejemplo en /data/. Cargue los aeropuertos primero, luego los vuelos, y
+          finalmente los pedidos.
+        </Message>
       </ContentPanel>
     </Wrapper>
   )
 }
-
-
-

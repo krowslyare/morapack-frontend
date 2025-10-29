@@ -54,11 +54,12 @@ export function AuthLayout({ children, illustration, illustrationAlt }: AuthLayo
       <BrandBar>MoraPack</BrandBar>
       <Container>
         <Inner>
-          {illustration && <Illustration src={illustration} alt={illustrationAlt || 'Illustration'} />}
+          {illustration && (
+            <Illustration src={illustration} alt={illustrationAlt || 'Illustration'} />
+          )}
           {children}
         </Inner>
       </Container>
     </>
   )
 }
-

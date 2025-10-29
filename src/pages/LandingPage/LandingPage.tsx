@@ -26,19 +26,19 @@ export function LandingPage() {
         <S.Title>Seleccione un módulo</S.Title>
 
         <S.Modules>
-          <S.ModuleTile onClick={() => window.location.href = '/envios'}>
+          <S.ModuleTile onClick={() => (window.location.href = '/envios')}>
             <span className="material-symbols-outlined">box</span>
             ENVIOS
           </S.ModuleTile>
-          <S.ModuleTile onClick={() => window.location.href = '/monitoreo'}>
+          <S.ModuleTile onClick={() => (window.location.href = '/monitoreo')}>
             <span className="material-symbols-outlined">connecting_airports</span>
             MONITOREO
           </S.ModuleTile>
-          <S.ModuleTile onClick={() => window.location.href = '/datos'}>
+          <S.ModuleTile onClick={() => (window.location.href = '/datos')}>
             <span className="material-symbols-outlined">database</span>
             DATOS
           </S.ModuleTile>
-          <S.ModuleTile onClick={() => window.location.href = '/reportes'}>
+          <S.ModuleTile onClick={() => (window.location.href = '/reportes')}>
             <span className="material-symbols-outlined">description</span>
             REPORTES
           </S.ModuleTile>
@@ -62,5 +62,3 @@ export function LandingPage() {
     </S.Page>
   )
 }
-
-

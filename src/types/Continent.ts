@@ -1,1 +1,1 @@
-export type Continent = 'America' | 'Europa' | 'Asia';
+export type Continent = 'America' | 'Europa' | 'Asia'

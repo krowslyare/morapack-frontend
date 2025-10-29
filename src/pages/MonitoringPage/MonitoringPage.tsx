@@ -40,18 +40,16 @@ export function MonitoringPage() {
         <div>
           <Title>Monitoreo y Simulación</Title>
           <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '14px' }}>
-            <strong>Mapa:</strong> {simulationResults ? 'Mostrando resultados de la simulación' : 'Visualización demo'}. 
-            <strong style={{ marginLeft: '12px' }}>Simulación:</strong> Ejecuta algoritmos de optimización abajo.
+            <strong>Mapa:</strong>{' '}
+            {simulationResults ? 'Mostrando resultados de la simulación' : 'Visualización demo'}.
+            <strong style={{ marginLeft: '12px' }}>Simulación:</strong> Ejecuta algoritmos de
+            optimización abajo.
           </p>
         </div>
-        
-        <FlightMonitor mode={mode} simulationResults={simulationResults} />
-        <SimulationControls mode={mode} setMode={setMode} />
 
+        <FlightMonitor simulationResults={simulationResults} />
+        <SimulationControls mode={mode} setMode={setMode} />
       </ContentPanel>
     </Wrapper>
   )
 }
-
-
-

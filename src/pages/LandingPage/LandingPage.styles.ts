@@ -126,7 +126,11 @@ export const ModuleTile = styled.button`
   cursor: pointer;
   font-weight: 800;
   letter-spacing: 0.3px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
   display: grid;
   place-items: center;
   gap: 10px;
@@ -175,4 +179,3 @@ export const StatLabel = styled.div`
   color: #4b5563;
   text-align: center;
 `
-
