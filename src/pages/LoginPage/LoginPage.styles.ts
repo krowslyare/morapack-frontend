@@ -90,7 +90,9 @@ export const AltButton = styled.button<{ bg?: string; hover?: string }>`
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
 
   &:hover {
     background-color: ${(props) => props.hover || '#e2e8f0'};

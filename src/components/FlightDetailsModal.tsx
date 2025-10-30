@@ -1,5 +1,6 @@
 import styled from 'styled-components'
 import type { SimFlight, SimAirport } from '../hooks/useFlightSimulation'
+import type { ActiveFlight } from '../hooks/useTemporalSimulation'
 
 const Overlay = styled.div`
   position: fixed;
@@ -30,7 +31,9 @@ const Modal = styled.div`
   padding: 0;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
   position: relative;
   animation: slideUp 0.3s ease-out;
 
@@ -133,12 +136,12 @@ const StatusBadge = styled.div<{ $status: string }>`
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  background: ${p => {
+  background: ${(p) => {
     if (p.$status.toLowerCase().includes('sobrecargado')) return '#fee2e2'
     if (p.$status.toLowerCase().includes('lleno')) return '#fef3c7'
     return '#d1fae5'
   }};
-  color: ${p => {
+  color: ${(p) => {
     if (p.$status.toLowerCase().includes('sobrecargado')) return '#991b1b'
     if (p.$status.toLowerCase().includes('lleno')) return '#92400e'
     return '#065f46'
@@ -155,9 +158,10 @@ const ProgressBar = styled.div`
 `
 
 const ProgressFill = styled.div<{ $percentage: number; $isOvercapacity: boolean }>`
-  width: ${p => Math.min(100, p.$percentage)}%;
+  width: ${(p) => Math.min(100, p.$percentage)}%;
   height: 100%;
-  background: ${p => p.$isOvercapacity ? '#ef4444' : p.$percentage >= 90 ? '#f59e0b' : '#14b8a6'};
+  background: ${(p) =>
+    p.$isOvercapacity ? '#ef4444' : p.$percentage >= 90 ? '#f59e0b' : '#14b8a6'};
   transition: width 0.3s;
 `
 
@@ -197,36 +201,43 @@ const Button = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   cursor: pointer;
   transition: all 0.2s;
   border: none;
-  background: ${p => p.$variant === 'primary' ? '#14b8a6' : 'white'};
-  color: ${p => p.$variant === 'primary' ? 'white' : '#374151'};
-  border: 1px solid ${p => p.$variant === 'primary' ? '#14b8a6' : '#d1d5db'};
+  background: ${(p) => (p.$variant === 'primary' ? '#14b8a6' : 'white')};
+  color: ${(p) => (p.$variant === 'primary' ? 'white' : '#374151')};
+  border: 1px solid ${(p) => (p.$variant === 'primary' ? '#14b8a6' : '#d1d5db')};
 
   &:hover {
-    background: ${p => p.$variant === 'primary' ? '#0d9488' : '#f3f4f6'};
+    background: ${(p) => (p.$variant === 'primary' ? '#0d9488' : '#f3f4f6')};
   }
 `
 
 interface FlightDetailsModalProps {
-  flight: SimFlight | null;
-  origin: SimAirport | null;
-  destination: SimAirport | null;
-  onClose: () => void;
+  flight: SimFlight | ActiveFlight | null
+  origin: SimAirport | null
+  destination: SimAirport | null
+  onClose: () => void
 }
 
-export function FlightDetailsModal({ flight, origin, destination, onClose }: FlightDetailsModalProps) {
+export function FlightDetailsModal({
+  flight,
+  origin,
+  destination,
+  onClose,
+}: FlightDetailsModalProps) {
   if (!flight || !origin || !destination) return null
 
-  const capacityPercentage = (flight.usedCapacity / flight.maxCapacity) * 100
-  const isOvercapacity = flight.usedCapacity > flight.maxCapacity
+  // Handle both SimFlight and ActiveFlight types
+  const maxCapacity = 'maxCapacity' in flight ? flight.maxCapacity : 1000
+  const usedCapacity = 'usedCapacity' in flight ? flight.usedCapacity : 0
+
+  const capacityPercentage = maxCapacity > 0 ? (usedCapacity / maxCapacity) * 100 : 0
+  const isOvercapacity = usedCapacity > maxCapacity
 
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
         <Header>
           <Title>Detalles del Avión</Title>
-          <CloseButton onClick={onClose}>
-            ✕
-          </CloseButton>
+          <CloseButton onClick={onClose}>✕</CloseButton>
         </Header>
 
         <Content>
@@ -248,11 +259,11 @@ export function FlightDetailsModal({ flight, origin, destination, onClose }: Fli
             <InfoGrid>
               <InfoField>
                 <Label>Capacidad Máxima</Label>
-                <Value>{flight.maxCapacity} Kg</Value>
+                <Value>{maxCapacity} Kg</Value>
               </InfoField>
               <InfoField>
                 <Label>Capacidad Usada</Label>
-                <Value>{flight.usedCapacity} Kg</Value>
+                <Value>{usedCapacity} Kg</Value>
               </InfoField>
             </InfoGrid>
             <ProgressBar>
@@ -260,7 +271,9 @@ export function FlightDetailsModal({ flight, origin, destination, onClose }: Fli
             </ProgressBar>
             <CapacityInfo>
               <span>{capacityPercentage.toFixed(1)}% utilizado</span>
-              {isOvercapacity && <span style={{ color: '#dc2626', fontWeight: 600 }}>¡Sobrecarga!</span>}
+              {isOvercapacity && (
+                <span style={{ color: '#dc2626', fontWeight: 600 }}>¡Sobrecarga!</span>
+              )}
             </CapacityInfo>
           </Section>
 
@@ -287,7 +300,9 @@ export function FlightDetailsModal({ flight, origin, destination, onClose }: Fli
           <Section>
             <InfoField>
               <Label>Tiempo de Transporte</Label>
-              <Value>{flight.transportTimeDays} {flight.transportTimeDays === 1 ? 'día' : 'días'}</Value>
+              <Value>
+                {flight.transportTimeDays} {flight.transportTimeDays === 1 ? 'día' : 'días'}
+              </Value>
             </InfoField>
           </Section>
 
@@ -311,4 +326,3 @@ export function FlightDetailsModal({ flight, origin, destination, onClose }: Fli
     </Overlay>
   )
 }
-

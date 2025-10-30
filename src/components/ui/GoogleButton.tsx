@@ -12,7 +12,9 @@ const StyledGoogleButton = styled.button`
   justify-content: center;
   gap: 10px;
   cursor: pointer;
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
   font-size: 0.9rem;
   color: #475569;
   font-weight: 500;
@@ -54,4 +56,3 @@ export function GoogleButton(props: GoogleButtonProps) {
     </StyledGoogleButton>
   )
 }
-

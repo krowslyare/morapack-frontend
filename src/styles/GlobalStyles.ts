@@ -18,5 +18,3 @@ export const GlobalStyles = createGlobalStyle`
     color-scheme: dark;
   }
 `
-
-

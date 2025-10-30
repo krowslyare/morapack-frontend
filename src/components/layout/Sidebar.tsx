@@ -109,15 +109,27 @@ export function Sidebar() {
         onMouseLeave={() => setCollapsed(true)}
       >
         <Brand $collapsed={collapsed}>{collapsed ? 'LCL' : 'Los Chanchos Locos'}</Brand>
-        
+
         <Nav>
           <NavItem to="/envios" $collapsed={collapsed}>
             <span className="material-symbols-outlined">box</span>
             <span>Envíos</span>
           </NavItem>
-          <NavItem to="/monitoreo" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">connecting_airports</span>
-            <span>Monitoreo</span>
+          <NavItem to="/planificacion" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">psychology</span>
+            <span>Planificación</span>
+          </NavItem>
+          <NavItem to="/simulacion/tiempo-real" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">schedule</span>
+            <span>Tiempo Real</span>
+          </NavItem>
+          <NavItem to="/simulacion/semanal" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">calendar_month</span>
+            <span>Simulación Semanal</span>
+          </NavItem>
+          <NavItem to="/simulacion/colapso" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">warning</span>
+            <span>Simulación Colapso</span>
           </NavItem>
           <NavItem to="/datos" $collapsed={collapsed}>
             <span className="material-symbols-outlined">database</span>
@@ -141,5 +153,3 @@ export function Sidebar() {
     </Shell>
   )
 }
-
-

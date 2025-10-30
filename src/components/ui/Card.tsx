@@ -14,4 +14,3 @@ const StyledCard = styled.div`
 export function Card({ children }: PropsWithChildren) {
   return <StyledCard>{children}</StyledCard>
 }
-

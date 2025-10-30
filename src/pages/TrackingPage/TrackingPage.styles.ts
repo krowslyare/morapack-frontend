@@ -105,5 +105,3 @@ export const PlaceholderText = styled.p`
   text-align: center;
   margin: 120px 0;
 `
-
-

@@ -29,4 +29,3 @@ export function Checkbox({ label, ...props }: CheckboxProps) {
     </CheckboxWrapper>
   )
 }
-

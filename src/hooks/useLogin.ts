@@ -15,5 +15,3 @@ export function useLogin() {
     onSuccess: (data) => setToken(data.token),
   })
 }
-
-

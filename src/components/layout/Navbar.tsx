@@ -13,5 +13,3 @@ const Bar = styled.header`
 export function Navbar() {
   return <Bar>MoraPack</Bar>
 }
-
-

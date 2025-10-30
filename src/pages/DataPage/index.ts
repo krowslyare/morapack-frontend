@@ -1,4 +1,1 @@
 export { DataPage } from './DataPage'
-
-
-
