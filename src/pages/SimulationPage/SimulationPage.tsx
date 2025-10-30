@@ -375,7 +375,7 @@ export function SimulationPage() {
     <Wrapper>
       <ContentPanel>
         <div>
-          <Title>Simulación de Algoritmo ALNS</Title>
+          <Title>Componente Planificador</Title>
           <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: '15px' }}>
             Configura y ejecuta el algoritmo de optimización ALNS (Adaptive Large Neighborhood
             Search)
