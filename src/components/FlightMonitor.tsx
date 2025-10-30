@@ -219,222 +219,263 @@ function bezierTangent(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTu
   return [lat, lng]
 }
 
-function buildArcPoints(a: LatLngTuple, b: LatLngTuple, samples = 16): LatLngTuple[] {
-  const c = computeControlPoint(a, b)
-  const pts: LatLngTuple[] = []
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples
-    pts.push(bezierPoint(t, a, c, b))
-  }
-  return pts
+/** ===== Capa de rutas ligada al viewport ===== */
+function RoutesLayer({
+  flights,
+  airports,
+  getCtrlPoint,
+  canvasRenderer,
+}: {
+  flights: ActiveFlight[]
+  airports: SimAirport[]
+  getCtrlPoint: (f: ActiveFlight, a: LatLngTuple, b: LatLngTuple) => LatLngTuple
+  canvasRenderer: L.Renderer
+}) {
+  const map = useMap()
+
+  const airportsById = useMemo(() => {
+    const d: Record<number, SimAirport> = {}
+    airports.forEach((a) => {
+      d[a.id] = a
+    })
+    return d
+  }, [airports])
+
+  // Re-render al pan/zoom
+  const [, force] = useState(0)
+  useEffect(() => {
+    if (!map) return
+    let t: number | undefined
+
+    const onMove = () => {
+      window.clearTimeout(t)
+      t = window.setTimeout(() => force(x => x + 1), 50)
+    }
+
+    map.on('moveend', onMove)
+    return () => {
+      window.clearTimeout(t)
+      map.off('moveend', onMove)
+    }
+  }, [map])
+
+  const view = map.getBounds()
+
+  return (
+    <>
+      {flights
+        .filter((f) => {
+          const o = airportsById[f.originAirportId]
+          const d = airportsById[f.destinationAirportId]
+          if (!o || !d) return false
+          return (
+            view.contains([o.latitude, o.longitude]) ||
+            view.contains([d.latitude, d.longitude])
+          )
+        })
+        .map((f) => {
+          const o = airportsById[f.originAirportId]!
+          const d = airportsById[f.destinationAirportId]!
+          const start: LatLngTuple = [o.latitude, o.longitude]
+          const end: LatLngTuple = [d.latitude, d.longitude]
+          const ctrl = getCtrlPoint(f, start, end)
+          const samples = 24
+          const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) =>
+            bezierPoint(i / samples, start, ctrl, end),
+          )
+          return (
+            <Polyline
+              key={`route-${f.productId}-${f.flightId}`}
+              positions={arc}
+              color="#3b82f6"
+              opacity={0.25}
+              weight={1}
+              renderer={canvasRenderer}
+            />
+          )
+        })}
+    </>
+  )
 }
 
-// ⚡ OPTIMIZED component for temporal flight animation with aggressive performance improvements
+/** ===== Aviones animados usando el mismo control point ===== */
 function AnimatedTemporalFlights({
   airports,
   activeFlights,
   onFlightClick,
+  getCtrlPoint,
 }: {
   airports: SimAirport[]
   activeFlights: ActiveFlight[]
   onFlightClick: (flight: ActiveFlight) => void
+  getCtrlPoint: (f: ActiveFlight, a: LatLngTuple, b: LatLngTuple) => LatLngTuple
 }) {
   const map = useMap()
   const markersRef = useRef<Record<string, Marker>>({})
   const lastUpdateTimeRef = useRef<number>(0)
   const lastUpdateRef = useRef<Record<string, { progress: number; lat: number; lng: number }>>({})
 
-  // OPTIMIZATION 1: Throttle updates to 200ms (5 FPS) instead of every frame (60 FPS)
-  // This reduces render calls by 92%!
   const UPDATE_THROTTLE_MS = 200
-  
-  // OPTIMIZATION 2: Limit maximum flights rendered
   const MAX_FLIGHTS_RENDERED = 100
 
-  // Store latest values in refs to avoid dependency issues
   const onFlightClickRef = useRef(onFlightClick)
   onFlightClickRef.current = onFlightClick
 
   const airportById = useMemo(() => {
     const dict: Record<number, SimAirport> = {}
-    airports.forEach((a) => {
-      dict[a.id] = a
-    })
+    airports.forEach((a) => { dict[a.id] = a })
     return dict
   }, [airports])
 
-  // OPTIMIZATION 3: Spatial culling - only render flights in/near viewport
-  const viewportBounds = useMemo(() => {
-    if (!map) return undefined
-    const bounds = map.getBounds()
-    // Expand bounds by 20% for smooth entrance/exit
-    const latPadding = (bounds.getNorth() - bounds.getSouth()) * 0.2
-    const lngPadding = (bounds.getEast() - bounds.getWest()) * 0.2
-    return {
-      north: bounds.getNorth() + latPadding,
-      south: bounds.getSouth() - latPadding,
-      east: bounds.getEast() + lngPadding,
-      west: bounds.getWest() - lngPadding
-    }
-  }, [map, activeFlights.length]) // Recalculate when flight count changes
-
-  // OPTIMIZATION 4: Use custom culling to limit flights
   const culledFlights = useMemo(() => {
-    if (activeFlights.length <= MAX_FLIGHTS_RENDERED) {
-      return activeFlights // No need to cull
-    }
+    const list = activeFlights
+    if (list.length <= MAX_FLIGHTS_RENDERED) return list
+    return [...list].sort((a, b) => b.progress - a.progress).slice(0, MAX_FLIGHTS_RENDERED)
+  }, [activeFlights])
 
-    // Filter by viewport if available
-    let visibleFlights = activeFlights
-    if (viewportBounds) {
-      visibleFlights = activeFlights.filter(flight => {
-        const origin = airportById[flight.originAirportId]
-        const dest = airportById[flight.destinationAirportId]
-        if (!origin || !dest) return false
+  const culledFlightsHash = useMemo(
+    () => culledFlights.map((f) => `${f.flightId}-${f.progress.toFixed(2)}`).join('|'),
+    [culledFlights],
+  )
 
-        // Check if either endpoint is in expanded viewport
-        const originInView = 
-          origin.latitude >= viewportBounds.south && origin.latitude <= viewportBounds.north &&
-          origin.longitude >= viewportBounds.west && origin.longitude <= viewportBounds.east
-        const destInView =
-          dest.latitude >= viewportBounds.south && dest.latitude <= viewportBounds.north &&
-          dest.longitude >= viewportBounds.west && dest.longitude <= viewportBounds.east
+  // helper para popup HTML
+  type AnyFlight = ActiveFlight 
 
-        return originInView || destInView
-      })
-    }
+  const popupHtml = (f: AnyFlight, o: SimAirport, d: SimAirport) => {
+    const flightCode =
+      (f as any).flightCode ?? (f as any).code ?? (f as any).flightId ?? (f as any).id
 
-    // Prioritize flights by progress (show most progressed flights)
-    const sorted = [...visibleFlights].sort((a, b) => b.progress - a.progress)
-    const culled = sorted.slice(0, MAX_FLIGHTS_RENDERED)
+    const productLine =
+      (f as any).productId != null
+        ? `<div style="color:#6b7280">Producto #${(f as any).productId}</div>`
+        : ``
 
-    // Log culling stats occasionally
-    if (Math.random() < 0.05) {
-      console.log(`[PERF] Culled ${activeFlights.length} → ${culled.length} flights (${((1 - culled.length/activeFlights.length) * 100).toFixed(0)}% reduction)`)
-    }
+    const pct = Math.round((f as any).progress * 100)
+    const originLabel = (o as any).codeIATA ?? o.city
+    const destLabel   = (d as any).codeIATA ?? d.city
 
-    return culled
-  }, [activeFlights, viewportBounds, airportById])
+    return `
+      <div style="font:12px/1.35 system-ui,-apple-system,Segoe UI,Roboto;color:#111827">
+        <div style="font-weight:700;margin-bottom:4px">Vuelo ${flightCode}</div>
+        <div>${originLabel} → ${destLabel}</div>
+        ${productLine}
+        <div style="margin-top:6px">Progreso: <strong>${pct}%</strong></div>
+        <button id="openDetailsBtn"
+          style="margin-top:8px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;
+                background:#fff;color:#111827;cursor:pointer;font-weight:600">
+          Ver detalles
+        </button>
+      </div>
+    `
+  }
 
-  // Stable hash for change detection
-  const culledFlightsHash = useMemo(() => {
-    return culledFlights.map((f) => `${f.flightId}-${f.progress.toFixed(2)}`).join('|')
-  }, [culledFlights])
-
-  // OPTIMIZATION 5: Batched, throttled update function
   const updateMarkers = useCallback(() => {
     const now = Date.now()
-    
-    // Throttle: Skip if called too soon
-    if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
-      return
-    }
-    
+    if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) return
     lastUpdateTimeRef.current = now
 
-    const airports = airportById
-    const clickHandler = onFlightClickRef.current
     const currentMarkerIds = new Set<string>()
 
-    // Batch all marker updates
     culledFlights.forEach((flight) => {
-      const origin = airports[flight.originAirportId]
-      const dest = airports[flight.destinationAirportId]
+      const origin = airportById[flight.originAirportId]
+      const dest = airportById[flight.destinationAirportId]
       if (!origin || !dest) return
 
       const markerId = `flight-${flight.flightId}-${flight.productId}`
       currentMarkerIds.add(markerId)
 
-      const start: LatLngTuple = cityToLatLng(origin)
-      const end: LatLngTuple = cityToLatLng(dest)
-      const ctrl: LatLngTuple = computeControlPoint(start, end)
+      const start: LatLngTuple = [origin.latitude, origin.longitude]
+      const end: LatLngTuple   = [dest.latitude, dest.longitude]
+      const ctrl               = getCtrlPoint(flight, start, end)
 
       let marker = markersRef.current[markerId]
-
       if (!marker) {
-        // Create marker with simplified icon
-        const planeHTML = `<img src="/airplane.png" alt="✈" class="plane" style="width:20px;height:20px;display:block;transform-origin:50% 50%;will-change:transform;" />`
-        const planeIcon = new DivIcon({
-          className: 'plane-icon',
-          html: planeHTML,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10],
+        const planeHTML =
+          `<img src="/airplane.png" alt="✈" class="plane"
+             style="width:20px;height:20px;display:block;transform-origin:50% 50%;will-change:transform;" />`
+        const planeIcon = new DivIcon({ className: 'plane-icon', html: planeHTML, iconSize: [20, 20], iconAnchor: [10, 10] })
+        marker = L.marker(start, { icon: planeIcon, interactive: true })
+
+        // click => popup pequeño + botón "Ver detalles"
+        marker.on('click', () => {
+          const p = L.popup({ offset: [0, -10], autoPan: true, closeButton: true })
+            .setLatLng(marker!.getLatLng())
+            .setContent(popupHtml(flight, origin, dest))
+            .openOn(map)
+
+          // delega para el botón dentro del popup
+          setTimeout(() => {
+            const btn = document.getElementById('openDetailsBtn')
+            if (btn) {
+              btn.onclick = () => {
+                map.closePopup(p)
+                onFlightClickRef.current(flight) // abre tu FlightDetailsModal existente
+              }
+            }
+          }, 0)
         })
 
-        marker = L.marker(start, { icon: planeIcon, interactive: true })
-        marker.on('click', () => clickHandler(flight))
         marker.on('mouseover', () => {
-          const el = marker.getElement()
-          if (el) {
-            el.style.cursor = 'pointer'
-            el.style.transform = 'scale(1.3)'
+          const plane = marker!.getElement()?.querySelector('.plane') as HTMLElement | null
+          if (plane) {
+            plane.style.cursor = 'pointer'
+            plane.style.transform = `${plane.style.transform?.replace(/\s*scale\([^)]*\)/, '')} scale(1.3)`
           }
         })
         marker.on('mouseout', () => {
-          const el = marker.getElement()
-          if (el) el.style.transform = 'scale(1)'
+          const plane = marker!.getElement()?.querySelector('.plane') as HTMLElement | null
+          if (plane) {
+            plane.style.transform = plane.style.transform?.replace(/\s*scale\([^)]*\)/, '')!
+          }
         })
+
         marker.addTo(map)
         markersRef.current[markerId] = marker
         lastUpdateRef.current[markerId] = { progress: -1, lat: 0, lng: 0 }
       }
 
-      // Calculate position
+      // posiciona y rota
       const [lat, lng] = bezierPoint(flight.progress, start, ctrl, end)
-
-      // Update only if changed significantly (reduces DOM writes)
-      const lastUpdate = lastUpdateRef.current[markerId]
+      const last = lastUpdateRef.current[markerId]
       const shouldUpdate =
-        Math.abs(lat - lastUpdate.lat) > 0.002 ||
-        Math.abs(lng - lastUpdate.lng) > 0.002 ||
-        Math.abs(flight.progress - lastUpdate.progress) > 0.02
+        Math.abs(lat - last.lat) > 0.002 ||
+        Math.abs(lng - last.lng) > 0.002 ||
+        Math.abs(flight.progress - last.progress) > 0.02
 
       if (shouldUpdate) {
         marker.setLatLng([lat, lng])
-
-        // Update rotation
         const [dlat, dlng] = bezierTangent(flight.progress, start, ctrl, end)
         const angleRad = Math.atan2(-dlat, dlng * Math.cos((lat * Math.PI) / 180))
-        const el = marker.getElement()?.querySelector('.plane') as HTMLElement | null
-        if (el) el.style.transform = `rotate(${angleRad - Math.PI}rad)`
-
+        const plane = marker.getElement()?.querySelector('.plane') as HTMLElement | null
+        if (plane) {
+          const base = `rotate(${angleRad - Math.PI}rad)`
+          const scale = plane.style.transform.match(/scale\([^)]*\)/)?.[0] ?? ''
+          plane.style.transform = `${base}${scale ? ' ' + scale : ''}`
+        }
         lastUpdateRef.current[markerId] = { progress: flight.progress, lat, lng }
       }
     })
 
-    // Remove inactive markers
-    Object.keys(markersRef.current).forEach((markerId) => {
-      if (!currentMarkerIds.has(markerId)) {
-        const marker = markersRef.current[markerId]
-        if (marker) {
-          marker.clearAllEventListeners()
-          marker.remove()
-        }
-        delete markersRef.current[markerId]
-        delete lastUpdateRef.current[markerId]
+    // limpia inactivos
+    Object.keys(markersRef.current).forEach((id) => {
+      if (!currentMarkerIds.has(id)) {
+        const mk = markersRef.current[id]
+        if (mk) { mk.off(); mk.remove() }
+        delete markersRef.current[id]
+        delete lastUpdateRef.current[id]
       }
     })
-  }, [map, culledFlights, airportById])
+  }, [map, culledFlights, airportById, getCtrlPoint])
 
-  // Update on hash change + interval
   useEffect(() => {
     updateMarkers()
-    
-    // Set up interval for continuous updates
-    const intervalId = setInterval(() => {
-      updateMarkers()
-    }, UPDATE_THROTTLE_MS)
-    
-    return () => clearInterval(intervalId)
+    const id = setInterval(updateMarkers, UPDATE_THROTTLE_MS)
+    return () => clearInterval(id)
   }, [culledFlightsHash, updateMarkers])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      Object.values(markersRef.current).forEach((m) => {
-        m.clearAllEventListeners()
-        m.remove()
-      })
+      Object.values(markersRef.current).forEach((m) => { m.off(); m.remove() })
       markersRef.current = {}
       lastUpdateRef.current = {}
     }
@@ -455,74 +496,34 @@ export function FlightMonitor({
   const [selectedFlight, setSelectedFlight] = useState<ActiveFlight | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
 
-  // Get total flights count from database (always fetch to show real total)
-  const { data: totalFlightsFromDB, isLoading: isLoadingFlightsCount, error: flightsCountError } = useFlightsCount()
-  
-  // Debug logging for flight count and data validation
+  const { data: totalFlightsFromDB, isLoading: isLoadingFlightsCount, error: flightsCountError } =
+    useFlightsCount()
+
   useEffect(() => {
-    console.log('[FlightMonitor] totalFlightsFromDB:', totalFlightsFromDB)
-    console.log('[FlightMonitor] isLoadingFlightsCount:', isLoadingFlightsCount)
-    console.log('[FlightMonitor] hasTimeline:', !!simulationResults?.timeline)
-    console.log('[FlightMonitor] timeline events:', simulationResults?.timeline?.events?.length || 0)
-    
-    if (flightsCountError) {
-      console.error('[FlightMonitor] flightsCountError:', flightsCountError)
-    }
-    
-    // Warning if timeline exists but no flights in DB
-    if (simulationResults?.timeline && totalFlightsFromDB === 0) {
-      console.warn(
-        '[FlightMonitor] ⚠️ WARNING: Timeline existe pero BD tiene 0 vuelos. ' +
-        'Los vuelos mostrados son de una simulación anterior. ' +
-        'Usa "Limpiar Resultados" para removerlos.'
-      )
-    }
-  }, [totalFlightsFromDB, isLoadingFlightsCount, flightsCountError, simulationResults?.timeline])
+    if (flightsCountError) console.error('[FlightMonitor] flightsCountError:', flightsCountError)
+  }, [flightsCountError])
 
-  // Airport capacity manager (uses real data from database)
-  // Only initialize when we have timeline to avoid unnecessary queries
   const capacityManager = useAirportCapacityManager()
-
-  // Directly use airports from capacityManager (already memoized in the hook)
   const airportsFromDB = capacityManager.airports
 
-  // Stable reference to capacity event handler
   const handleFlightCapacityEvent = useCallback(
     (event: FlightCapacityEvent) => capacityManager.handleFlightCapacityEvent(event),
     [capacityManager],
   )
 
-  // Mutation to update flight status in database
   const updateFlight = useUpdateFlight()
   const queryClient = useQueryClient()
 
-  // Callback to update flight status in database
   const handleFlightStatusChange = useCallback(
     (update: FlightStatusUpdate) => {
-      console.log(
-        `[FLIGHT STATUS] Flight ${update.flightId} → ${update.status} at ${update.timestamp.toLocaleTimeString()}`,
-      )
-
       updateFlight.mutate(
-        {
-          id: update.flightId,
-          updates: { status: update.status },
-        },
-        {
-          onSuccess: () => {
-            // Invalidate flight counts to refresh stats
-            queryClient.invalidateQueries({ queryKey: flightKeys.count() })
-          },
-          onError: (error : any) => {
-            console.error(`[FLIGHT STATUS] Failed to update flight ${update.flightId}:`, error)
-          },
-        },
+        { id: update.flightId, updates: { status: update.status } },
+        { onSuccess: () => queryClient.invalidateQueries({ queryKey: flightKeys.count() }) },
       )
     },
     [updateFlight, queryClient],
   )
 
-  // Callback to handle capacity changes (departures/arrivals)
   const handleCapacityChange = useCallback(
     (event: FlightCapacityEvent) => {
       handleFlightCapacityEvent(event)
@@ -530,18 +531,16 @@ export function FlightMonitor({
     [handleFlightCapacityEvent],
   )
 
-  // Determine initial time unit based on simulation type
   const getInitialTimeUnit = (): 'seconds' | 'minutes' | 'hours' | 'days' => {
-    if (simulationType === 'day-to-day') return 'seconds' // 1:1 real time
-    if (simulationType === 'weekly') return 'hours' // Fast forward
-    return 'minutes' // collapse
+    if (simulationType === 'day-to-day') return 'seconds'
+    if (simulationType === 'weekly') return 'hours'
+    return 'minutes'
   }
 
   const [timeUnit, setTimeUnit] = useState<'seconds' | 'minutes' | 'hours' | 'days'>(
     getInitialTimeUnit(),
   )
 
-  // Use temporal simulation if we have timeline data
   const temporalSim = useTemporalSimulation({
     timeline: simulationResults?.timeline,
     timeUnit,
@@ -550,22 +549,13 @@ export function FlightMonitor({
     onFlightCapacityChange: handleCapacityChange,
   })
 
-  // Determine which airports to show
   const airports = useMemo(() => {
-    const hasDBData = airportsFromDB.length > 0
-
-    // Always show database airports if available (even without simulation)
-    if (hasDBData) {
-      return airportsFromDB
-    }
-
-    // If no DB data, return empty array (don't show dummy data)
+    if (airportsFromDB.length > 0) return airportsFromDB
     return []
   }, [airportsFromDB])
 
   const bounds = useMemo(() => {
     if (airports.length === 0) {
-      // Default bounds if no airports (world view)
       return L.latLngBounds([
         [-60, -180],
         [70, 180],
@@ -573,9 +563,6 @@ export function FlightMonitor({
     }
     return L.latLngBounds(airports.map((a) => cityToLatLng(a)))
   }, [airports])
-
-  // Note: Capacities reset automatically when simulation changes
-  // No need for manual reset to avoid render loops
 
   const handleFlightClick = useCallback((flight: ActiveFlight) => {
     setSelectedFlight(flight)
@@ -591,13 +578,28 @@ export function FlightMonitor({
   const tileAttribution = import.meta.env.VITE_TILE_ATTRIBUTION ?? '&copy; OpenStreetMap & CARTO'
 
   const hasTimeline = !!simulationResults?.timeline
-
-  // Always use total from database to show real count (not grouped flights from timeline)
   const totalFlights = totalFlightsFromDB || 0
-
-  // Data validation flags
   const noDataAvailable = airports.length === 0 && hasTimeline && !capacityManager.isLoading
   const hasStaleResults = hasTimeline && totalFlightsFromDB === 0 && !isLoadingFlightsCount
+
+  /** ===== Caché de control points + invalidación ===== */
+  const ctrlCacheRef = useRef<Record<string, LatLngTuple>>({})
+
+  // Invalida caché si cambian aeropuertos o timeline
+  useEffect(() => {
+    ctrlCacheRef.current = {}
+  }, [airportsFromDB, simulationResults?.timeline])
+
+  const getCtrlPoint = useCallback((f: ActiveFlight, start: LatLngTuple, end: LatLngTuple) => {
+    const id = `${f.flightId}-${f.productId}-${start[0]}-${start[1]}-${end[0]}-${end[1]}`
+    if (!ctrlCacheRef.current[id]) {
+      ctrlCacheRef.current[id] = computeControlPoint(start, end, 0.25)
+    }
+    return ctrlCacheRef.current[id]
+  }, [])
+
+  // Renderer Canvas para muchas líneas
+  const canvasRenderer = useMemo(() => L.canvas({ padding: 0.5 }), [])
 
   return (
     <MonitorWrapper>
@@ -613,12 +615,10 @@ export function FlightMonitor({
             fontWeight: 500,
           }}
         >
-          <strong>⚠️ Sin datos de aeropuertos:</strong> No se encontraron aeropuertos en la base de
-          datos. Por favor, carga los datos desde la página "Datos" antes de ejecutar la
-          simulación.
+          <strong>⚠️ Sin datos de aeropuertos:</strong> Carga datos antes de ejecutar la simulación.
         </div>
       )}
-      
+
       {hasStaleResults && (
         <div
           style={{
@@ -632,12 +632,10 @@ export function FlightMonitor({
             marginBottom: '16px',
           }}
         >
-          <strong>🚨 Datos obsoletos detectados:</strong> Estás viendo resultados de una simulación anterior, 
-          pero la base de datos actualmente tiene 0 vuelos cargados. Estos vuelos NO son reales. 
-          Por favor, usa el botón "Limpiar Resultados" en la parte superior para removerlos, 
-          o carga datos reales desde la página "Datos" y ejecuta el algoritmo nuevamente.
+          <strong>🚨 Datos obsoletos:</strong> Timeline previo con 0 vuelos en BD.
         </div>
       )}
+
       <MapWrapper>
         {hasTimeline && (
           <SimulationControls>
@@ -726,7 +724,13 @@ export function FlightMonitor({
               <Tooltip direction="top" offset={[0, -8]} opacity={1} permanent={false}>
                 <div>
                   <strong>{a.city}</strong>
-                  <div>Capacidad: {(((a as any).maxCapacity - (a as any).currentUsedCapacity) / (a as any).maxCapacity ) * 100}%</div>
+                  <div>
+                    Capacidad:{' '}
+                    {(((a as any).maxCapacity - (a as any).currentUsedCapacity) /
+                      (a as any).maxCapacity) *
+                      100}
+                    %
+                  </div>
                   {(a as any).warehouseName && (
                     <div style={{ fontSize: '10px', color: '#6b7280' }}>
                       {(a as any).warehouseName}
@@ -735,8 +739,7 @@ export function FlightMonitor({
                   {(a as any).currentUsedCapacity !== undefined &&
                     (a as any).maxCapacity !== undefined && (
                       <div style={{ fontSize: '10px', color: '#6b7280' }}>
-                        {Math.round((a as any).currentUsedCapacity)}/{(a as any).maxCapacity}{' '}
-                        unidades
+                        {Math.round((a as any).currentUsedCapacity)}/{(a as any).maxCapacity} unidades
                       </div>
                     )}
                   <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
@@ -747,36 +750,26 @@ export function FlightMonitor({
             </CircleMarker>
           ))}
 
-          {/* ⚡ OPTIMIZED: Rutas de vuelo (arcos) - limited to prevent lag */}
-          {/* Only show polylines for first 30 flights to prevent lag */}
-          {hasTimeline &&
-            temporalSim.activeFlights.slice(0, 30).map((f) => {
-              const origin = airports.find((a) => a.id === f.originAirportId)
-              const dest = airports.find((a) => a.id === f.destinationAirportId)
-              if (!origin || !dest) return null
-              const start = cityToLatLng(origin)
-              const end = cityToLatLng(dest)
-              const arc = buildArcPoints(start, end)
-              return (
-                <Polyline
-                  key={`line-${f.productId}-${f.flightId}`}
-                  positions={arc}
-                  color="#3b82f6"
-                  opacity={0.3}
-                  weight={1.2}
-                />
-              )
-            })}
+          {/* Rutas de vuelo ligadas al viewport, usando el mismo control point */}
+          {hasTimeline && (
+            <RoutesLayer
+              flights={temporalSim.activeFlights}
+              airports={airports}
+              getCtrlPoint={getCtrlPoint}
+              canvasRenderer={canvasRenderer}
+            />
+          )}
 
           {hasTimeline ? (
             <AnimatedTemporalFlights
               airports={airports}
               activeFlights={temporalSim.activeFlights}
               onFlightClick={handleFlightClick}
+              getCtrlPoint={getCtrlPoint}
             />
           ) : null}
 
-          {/* Legend dentro del mapa */}
+          {/* Leyenda */}
           <Legend>
             {hasTimeline && (
               <>
@@ -841,7 +834,11 @@ export function FlightMonitor({
         onClose={() => setSelectedFlight(null)}
       />
 
-      <AirportDetailsModal airport={selectedAirport} onClose={() => setSelectedAirport(null)} />
+      <AirportDetailsModal 
+        airport={selectedAirport} 
+        onClose={() => setSelectedAirport(null)}
+        readOnly 
+      />
     </MonitorWrapper>
   )
 }

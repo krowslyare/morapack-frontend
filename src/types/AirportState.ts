@@ -1,5 +1,5 @@
 export enum AirportState {
-  Avaiable = 'Avaiable',
+  Available = 'Available',
   Restricted = 'Restricted',
   Closed = 'Closed',
 }
