@@ -2,8 +2,10 @@ import * as S from './TrackingPage.styles'
 import { useState } from 'react'
 import { useOrders, useDeleteOrder } from '../../hooks/api/useOrders'
 import type { OrderSchema } from '../../types'
+import { useNavigate } from 'react-router-dom'  
 
 export function TrackingPage() {
+  const navigate = useNavigate()      
   const [search, setSearch] = useState('')
   const { data: orders = [], isLoading, error } = useOrders()
   const deleteOrder = useDeleteOrder()
@@ -41,10 +43,17 @@ export function TrackingPage() {
             <span className="material-symbols-outlined">upload</span>
             Subir datos
           </S.Button>
-          <S.Button variant="primary">
+          
+          <S.Button
+            type="button"
+            variant="primary"
+            onClick={() => navigate('/envios/registrar')}   // ajusta ruta si difiere
+          >
             <span className="material-symbols-outlined">add_circle</span>
             Registrar Pedido
           </S.Button>
+
+
         </S.Actions>
       </S.ActionBar>
 

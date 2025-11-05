@@ -9,6 +9,7 @@ import { ReportPage } from '../pages/ReportPage'
 import { SimulationPage } from '../pages/SimulationPage'
 import { VisualizationPage } from '../pages/VisualizationPage'
 import { RealtimeSimulationPage } from '../pages/RealtimeSimulationPage/RealtimeSimulationPage.tsx'
+import RegisterOrderPage from '../pages/RegisterOrderPage/RegisterOrderPage'
 
 const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
@@ -16,7 +17,11 @@ const router = createBrowserRouter([
   {
     path: '/envios',
     element: <Sidebar />,
-    children: [{ index: true, element: <TrackingPage /> }],
+    children: [
+      { index: true, element: <TrackingPage /> },             
+      { path: 'registrar', element: <RegisterOrderPage /> },  
+      // { path: ':id/editar', element: <EditOrderPage /> },
+    ],
   },
   {
     path: '/planificacion',
@@ -48,6 +53,7 @@ const router = createBrowserRouter([
     element: <Sidebar />,
     children: [{ index: true, element: <ReportPage /> }],
   },
+  
 ])
 
 export function AppRouter() {
