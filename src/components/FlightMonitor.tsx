@@ -541,13 +541,89 @@ export function FlightMonitor({
     getInitialTimeUnit(),
   )
 
-  const temporalSim = useTemporalSimulation({
-    timeline: simulationResults?.timeline,
-    timeUnit,
-    simulationType,
-    onFlightStatusChange: handleFlightStatusChange,
-    onFlightCapacityChange: handleCapacityChange,
-  })
+  let temporalSim: {
+    activeFlights: ActiveFlight[]
+    flightStats: any
+    completedProductsCount: number
+    progressPercent: number
+    currentSimTime: number  
+    formatSimulationTime: (t: number) => string  
+    isPlaying: boolean
+    play: () => void
+    pause: () => void
+    reset: () => void
+  } = {
+    activeFlights: [],
+    flightStats: { completed: 0, inFlight: 0, pending: 0 },
+    completedProductsCount: 0,
+    progressPercent: 0,
+    currentSimTime: Date.now(),  
+    formatSimulationTime: () => 'Tiempo real',
+    isPlaying: false,
+    play: () => {},
+    pause: () => {},
+    reset: () => {},
+  }
+
+  // luego reasignas según el tipo
+  if (simulationType === 'day-to-day') {
+    const [activeFlights, setActiveFlights] = useState<ActiveFlight[]>([])
+
+    useEffect(() => {
+      const update = () => {
+        const now = Date.now()
+        const routes = simulationResults?.productRoutes ?? []
+
+        const flights = routes.flatMap((route, i) => {
+          if (!route.flights?.length) return []
+
+          return route.flights.map((flight, j) => {
+            const originId = flight.originAirportId ?? 0
+            const destId = flight.destinationAirportId ?? 0
+            const seed = i * 10 + j
+
+            // === Movimiento continuo ida-vuelta ===
+            const cycle = ((now / 1000 + seed * 3) % 120) / 60  // ciclo de 120 s → 0→1→0
+            const progress = cycle <= 1 ? cycle : 2 - cycle
+
+            return {
+              flightId: flight.id ?? seed,
+              flightCode: flight.code ?? `FL-${i}-${j}`,
+              productId: route.productId ?? 0,
+              orderId: route.orderId,
+              originAirportId: originId,
+              destinationAirportId: destId,
+              progress,                     // ✅ progreso oscilante
+              status: 'IN_FLIGHT',
+              departureTime: new Date(now),
+              arrivalTime: new Date(now + 1000 * 60 * 60),
+            }
+          })
+        })
+
+        setActiveFlights(flights)
+      }
+
+      update()
+      const id = setInterval(update, 1000) // ✅ actualiza cada segundo
+      return () => clearInterval(id)
+    }, [simulationResults])
+
+    temporalSim = {
+      ...temporalSim,
+      activeFlights,
+      flightStats: { completed: 0, inFlight: activeFlights.length, pending: 0 },
+      isPlaying: true,
+    }
+  } else {
+    temporalSim = useTemporalSimulation({
+      timeline: simulationResults?.timeline,
+      timeUnit,
+      simulationType,
+      onFlightStatusChange: handleFlightStatusChange,
+      onFlightCapacityChange: handleCapacityChange, 
+    })
+  }
 
   const airports = useMemo(() => {
     if (airportsFromDB.length > 0) return airportsFromDB
@@ -637,49 +713,49 @@ export function FlightMonitor({
       )}
 
       <MapWrapper>
-        {hasTimeline && (
-          <SimulationControls>
-            <ControlsRow>
-              {!temporalSim.isPlaying ? (
-                <ControlButton $variant="play" onClick={temporalSim.play}>
-                  ▶ Reproducir
-                </ControlButton>
-              ) : (
-                <ControlButton $variant="pause" onClick={temporalSim.pause}>
-                  ⏸ Pausar
-                </ControlButton>
-              )}
-              <ControlButton $variant="reset" onClick={temporalSim.reset}>
-                ⏹ Reiniciar
+        {hasTimeline && simulationType !== 'day-to-day' && (
+        <SimulationControls>
+          <ControlsRow>
+            {!temporalSim.isPlaying ? (
+              <ControlButton $variant="play" onClick={temporalSim.play}>
+                ▶ Reproducir
               </ControlButton>
-            </ControlsRow>
+            ) : (
+              <ControlButton $variant="pause" onClick={temporalSim.pause}>
+                ⏸ Pausar
+              </ControlButton>
+            )}
+            <ControlButton $variant="reset" onClick={temporalSim.reset}>
+              ⏹ Reiniciar
+            </ControlButton>
+          </ControlsRow>
 
-            <ProgressBar>
-              <ProgressFill $progress={temporalSim.progressPercent} />
-            </ProgressBar>
+          <ProgressBar>
+            <ProgressFill $progress={temporalSim.progressPercent} />
+          </ProgressBar>
 
-            <SpeedControl>
-              <span>1 seg real =</span>
-              <SpeedButton $active={timeUnit === 'seconds'} onClick={() => setTimeUnit('seconds')}>
-                1 seg
-              </SpeedButton>
-              <SpeedButton $active={timeUnit === 'minutes'} onClick={() => setTimeUnit('minutes')}>
-                1 min
-              </SpeedButton>
-              <SpeedButton $active={timeUnit === 'hours'} onClick={() => setTimeUnit('hours')}>
-                1 hora
-              </SpeedButton>
-              <SpeedButton $active={timeUnit === 'days'} onClick={() => setTimeUnit('days')}>
-                1 día
-              </SpeedButton>
-            </SpeedControl>
+          <SpeedControl>
+            <span>1 seg real =</span>
+            <SpeedButton $active={timeUnit === 'seconds'} onClick={() => setTimeUnit('seconds')}>
+              1 seg
+            </SpeedButton>
+            <SpeedButton $active={timeUnit === 'minutes'} onClick={() => setTimeUnit('minutes')}>
+              1 min
+            </SpeedButton>
+            <SpeedButton $active={timeUnit === 'hours'} onClick={() => setTimeUnit('hours')}>
+              1 hora
+            </SpeedButton>
+            <SpeedButton $active={timeUnit === 'days'} onClick={() => setTimeUnit('days')}>
+              1 día
+            </SpeedButton>
+          </SpeedControl>
 
-            <StatsRow>
-              <div>Vuelos activos: {temporalSim.activeFlights.length}</div>
-              <div>Productos entregados: {temporalSim.completedProductsCount}</div>
-            </StatsRow>
-          </SimulationControls>
-        )}
+          <StatsRow>
+            <div>Vuelos activos: {temporalSim.activeFlights.length}</div>
+            <div>Productos entregados: {temporalSim.completedProductsCount}</div>
+          </StatsRow>
+        </SimulationControls>
+      )}
 
         <MapContainer
           bounds={bounds}
@@ -751,23 +827,23 @@ export function FlightMonitor({
           ))}
 
           {/* Rutas de vuelo ligadas al viewport, usando el mismo control point */}
-          {hasTimeline && (
-            <RoutesLayer
-              flights={temporalSim.activeFlights}
-              airports={airports}
-              getCtrlPoint={getCtrlPoint}
-              canvasRenderer={canvasRenderer}
-            />
-          )}
+          {temporalSim.activeFlights?.length > 0 && (
+            <>
+              <RoutesLayer
+                flights={temporalSim.activeFlights}
+                airports={airports}
+                getCtrlPoint={getCtrlPoint}
+                canvasRenderer={canvasRenderer}
+              />
 
-          {hasTimeline ? (
-            <AnimatedTemporalFlights
-              airports={airports}
-              activeFlights={temporalSim.activeFlights}
-              onFlightClick={handleFlightClick}
-              getCtrlPoint={getCtrlPoint}
-            />
-          ) : null}
+              <AnimatedTemporalFlights
+                airports={airports}
+                activeFlights={temporalSim.activeFlights}
+                onFlightClick={handleFlightClick}
+                getCtrlPoint={getCtrlPoint}
+              />
+            </>
+          )}
 
           {/* Leyenda */}
           <Legend>

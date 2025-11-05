@@ -8,6 +8,7 @@ import { DataPage } from '../pages/DataPage'
 import { ReportPage } from '../pages/ReportPage'
 import { SimulationPage } from '../pages/SimulationPage'
 import { VisualizationPage } from '../pages/VisualizationPage'
+import { RealtimeSimulationPage } from '../pages/RealtimeSimulationPage/RealtimeSimulationPage.tsx'
 
 const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
@@ -25,7 +26,7 @@ const router = createBrowserRouter([
   {
     path: '/simulacion/tiempo-real',
     element: <Sidebar />,
-    children: [{ index: true, element: <VisualizationPage simulationType="day-to-day" /> }],
+    children: [{ index: true, element: <RealtimeSimulationPage /> }],
   },
   {
     path: '/simulacion/semanal',

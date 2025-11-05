@@ -1,4 +1,4 @@
-import styled from 'styled-components'
+import styled, { css } from 'styled-components'
 
 export const Wrapper = styled.div`
   padding: 16px 20px;
@@ -6,102 +6,139 @@ export const Wrapper = styled.div`
   flex-direction: column;
   gap: 16px;
   min-height: 100vh;
+  background: #f9fafb;
 `
 
 export const ActionBar = styled.div`
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 16px;
+  background: white;
+  padding: 20px 30px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 `
 
 export const Search = styled.div`
-  background: white;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  min-width: 300px;
-  color: #6b7280;
-
-  .material-symbols-outlined {
-    font-size: 20px;
-    flex-shrink: 0;
-  }
-
+  gap: 8px;
+  background: #f3f4f6;
+  padding: 8px 14px;
+  border-radius: 8px;
   input {
+    border: none;
     background: transparent;
-    border: 0;
     outline: none;
-    flex: 1;
-    color: #111827;
     font-size: 14px;
-
-    &::placeholder {
-      color: #9ca3af;
-    }
   }
 `
 
 export const Actions = styled.div`
   display: flex;
-  align-items: center;
-  gap: 12px;
-`
-
-export const Button = styled.button<{ variant?: 'primary' | 'secondary' }>`
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-weight: 600;
+`
+export const Button = styled.button<{ variant?: 'primary' | 'secondary' }>`
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
+  font-weight: 600;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid;
-
-  ${({ variant }) =>
-    variant === 'primary'
-      ? `
-    background: #1eb79a;
-    color: white;
-    border-color: #1eb79a;
-
-    &:hover {
-      background: #17a085;
-    }
-  `
-      : `
-    background: white;
-    color: #374151;
-    border-color: #d1d5db;
-
-    &:hover {
-      background: #f9fafb;
-    }
-  `}
-
-  .material-symbols-outlined {
-    font-size: 18px;
-    flex-shrink: 0;
-  }
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: ${(p) => (p.variant === 'primary' ? 'white' : '#1e3a8a')};
+  background: ${(p) => (p.variant === 'primary' ? '#10b981' : '#dbeafe')};
 `
 
 export const ContentPanel = styled.div`
   background: white;
   border-radius: 12px;
-  padding: 40px;
-  min-height: 600px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  min-height: 70vh;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+`
+
+export const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    color: #374151; /* gris oscuro para títulos */
+    font-size: 12px;
+    text-transform: uppercase;
+    padding: 10px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  td {
+    padding: 10px;
+    font-size: 14px;
+    color: #111827; /* negro azulado visible */
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  tr:hover td {
+    background: #f9fafb; /* resalta al pasar el mouse */
+  }
+`
+
+export const Status = styled.span<{ $estado?: string }>`
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: white;
+  text-align: center;
+  min-width: 90px;
+
+  ${(p) => {
+    switch (p.$estado?.toUpperCase()) {
+      case 'DELIVERED':
+        return css`
+          background: #10b981; /* verde */
+        `
+      case 'PENDING':
+        return css`
+          background: #ef4444; /* rojo */
+        `
+      case 'DELAYED':
+        return css`
+          background: #6b7280; /* gris */
+        `
+      case 'IN_TRANSIT':
+        return css`
+          background: #f59e0b; /* amarillo */
+        `
+      default:
+        return css`
+          background: #9ca3af; /* neutro gris */
+        `
+    }
+  }}
+`
+
+export const IconButton = styled.button<{ danger?: boolean }>`
+  background: none;
+  border: none;
+  color: ${(p) => (p.danger ? '#dc2626' : '#6b7280')};
+  cursor: pointer;
+  font-size: 20px;
+  &:hover {
+    opacity: 0.8;
+  }
 `
 
 export const PlaceholderText = styled.p`
-  color: #9ca3af;
-  font-size: 16px;
   text-align: center;
-  margin: 120px 0;
+  color: #6b7280;
+  font-size: 15px;
+  padding: 40px 0;
 `
