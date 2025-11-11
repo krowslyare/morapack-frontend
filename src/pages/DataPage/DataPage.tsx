@@ -1,6 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import styled from 'styled-components'
-import { uploadAirports, uploadFlights, uploadOrders, type ImportResultData } from '../../api'
+import {
+  uploadAirports,
+  uploadFlights,
+  uploadOrdersByDateRange,
+  type ImportResultData,
+} from '../../api'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -58,16 +63,6 @@ const UploadTitle = styled.h3`
   font-weight: 600;
 `
 
-const UploadDescription = styled.p`
-  margin: 0 0 16px 0;
-  color: #6b7280;
-  font-size: 13px;
-`
-
-const HiddenInput = styled.input`
-  display: none;
-`
-
 const UploadButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   padding: 10px 20px;
   border-radius: 8px;
@@ -87,18 +82,6 @@ const UploadButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
     opacity: 0.5;
     cursor: not-allowed;
   }
-`
-
-const SelectedFile = styled.div`
-  margin-top: 12px;
-  padding: 12px 16px;
-  background: #f3f4f6;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #374151;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 `
 
 const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
@@ -124,156 +107,73 @@ const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
     }};
 `
 
-const ButtonGroup = styled.div`
-  display: flex;
-  gap: 8px;
-`
-
-const FormatInfo = styled.div`
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #f9fafb;
-  border-left: 3px solid #14b8a6;
-  font-size: 12px;
-  color: #6b7280;
-  font-family: monospace;
-`
-
 interface UploadState {
-  file: File | null
   loading: boolean
   result: ImportResultData | null
 }
 
 export function DataPage() {
-  const [airportsState, setAirportsState] = useState<UploadState>({
-    file: null,
-    loading: false,
-    result: null,
-  })
+  const [airportsState, setAirportsState] = useState<UploadState>({ loading: false, result: null })
+  const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
+  const [ordersState, setOrdersState] = useState<UploadState>({ loading: false, result: null })
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
-  const [flightsState, setFlightsState] = useState<UploadState>({
-    file: null,
-    loading: false,
-    result: null,
-  })
-
-  const [ordersState, setOrdersState] = useState<UploadState>({
-    file: null,
-    loading: false,
-    result: null,
-  })
-
-  const airportsInputRef = useRef<HTMLInputElement>(null)
-  const flightsInputRef = useRef<HTMLInputElement>(null)
-  const ordersInputRef = useRef<HTMLInputElement>(null)
-
-  // Airports handlers
-  const handleAirportsFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setAirportsState({ file: e.target.files[0], loading: false, result: null })
-    }
-  }
-
+  // === Airports ===
   const handleAirportsUpload = async () => {
-    if (!airportsState.file) return
-
-    setAirportsState((prev) => ({ ...prev, loading: true, result: null }))
-
+    setAirportsState({ loading: true, result: null })
     try {
-      const result = await uploadAirports(airportsState.file)
-      setAirportsState((prev) => ({ ...prev, loading: false, result }))
-
-      // Clear file if successful
-      if (result.success) {
-        setTimeout(() => {
-          setAirportsState({ file: null, loading: false, result: null })
-          if (airportsInputRef.current) airportsInputRef.current.value = ''
-        }, 3000)
-      }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string }
-      setAirportsState((prev) => ({
-        ...prev,
+      const result = await uploadAirports()
+      setAirportsState({ loading: false, result })
+    } catch (e: any) {
+      setAirportsState({
         loading: false,
         result: {
           success: false,
-          message: err.response?.data?.message || 'Error al cargar aeropuertos',
-          error: err.message,
+          message: e.response?.data?.message || 'Error al cargar aeropuertos',
+          error: e.message,
         },
-      }))
+      })
     }
   }
 
-  // Flights handlers
-  const handleFlightsFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFlightsState({ file: e.target.files[0], loading: false, result: null })
-    }
-  }
-
+  // === Flights ===
   const handleFlightsUpload = async () => {
-    if (!flightsState.file) return
-
-    setFlightsState((prev) => ({ ...prev, loading: true, result: null }))
-
+    setFlightsState({ loading: true, result: null })
     try {
-      const result = await uploadFlights(flightsState.file)
-      setFlightsState((prev) => ({ ...prev, loading: false, result }))
-
-      if (result.success) {
-        setTimeout(() => {
-          setFlightsState({ file: null, loading: false, result: null })
-          if (flightsInputRef.current) flightsInputRef.current.value = ''
-        }, 3000)
-      }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string }
-      setFlightsState((prev) => ({
-        ...prev,
+      const result = await uploadFlights()
+      setFlightsState({ loading: false, result })
+    } catch (e: any) {
+      setFlightsState({
         loading: false,
         result: {
           success: false,
-          message: err.response?.data?.message || 'Error al cargar vuelos',
-          error: err.message,
+          message: e.response?.data?.message || 'Error al cargar vuelos',
+          error: e.message,
         },
-      }))
+      })
     }
   }
 
-  // Orders handlers
-  const handleOrdersFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setOrdersState({ file: e.target.files[0], loading: false, result: null })
-    }
-  }
-
+  // === Orders ===
   const handleOrdersUpload = async () => {
-    if (!ordersState.file) return
-
-    setOrdersState((prev) => ({ ...prev, loading: true, result: null }))
-
+    if (!startDate || !endDate) {
+      alert('Debe seleccionar ambas fechas.')
+      return
+    }
+    setOrdersState({ loading: true, result: null })
     try {
-      const result = await uploadOrders(ordersState.file)
-      setOrdersState((prev) => ({ ...prev, loading: false, result }))
-
-      if (result.success) {
-        setTimeout(() => {
-          setOrdersState({ file: null, loading: false, result: null })
-          if (ordersInputRef.current) ordersInputRef.current.value = ''
-        }, 3000)
-      }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string }
-      setOrdersState((prev) => ({
-        ...prev,
+      const result = await uploadOrdersByDateRange(startDate.replaceAll('-', ''), endDate.replaceAll('-', ''))
+      setOrdersState({ loading: false, result })
+    } catch (e: any) {
+      setOrdersState({
         loading: false,
         result: {
           success: false,
-          message: err.response?.data?.message || 'Error al cargar pedidos',
-          error: err.message,
+          message: e.response?.data?.message || 'Error al cargar pedidos',
+          error: e.message,
         },
-      }))
+      })
     }
   }
 
@@ -281,185 +181,75 @@ export function DataPage() {
     <Wrapper>
       <ContentPanel>
         <Title>Carga de Datos</Title>
-        <Description>
-          Importe datos desde archivos de texto (.txt) a la base de datos. Asegúrese de seguir el
-          formato correcto para cada tipo de dato.
-        </Description>
+        <Description>Actualiza la información almacenada en el backend.</Description>
 
-        {/* Airports Upload Section */}
+        {/* === Airports === */}
         <UploadSection>
           <UploadHeader>
             <UploadTitle>📍 Aeropuertos</UploadTitle>
-            <ButtonGroup>
-              <UploadButton
-                onClick={() => airportsInputRef.current?.click()}
-                disabled={airportsState.loading}
-              >
-                Seleccionar Archivo
-              </UploadButton>
-              <UploadButton
-                $variant="primary"
-                onClick={handleAirportsUpload}
-                disabled={!airportsState.file || airportsState.loading}
-              >
-                {airportsState.loading ? 'Cargando...' : 'Cargar Aeropuertos'}
-              </UploadButton>
-            </ButtonGroup>
+            <UploadButton
+              $variant="primary"
+              onClick={handleAirportsUpload}
+              disabled={airportsState.loading}
+            >
+              {airportsState.loading ? 'Cargando...' : 'Actualizar Aeropuertos'}
+            </UploadButton>
           </UploadHeader>
-
-          <UploadDescription>Formato requerido: Mismo que airportInfo.txt</UploadDescription>
-
-          <FormatInfo>
-            ID CodeIATA City Country Alias Timezone Capacity Latitude: X.XXXX Longitude: Y.YYYY
-          </FormatInfo>
-
-          <HiddenInput
-            ref={airportsInputRef}
-            type="file"
-            accept=".txt"
-            onChange={handleAirportsFileSelect}
-          />
-
-          {airportsState.file && (
-            <SelectedFile>
-              <span>📄 {airportsState.file.name}</span>
-              <span>{(airportsState.file.size / 1024).toFixed(2)} KB</span>
-            </SelectedFile>
-          )}
-
           {airportsState.result && (
             <Message $type={airportsState.result.success ? 'success' : 'error'}>
-              <strong>{airportsState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
               {airportsState.result.message}
-              {airportsState.result.count !== undefined &&
-                ` (${airportsState.result.count} aeropuertos)`}
-              {airportsState.result.cities !== undefined &&
-                ` (${airportsState.result.cities} ciudades)`}
             </Message>
           )}
         </UploadSection>
 
-        {/* Flights Upload Section */}
+        {/* === Flights === */}
         <UploadSection>
           <UploadHeader>
             <UploadTitle>✈️ Vuelos</UploadTitle>
-            <ButtonGroup>
-              <UploadButton
-                onClick={() => flightsInputRef.current?.click()}
-                disabled={flightsState.loading}
-              >
-                Seleccionar Archivo
-              </UploadButton>
-              <UploadButton
-                $variant="primary"
-                onClick={handleFlightsUpload}
-                disabled={!flightsState.file || flightsState.loading}
-              >
-                {flightsState.loading ? 'Cargando...' : 'Cargar Vuelos'}
-              </UploadButton>
-            </ButtonGroup>
+            <UploadButton
+              $variant="primary"
+              onClick={handleFlightsUpload}
+              disabled={flightsState.loading}
+            >
+              {flightsState.loading ? 'Cargando...' : 'Actualizar Vuelos'}
+            </UploadButton>
           </UploadHeader>
-
-          <UploadDescription>
-            Formato requerido: Mismo que flights.txt (requiere aeropuertos previamente cargados)
-          </UploadDescription>
-
-          <FormatInfo>
-            ORIGIN-DESTINATION-DEPARTURE-ARRIVAL-CAPACITY
-            <br />
-            Ejemplo: BOG-UIO-0830-1045-250
-          </FormatInfo>
-
-          <HiddenInput
-            ref={flightsInputRef}
-            type="file"
-            accept=".txt"
-            onChange={handleFlightsFileSelect}
-          />
-
-          {flightsState.file && (
-            <SelectedFile>
-              <span>📄 {flightsState.file.name}</span>
-              <span>{(flightsState.file.size / 1024).toFixed(2)} KB</span>
-            </SelectedFile>
-          )}
-
           {flightsState.result && (
             <Message $type={flightsState.result.success ? 'success' : 'error'}>
-              <strong>{flightsState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
               {flightsState.result.message}
-              {flightsState.result.count !== undefined && ` (${flightsState.result.count} vuelos)`}
             </Message>
           )}
         </UploadSection>
 
-        {/* Orders Upload Section */}
+        {/* === Orders === */}
         <UploadSection>
           <UploadHeader>
             <UploadTitle>📦 Pedidos y Productos</UploadTitle>
-            <ButtonGroup>
-              <UploadButton
-                onClick={() => ordersInputRef.current?.click()}
-                disabled={ordersState.loading}
-              >
-                Seleccionar Archivo
-              </UploadButton>
-              <UploadButton
-                $variant="primary"
-                onClick={handleOrdersUpload}
-                disabled={!ordersState.file || ordersState.loading}
-              >
-                {ordersState.loading ? 'Cargando...' : 'Cargar Pedidos'}
-              </UploadButton>
-            </ButtonGroup>
+            <UploadButton
+              $variant="primary"
+              onClick={handleOrdersUpload}
+              disabled={ordersState.loading}
+            >
+              {ordersState.loading ? 'Cargando...' : 'Cargar por Fechas'}
+            </UploadButton>
           </UploadHeader>
 
-          <UploadDescription>
-            Formato requerido: Mismo que products.txt (requiere aeropuertos previamente cargados)
-          </UploadDescription>
-
-          <FormatInfo>
-            dd hh mm dest ### IdClien
-            <br />
-            dd: días de prioridad (01/04/12/24)
-            <br />
-            hh: hora (01-23), mm: minuto (01-59)
-            <br />
-            dest: código aeropuerto, ###: cantidad productos, IdClien: ID cliente
-            <br />
-            Ejemplo: 01 10 30 BOG 005 1234567
-          </FormatInfo>
-
-          <HiddenInput
-            ref={ordersInputRef}
-            type="file"
-            accept=".txt"
-            onChange={handleOrdersFileSelect}
-          />
-
-          {ordersState.file && (
-            <SelectedFile>
-              <span>📄 {ordersState.file.name}</span>
-              <span>{(ordersState.file.size / 1024).toFixed(2)} KB</span>
-            </SelectedFile>
-          )}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' }}>
+            <label>Desde:</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <label>Hasta:</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
 
           {ordersState.result && (
             <Message $type={ordersState.result.success ? 'success' : 'error'}>
               <strong>{ordersState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
-              {ordersState.result.message}
-              {ordersState.result.orders !== undefined && ` (${ordersState.result.orders} pedidos)`}
-              {ordersState.result.products !== undefined &&
-                ` (${ordersState.result.products} productos)`}
+              {ordersState.result.message}{' '}
+              {ordersState.result.orders !== undefined && `(${ordersState.result.orders} pedidos)`}{' '}
+              {ordersState.result.products !== undefined && `(${ordersState.result.products} productos)`}
             </Message>
           )}
         </UploadSection>
-
-        <Message $type="info">
-          <strong>ℹ️ Importante:</strong> Los archivos deben seguir exactamente el mismo formato que
-          los archivos de ejemplo en /data/. Cargue los aeropuertos primero, luego los vuelos, y
-          finalmente los pedidos.
-        </Message>
       </ContentPanel>
     </Wrapper>
   )

@@ -15,17 +15,9 @@ export interface ImportResultData {
  * @param file - Text file with airport data (same format as airportInfo.txt)
  * @returns Import result with success status and count
  */
-export async function uploadAirports(file: File): Promise<ImportResultData> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  const response = await api.post<ImportResultData>('/data-import/airports', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-
-  return response.data
+export async function uploadAirports(): Promise<ImportResultData> {
+  const res = await api.post<ImportResultData>('/data-import/airports')
+  return res.data
 }
 
 /**
@@ -34,17 +26,9 @@ export async function uploadAirports(file: File): Promise<ImportResultData> {
  * Expected format: ORIGIN-DESTINATION-DEPARTURE-ARRIVAL-CAPACITY
  * @returns Import result with success status and count
  */
-export async function uploadFlights(file: File): Promise<ImportResultData> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  const response = await api.post<ImportResultData>('/data-import/flights', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-
-  return response.data
+export async function uploadFlights(): Promise<ImportResultData> {
+  const res = await api.post<ImportResultData>('/data-import/flights')
+  return res.data
 }
 
 /**
@@ -76,4 +60,18 @@ export async function getImportStatus(): Promise<{
 }> {
   const response = await api.get('/data-import/status')
   return response.data
+}
+
+export async function uploadOrdersByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<ImportResultData> {
+  const result = await api.post(
+  '/data-import/orders-by-date',
+  null,
+  { params: { startDate: startDate.replaceAll('-', ''), endDate: endDate.replaceAll('-', '') },
+    timeout: 10 * 60 * 1000 // 10 min
+  }
+)
+  return result.data
 }
