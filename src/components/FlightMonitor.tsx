@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMap, Pane } from 'react-leaflet'
 import L, { DivIcon, Marker } from 'leaflet'
 import type { LatLngTuple } from 'leaflet'
 import styled from 'styled-components'
@@ -16,6 +16,12 @@ import {
 import { useFlightsCount, useUpdateFlight, flightKeys } from '../hooks/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAirportCapacityManager } from '../hooks/useAirportCapacityManager'
+
+/** ==== Hubs a resaltar ==== */
+const HUB_IATAS = new Set(['LIM', 'BRU', 'GYD'])
+const HUB_CITIES = new Set(['Lima', 'Bruselas', 'Baku'])
+const isHub = (a: SimAirport) =>
+  HUB_IATAS.has((a as any).codeIATA) || HUB_CITIES.has(a.city)
 
 const MonitorWrapper = styled.div`
   width: 100%;
@@ -235,23 +241,24 @@ function RoutesLayer({
 
   const airportsById = useMemo(() => {
     const d: Record<number, SimAirport> = {}
-    airports.forEach((a) => {
-      d[a.id] = a
-    })
+    airports.forEach((a) => { d[a.id] = a })
     return d
   }, [airports])
+
+  const isHubId = (id: number) => {
+    const a = airportsById[id]
+    return !!a && isHub(a)
+  }
 
   // Re-render al pan/zoom
   const [, force] = useState(0)
   useEffect(() => {
     if (!map) return
     let t: number | undefined
-
     const onMove = () => {
       window.clearTimeout(t)
-      t = window.setTimeout(() => force(x => x + 1), 50)
+      t = window.setTimeout(() => force((x) => x + 1), 50)
     }
-
     map.on('moveend', onMove)
     return () => {
       window.clearTimeout(t)
@@ -268,10 +275,7 @@ function RoutesLayer({
           const o = airportsById[f.originAirportId]
           const d = airportsById[f.destinationAirportId]
           if (!o || !d) return false
-          return (
-            view.contains([o.latitude, o.longitude]) ||
-            view.contains([d.latitude, d.longitude])
-          )
+          return view.contains([o.latitude, o.longitude]) || view.contains([d.latitude, d.longitude])
         })
         .map((f) => {
           const o = airportsById[f.originAirportId]!
@@ -283,13 +287,14 @@ function RoutesLayer({
           const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) =>
             bezierPoint(i / samples, start, ctrl, end),
           )
+          const touchesHub = isHubId(f.originAirportId) || isHubId(f.destinationAirportId)
           return (
             <Polyline
               key={`route-${f.productId}-${f.flightId}`}
               positions={arc}
-              color="#3b82f6"
-              opacity={0.25}
-              weight={1}
+              color={touchesHub ? '#f6b53bff' : '#f6b53bff'}
+              opacity={touchesHub ? 0.6 : 0.25}
+              weight={touchesHub ? 2 : 1}
               renderer={canvasRenderer}
             />
           )
@@ -298,7 +303,7 @@ function RoutesLayer({
   )
 }
 
-/** ===== Aviones animados usando el mismo control point ===== */
+/** ===== Aviones animados ===== */
 function AnimatedTemporalFlights({
   airports,
   activeFlights,
@@ -338,22 +343,18 @@ function AnimatedTemporalFlights({
     [culledFlights],
   )
 
-  // helper para popup HTML
-  type AnyFlight = ActiveFlight 
+  type AnyFlight = ActiveFlight
 
   const popupHtml = (f: AnyFlight, o: SimAirport, d: SimAirport) => {
     const flightCode =
       (f as any).flightCode ?? (f as any).code ?? (f as any).flightId ?? (f as any).id
-
     const productLine =
       (f as any).productId != null
         ? `<div style="color:#6b7280">Producto #${(f as any).productId}</div>`
         : ``
-
     const pct = Math.round((f as any).progress * 100)
     const originLabel = (o as any).codeIATA ?? o.city
-    const destLabel   = (d as any).codeIATA ?? d.city
-
+    const destLabel = (d as any).codeIATA ?? d.city
     return `
       <div style="font:12px/1.35 system-ui,-apple-system,Segoe UI,Roboto;color:#111827">
         <div style="font-weight:700;margin-bottom:4px">Vuelo ${flightCode}</div>
@@ -385,31 +386,33 @@ function AnimatedTemporalFlights({
       currentMarkerIds.add(markerId)
 
       const start: LatLngTuple = [origin.latitude, origin.longitude]
-      const end: LatLngTuple   = [dest.latitude, dest.longitude]
-      const ctrl               = getCtrlPoint(flight, start, end)
+      const end: LatLngTuple = [dest.latitude, dest.longitude]
+      const ctrl = getCtrlPoint(flight, start, end)
 
       let marker = markersRef.current[markerId]
       if (!marker) {
-        const planeHTML =
-          `<img src="/airplane.png" alt="✈" class="plane"
+        const planeHTML = `<img src="/airplane.png" alt="✈" class="plane"
              style="width:20px;height:20px;display:block;transform-origin:50% 50%;will-change:transform;" />`
-        const planeIcon = new DivIcon({ className: 'plane-icon', html: planeHTML, iconSize: [20, 20], iconAnchor: [10, 10] })
+        const planeIcon = new DivIcon({
+          className: 'plane-icon',
+          html: planeHTML,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        })
         marker = L.marker(start, { icon: planeIcon, interactive: true })
 
-        // click => popup pequeño + botón "Ver detalles"
         marker.on('click', () => {
           const p = L.popup({ offset: [0, -10], autoPan: true, closeButton: true })
             .setLatLng(marker!.getLatLng())
             .setContent(popupHtml(flight, origin, dest))
             .openOn(map)
 
-          // delega para el botón dentro del popup
           setTimeout(() => {
             const btn = document.getElementById('openDetailsBtn')
             if (btn) {
               btn.onclick = () => {
                 map.closePopup(p)
-                onFlightClickRef.current(flight) // abre tu FlightDetailsModal existente
+                onFlightClickRef.current(flight)
               }
             }
           }, 0)
@@ -434,7 +437,6 @@ function AnimatedTemporalFlights({
         lastUpdateRef.current[markerId] = { progress: -1, lat: 0, lng: 0 }
       }
 
-      // posiciona y rota
       const [lat, lng] = bezierPoint(flight.progress, start, ctrl, end)
       const last = lastUpdateRef.current[markerId]
       const shouldUpdate =
@@ -456,7 +458,6 @@ function AnimatedTemporalFlights({
       }
     })
 
-    // limpia inactivos
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentMarkerIds.has(id)) {
         const mk = markersRef.current[id]
@@ -546,8 +547,8 @@ export function FlightMonitor({
     flightStats: any
     completedProductsCount: number
     progressPercent: number
-    currentSimTime: number  
-    formatSimulationTime: (t: number) => string  
+    currentSimTime: number
+    formatSimulationTime: (t: number) => string
     isPlaying: boolean
     play: () => void
     pause: () => void
@@ -557,7 +558,7 @@ export function FlightMonitor({
     flightStats: { completed: 0, inFlight: 0, pending: 0 },
     completedProductsCount: 0,
     progressPercent: 0,
-    currentSimTime: Date.now(),  
+    currentSimTime: Date.now(),
     formatSimulationTime: () => 'Tiempo real',
     isPlaying: false,
     play: () => {},
@@ -565,7 +566,6 @@ export function FlightMonitor({
     reset: () => {},
   }
 
-  // luego reasignas según el tipo
   if (simulationType === 'day-to-day') {
     const [activeFlights, setActiveFlights] = useState<ActiveFlight[]>([])
 
@@ -581,9 +581,7 @@ export function FlightMonitor({
             const originId = flight.originAirportId ?? 0
             const destId = flight.destinationAirportId ?? 0
             const seed = i * 10 + j
-
-            // === Movimiento continuo ida-vuelta ===
-            const cycle = ((now / 1000 + seed * 3) % 120) / 60  // ciclo de 120 s → 0→1→0
+            const cycle = ((now / 1000 + seed * 3) % 120) / 60
             const progress = cycle <= 1 ? cycle : 2 - cycle
 
             return {
@@ -593,7 +591,7 @@ export function FlightMonitor({
               orderId: route.orderId,
               originAirportId: originId,
               destinationAirportId: destId,
-              progress,                     // ✅ progreso oscilante
+              progress,
               status: 'IN_FLIGHT',
               departureTime: new Date(now),
               arrivalTime: new Date(now + 1000 * 60 * 60),
@@ -605,7 +603,7 @@ export function FlightMonitor({
       }
 
       update()
-      const id = setInterval(update, 1000) // ✅ actualiza cada segundo
+      const id = setInterval(update, 1000)
       return () => clearInterval(id)
     }, [simulationResults])
 
@@ -621,7 +619,7 @@ export function FlightMonitor({
       timeUnit,
       simulationType,
       onFlightStatusChange: handleFlightStatusChange,
-      onFlightCapacityChange: handleCapacityChange, 
+      onFlightCapacityChange: handleCapacityChange,
     })
   }
 
@@ -661,7 +659,6 @@ export function FlightMonitor({
   /** ===== Caché de control points + invalidación ===== */
   const ctrlCacheRef = useRef<Record<string, LatLngTuple>>({})
 
-  // Invalida caché si cambian aeropuertos o timeline
   useEffect(() => {
     ctrlCacheRef.current = {}
   }, [airportsFromDB, simulationResults?.timeline])
@@ -674,7 +671,6 @@ export function FlightMonitor({
     return ctrlCacheRef.current[id]
   }, [])
 
-  // Renderer Canvas para muchas líneas
   const canvasRenderer = useMemo(() => L.canvas({ padding: 0.5 }), [])
 
   return (
@@ -714,119 +710,150 @@ export function FlightMonitor({
 
       <MapWrapper>
         {hasTimeline && simulationType !== 'day-to-day' && (
-        <SimulationControls>
-          <ControlsRow>
-            {!temporalSim.isPlaying ? (
-              <ControlButton $variant="play" onClick={temporalSim.play}>
-                ▶ Reproducir
+          <SimulationControls>
+            <ControlsRow>
+              {!temporalSim.isPlaying ? (
+                <ControlButton $variant="play" onClick={temporalSim.play}>
+                  ▶ Reproducir
+                </ControlButton>
+              ) : (
+                <ControlButton $variant="pause" onClick={temporalSim.pause}>
+                  ⏸ Pausar
+                </ControlButton>
+              )}
+              <ControlButton $variant="reset" onClick={temporalSim.reset}>
+                ⏹ Reiniciar
               </ControlButton>
-            ) : (
-              <ControlButton $variant="pause" onClick={temporalSim.pause}>
-                ⏸ Pausar
-              </ControlButton>
-            )}
-            <ControlButton $variant="reset" onClick={temporalSim.reset}>
-              ⏹ Reiniciar
-            </ControlButton>
-          </ControlsRow>
+            </ControlsRow>
 
-          <ProgressBar>
-            <ProgressFill $progress={temporalSim.progressPercent} />
-          </ProgressBar>
+            <ProgressBar>
+              <ProgressFill $progress={temporalSim.progressPercent} />
+            </ProgressBar>
 
-          <SpeedControl>
-            <span>1 seg real =</span>
-            <SpeedButton $active={timeUnit === 'seconds'} onClick={() => setTimeUnit('seconds')}>
-              1 seg
-            </SpeedButton>
-            <SpeedButton $active={timeUnit === 'minutes'} onClick={() => setTimeUnit('minutes')}>
-              1 min
-            </SpeedButton>
-            <SpeedButton $active={timeUnit === 'hours'} onClick={() => setTimeUnit('hours')}>
-              1 hora
-            </SpeedButton>
-            <SpeedButton $active={timeUnit === 'days'} onClick={() => setTimeUnit('days')}>
-              1 día
-            </SpeedButton>
-          </SpeedControl>
+            <SpeedControl>
+              <span>1 seg real =</span>
+              <SpeedButton $active={timeUnit === 'seconds'} onClick={() => setTimeUnit('seconds')}>
+                1 seg
+              </SpeedButton>
+              <SpeedButton $active={timeUnit === 'minutes'} onClick={() => setTimeUnit('minutes')}>
+                1 min
+              </SpeedButton>
+              <SpeedButton $active={timeUnit === 'hours'} onClick={() => setTimeUnit('hours')}>
+                1 hora
+              </SpeedButton>
+              <SpeedButton $active={timeUnit === 'days'} onClick={() => setTimeUnit('days')}>
+                1 día
+              </SpeedButton>
+            </SpeedControl>
 
-          <StatsRow>
-            <div>Vuelos activos: {temporalSim.activeFlights.length}</div>
-            <div>Productos entregados: {temporalSim.completedProductsCount}</div>
-          </StatsRow>
-        </SimulationControls>
-      )}
+            <StatsRow>
+              <div>Vuelos activos: {temporalSim.activeFlights.length}</div>
+              <div>Productos entregados: {temporalSim.completedProductsCount}</div>
+            </StatsRow>
+          </SimulationControls>
+        )}
 
         <MapContainer
           bounds={bounds}
           scrollWheelZoom={true}
           style={{ width: '100%', height: '100%', borderRadius: 12 }}
           worldCopyJump={false}
-          maxBounds={
-            new L.LatLngBounds([
-              [-90, -180],
-              [90, 180],
-            ])
-          }
+          maxBounds={new L.LatLngBounds([[-90, -180], [90, 180]])}
           maxBoundsViscosity={1.0}
           minZoom={2}
           maxZoom={5}
           zoomControl={true}
         >
+          {/* Pane superior para hubs */}
+          <Pane name="hubs" style={{ zIndex: 650 }} />
+
           <TileLayer attribution={tileAttribution} url={tileUrl} noWrap={true} />
 
           {/* Aeropuertos */}
-          {airports.map((a) => (
-            <CircleMarker
-              key={a.id}
-              center={cityToLatLng(a)}
-              radius={8}
-              color={capacityToColor(a.capacityPercent)}
-              fillColor={capacityToColor(a.capacityPercent)}
-              fillOpacity={0.9}
-              weight={1.5}
-              eventHandlers={{
-                click: () => handleAirportClick(a),
-                mouseover: (e) => {
-                  e.target.setRadius(12)
-                  e.target.setStyle({ weight: 3 })
-                },
-                mouseout: (e) => {
-                  e.target.setRadius(8)
-                  e.target.setStyle({ weight: 1.5 })
-                },
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -8]} opacity={1} permanent={false}>
-                <div>
-                  <strong>{a.city}</strong>
-                  <div>
-                    Capacidad:{' '}
-                    {(((a as any).maxCapacity - (a as any).currentUsedCapacity) /
-                      (a as any).maxCapacity) *
-                      100}
-                    %
-                  </div>
-                  {(a as any).warehouseName && (
-                    <div style={{ fontSize: '10px', color: '#6b7280' }}>
-                      {(a as any).warehouseName}
-                    </div>
-                  )}
-                  {(a as any).currentUsedCapacity !== undefined &&
-                    (a as any).maxCapacity !== undefined && (
-                      <div style={{ fontSize: '10px', color: '#6b7280' }}>
-                        {Math.round((a as any).currentUsedCapacity)}/{(a as any).maxCapacity} unidades
-                      </div>
-                    )}
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                    Click para ver detalles
-                  </div>
-                </div>
-              </Tooltip>
-            </CircleMarker>
-          ))}
+          {airports.map((a) => {
+            const hub = isHub(a)
+            const base = capacityToColor(a.capacityPercent)
+            const hubFill = '#f6b53bff'
+            const hubStroke = '#ebc725ff'
+            const center = cityToLatLng(a)
 
-          {/* Rutas de vuelo ligadas al viewport, usando el mismo control point */}
+            return (
+              <g key={a.id as any}>
+                {/* Halo para hubs */}
+                {hub && (
+                  <CircleMarker
+                    center={center}
+                    radius={18}
+                    color="transparent"
+                    fillColor={hubFill}
+                    fillOpacity={0.18}
+                    weight={0}
+                    pane="hubs"
+                  />
+                )}
+
+                <CircleMarker
+                  center={center}
+                  radius={hub ? 10 : 8}
+                  color={hub ? hubStroke : base}
+                  fillColor={hub ? hubFill : base}
+                  fillOpacity={0.95}
+                  weight={hub ? 2.5 : 1.5}
+                  pane={hub ? 'hubs' : undefined}
+                  eventHandlers={{
+                    click: () => handleAirportClick(a),
+                    mouseover: (e) => {
+                      e.target.setRadius(hub ? 13 : 12)
+                      e.target.setStyle({ weight: hub ? 3 : 3 })
+                    },
+                    mouseout: (e) => {
+                      e.target.setRadius(hub ? 10 : 8)
+                      e.target.setStyle({ weight: hub ? 2.5 : 1.5 })
+                    },
+                  }}
+                >
+                  <Tooltip
+                    direction={hub ? 'right' : 'top'}
+                    offset={[0, -8]}
+                    opacity={1}
+                    permanent={hub}
+                  >
+                    <div>
+                      <strong>
+                        {a.city}
+                        {(a as any).codeIATA ? ` · ${(a as any).codeIATA}` : ''}
+                      </strong>
+                      {!hub && (
+                        <div>
+                          Capacidad:{' '}
+                          {(((a as any).maxCapacity - (a as any).currentUsedCapacity) /
+                            (a as any).maxCapacity) *
+                            100}
+                          %
+                        </div>
+                      )}
+                      {(a as any).warehouseName && (
+                        <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                          {(a as any).warehouseName}
+                        </div>
+                      )}
+                      {(a as any).currentUsedCapacity !== undefined &&
+                        (a as any).maxCapacity !== undefined && (
+                          <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                            {Math.round((a as any).currentUsedCapacity)}/{(a as any).maxCapacity} unidades
+                          </div>
+                        )}
+                      {hub && (
+                        <div style={{ fontSize: 11, color: '#1e40af' }}>Hub destacado</div>
+                      )}
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              </g>
+            )
+          })}
+
+          {/* Rutas */}
           {temporalSim.activeFlights?.length > 0 && (
             <>
               <RoutesLayer
@@ -855,9 +882,11 @@ export function FlightMonitor({
                 </div>
               </>
             )}
+            <div style={{ width: 10, height: 10, background: '#f5b835ff', borderRadius: 2 }} />
+            <div>Hub destacado (Lima, Bruselas, Baku)</div>
             <div style={{ width: 10, height: 10, background: '#10b981', borderRadius: 2 }} />
             <div>Normal (&lt; 70%)</div>
-            <div style={{ width: 10, height: 10, background: '#f59e0b', borderRadius: 2 }} />
+            <div style={{ width: 10, height: 10, background: '#f8fc35ff', borderRadius: 2 }} />
             <div>Cercano a capacidad (&lt; 90%)</div>
             <div style={{ width: 10, height: 10, background: '#ef4444', borderRadius: 2 }} />
             <div>Colapsado (≥ 90%)</div>
@@ -910,10 +939,10 @@ export function FlightMonitor({
         onClose={() => setSelectedFlight(null)}
       />
 
-      <AirportDetailsModal 
-        airport={selectedAirport} 
+      <AirportDetailsModal
+        airport={selectedAirport}
         onClose={() => setSelectedAirport(null)}
-        readOnly 
+        readOnly
       />
     </MonitorWrapper>
   )
