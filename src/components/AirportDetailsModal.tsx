@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import styled from 'styled-components'
 import type { SimAirport } from '../hooks/useFlightSimulation'
 import { AirportState } from '../types/AirportState' 
 import { useFlightsByOrigin } from '../hooks/api/useFlights'
 import { FlightsListModal } from './FlightsListModal'
+import { FlightPackagesModal } from './FlightPackagesModal'
+
 
 const Overlay = styled.div`
   position: fixed; inset: 0;
@@ -95,6 +97,8 @@ interface AirportDetailsModalProps {
 export function AirportDetailsModal({ airport, onClose, readOnly = false }: AirportDetailsModalProps) {
   const [showFlightsList, setShowFlightsList] = useState(false)
 
+  const [selectedFlight, setSelectedFlight] = useState<{ id: number; code?: string } | null>(null)
+
   const { data: flights = [], isLoading: flightsLoading } =
     useFlightsByOrigin(airport?.id || 0, !!airport?.id)
 
@@ -183,21 +187,27 @@ export function AirportDetailsModal({ airport, onClose, readOnly = false }: Airp
               </Label>
               {!flightsLoading && flights.length > 0 ? (
                 <>
-                  <FlightsList>
-                    {displayedFlights.map((flight) => (
-                      <FlightItem key={flight.id}>
-                        <FlightInfo>
-                          <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
-                          <FlightRoute>
-                            {flight.originAirportCode} → {flight.destinationAirportCode}
-                          </FlightRoute>
-                        </FlightInfo>
-                        <FlightActions>
-                          <SmallButton>Ver</SmallButton>
-                        </FlightActions>
-                      </FlightItem>
-                    ))}
-                  </FlightsList>
+                 <FlightsList>
+                  {displayedFlights.map((flight) => (
+                    <FlightItem key={flight.id}>
+                      <FlightInfo>
+                        <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
+                        <FlightRoute>
+                          {flight.originAirportCode} → {flight.destinationAirportCode}
+                        </FlightRoute>
+                      </FlightInfo>
+                      <FlightActions>
+                        <SmallButton
+                          onClick={() =>
+                            setSelectedFlight({ id: flight.id ?? 0, code: flight.code ?? '' })
+                          }
+                        >
+                          Ver
+                        </SmallButton>
+                      </FlightActions>
+                    </FlightItem>
+                  ))}
+                </FlightsList>
                   {flights.length > 3 && (
                     <ListFooter>
                       <ViewAllLink onClick={() => setShowFlightsList(true)}>
@@ -265,6 +275,15 @@ export function AirportDetailsModal({ airport, onClose, readOnly = false }: Airp
           onClose={() => setShowFlightsList(false)}
         />
       )}
+
+      {selectedFlight && (
+        <FlightPackagesModal
+          flightId={selectedFlight.id}
+          flightCode={selectedFlight.code}
+          onClose={() => setSelectedFlight(null)}
+        />
+      )}
+
     </>
   )
 }
