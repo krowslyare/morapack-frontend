@@ -25,14 +25,20 @@ export const Search = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f3f4f6;
+  background: #10b981;
   padding: 8px 14px;
   border-radius: 8px;
   input {
     border: none;
-    background: transparent;
     outline: none;
+    background: transparent;
+    flex: 1;
     font-size: 14px;
+    color: #ffffffff;   /* texto oscuro */
+
+    &::placeholder {
+      color: #ffffffff; /* placeholder gris */
+    }
   }
 `
 
