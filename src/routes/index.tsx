@@ -10,6 +10,8 @@ import { SimulationPage } from '../pages/SimulationPage'
 import { VisualizationPage } from '../pages/VisualizationPage'
 import { RealtimeSimulationPage } from '../pages/RealtimeSimulationPage/RealtimeSimulationPage.tsx'
 import RegisterOrderPage from '../pages/RegisterOrderPage/RegisterOrderPage'
+import { PlanificacionPage } from '../pages/PlanificacionPage'
+import { DailySimulationPage } from '../pages/DailySimulationPage'
 
 const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
@@ -26,7 +28,12 @@ const router = createBrowserRouter([
   {
     path: '/planificacion',
     element: <Sidebar />,
-    children: [{ index: true, element: <SimulationPage /> }],
+    children: [{ index: true, element: <PlanificacionPage /> }],
+  },
+  {
+    path: '/simulacion/diaria',
+    element: <Sidebar />,
+    children: [{ index: true, element: <DailySimulationPage /> }],
   },
   {
     path: '/simulacion/tiempo-real',

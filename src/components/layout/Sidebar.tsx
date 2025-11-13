@@ -116,8 +116,12 @@ export function Sidebar() {
             <span>Envíos</span>
           </NavItem>
           <NavItem to="/planificacion" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">psychology</span>
+            <span className="material-symbols-outlined">settings</span>
             <span>Planificación</span>
+          </NavItem>
+          <NavItem to="/simulacion/diaria" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">play_circle</span>
+            <span>Simulación Diaria</span>
           </NavItem>
           <NavItem to="/simulacion/tiempo-real" $collapsed={collapsed}>
             <span className="material-symbols-outlined">schedule</span>

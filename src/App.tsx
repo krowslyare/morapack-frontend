@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'styled-components'
+import { ToastContainer } from 'react-toastify'
 import { GlobalStyles } from './styles/GlobalStyles'
 import { theme } from './styles/theme'
 import { AppRouter } from './routes'
+import 'react-toastify/dist/ReactToastify.css'
 
 const queryClient = new QueryClient()
 
@@ -12,6 +14,17 @@ function App() {
       <GlobalStyles />
       <QueryClientProvider client={queryClient}>
         <AppRouter />
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+        />
       </QueryClientProvider>
     </ThemeProvider>
   )
