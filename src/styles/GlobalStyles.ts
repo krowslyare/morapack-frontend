@@ -7,7 +7,7 @@ export const GlobalStyles = createGlobalStyle`
 
   body {
     margin: 0;
-    background-color: ${({ theme }) => theme.colors.background};
+    background-color: transparent;
     color: ${({ theme }) => theme.colors.textPrimary};
     font-family: ${({ theme }) => theme.typography.fontFamily};
     -webkit-font-smoothing: antialiased;
