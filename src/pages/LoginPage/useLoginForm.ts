@@ -4,64 +4,60 @@
 // - Simula un proceso de autenticación (login)
 // - Muestra mensajes toast en lugar de alertas nativas
 
-import { type FormEvent, useState } from 'react'
-import { toast } from 'react-toastify' // ✅ Importar react-toastify
+import { type FormEvent } from 'react'
+import { toast } from 'react-toastify'
+import { useNavigate } from 'react-router-dom'
+import { useLogin } from '../../hooks/useLogin'
 
+// Este hook delega el login real al hook useLogin (react-query)
 export function useLoginForm() {
-  const [isLoading, setIsLoading] = useState(false) // Estado del botón o proceso de login
+  const navigate = useNavigate()
+  const mutation = useLogin()
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault() // Evita que el formulario recargue la página
-    setIsLoading(true) // Activa el estado de "cargando"
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
 
-    try {
-      // Extraer los datos del formulario
-      const formData = new FormData(e.currentTarget)
-      const email = formData.get('email') as string
-      const password = formData.get('password') as string
-      const remember = formData.get('remember') === 'on'
+    const formData = new FormData(e.currentTarget)
+    const email = (formData.get('email') as string) || ''
+    const password = (formData.get('password') as string) || ''
+    const remember = formData.get('remember') === 'on'
 
-      console.log('Intento de inicio de sesión:', { email, password, remember })
-
-      // Validar campos vacíos
-      if (!email || !password) {
-        toast.warn('Por favor, complete todos los campos.')
-        return
-      }
-
-      // 💡 Simulación de llamada a API
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simula retardo
-
-      // 🧩 Simulamos validación de usuario:
-      const fakeUser = {
-        email: 'admin@example.com',
-        password: '123456',
-      }
-
-      // Verificamos si las credenciales coinciden con el usuario simulado
-      const isAuthenticated = email === fakeUser.email && password === fakeUser.password
-
-      if (!isAuthenticated) {
-        // ❌ Error de credenciales
-        toast.error('Usuario y/o contraseña son incorrectos')
-        return
-      }
-
-      // ✅ Inicio de sesión exitoso
-      toast.success(`Bienvenido, ${email}!`)
-
-      // Redirección simulada (opcional)
-      // window.location.href = '/dashboard'
-    } catch (error) {
-      console.error('Error durante el login:', error)
-      toast.error('Ocurrió un error inesperado al iniciar sesión.')
-    } finally {
-      setIsLoading(false) // Desactiva el estado de carga
+    if (!email || !password) {
+      toast.warn('Por favor, complete todos los campos.')
+      return
     }
+
+    mutation.mutate(
+      { email, password },
+      {
+        onSuccess: (data) => {
+          if (data?.success) {
+            toast.success(`Bienvenido, ${data.session?.userName ?? email}!`)
+            // Si el usuario marcó "recordarme" podríamos persistir la sesión en localStorage
+            if (remember && data.session) {
+              try {
+                localStorage.setItem('morapack_session', JSON.stringify(data.session))
+              } catch (err) {
+                // No fatal: solo logueamos
+                console.warn('No se pudo persistir la sesión en localStorage', err)
+              }
+            }
+            // Redirigir a la página principal
+            navigate('/')
+          } else {
+            toast.error(data?.message ?? 'No se pudo autenticar')
+          }
+        },
+        onError: (err: any) => {
+          const message = err?.response?.data?.message || err?.message || 'Error al conectar con el servidor'
+          toast.error(message)
+        },
+      },
+    )
   }
 
   return {
-    isLoading,
+    isLoading: mutation.status === 'pending',
     handleSubmit,
   }
 }

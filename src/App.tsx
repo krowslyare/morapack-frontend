@@ -5,15 +5,21 @@ import { GlobalStyles } from './styles/GlobalStyles'
 import { theme } from './styles/theme'
 import { AppRouter } from './routes'
 import 'react-toastify/dist/ReactToastify.css'
+import { useInitializeAuth } from './hooks/useInitializeAuth'
 
 const queryClient = new QueryClient()
+
+function AppContent() {
+  useInitializeAuth()
+  return <AppRouter />
+}
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyles />
       <QueryClientProvider client={queryClient}>
-        <AppRouter />
+        <AppContent />
         <ToastContainer
           position="top-right"
           autoClose={3000}

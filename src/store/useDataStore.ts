@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlgorithmResultSchema } from '../types'
+import type { AlgorithmResultSchema, AirportSchema } from '../types'
 
 interface Dataset {
   id: string
@@ -13,11 +13,17 @@ interface Dataset {
 interface DataStore {
   datasets: Dataset[]
   datasetVersion: string
+
   simulationResults: AlgorithmResultSchema | null
   setDatasets: (datasets: Dataset[]) => void
   setDatasetVersion: (version: string) => void
   setSimulationResults: (results: AlgorithmResultSchema | null) => void
   clearSimulationResults: () => void
+
+  // NUEVO
+  airports: AirportSchema[]
+  setAirports: (airports: AirportSchema[]) => void
+
   hasData: () => boolean
   getAvailableVersions: () => string[]
 }
@@ -54,24 +60,21 @@ export const useDataStore = create<DataStore>((set, get) => ({
       lastUpdate: '2024-08-24 14:30',
     },
   ],
+
   datasetVersion: 'Base de Datos - MoraPack PostgreSQL',
   simulationResults: null,
 
   setDatasets: (datasets) => set({ datasets }),
-
   setDatasetVersion: (version) => set({ datasetVersion: version }),
-
   setSimulationResults: (results) => set({ simulationResults: results }),
-
   clearSimulationResults: () => set({ simulationResults: null }),
+
+  // NUEVO
+  airports: [],
+  setAirports: (airports) => set({ airports }),
 
   hasData: () => {
     const datasets = get().datasets
-    // NOTA: Estos son datos dummy para UI mockup.
-    // La validación REAL de datos se hace en los componentes usando react-query hooks:
-    // - useFlightsCount() para verificar vuelos en BD
-    // - useAirports() para verificar aeropuertos en BD
-    // Esta función se mantiene por compatibilidad con UI legacy
     const flights = datasets.find((d) => d.name === 'Vuelos')
     const airports = datasets.find((d) => d.name === 'Aeropuertos Globales')
     return (flights?.records ?? 0) > 0 && (airports?.records ?? 0) > 0

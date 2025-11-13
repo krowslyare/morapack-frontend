@@ -3,6 +3,8 @@ import 'leaflet/dist/leaflet.css'
 import { FlightMonitor } from '../../components/FlightMonitor'
 import { useDataStore } from '../../store/useDataStore'
 import { useNavigate } from 'react-router-dom'
+import { useFlights } from '../../hooks/api/useFlights'
+import { mapFlightsToSimulationResults } from '../../utils/flightMapper'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -66,26 +68,18 @@ const InfoBanner = styled.div<{ $variant: 'success' | 'info' | 'warning' }>`
   ${(p) =>
     p.$variant === 'success' &&
     `
-    background: #d1fae5;
-    border: 2px solid #6ee7b7;
-    color: #065f46;
-  `}
+      background: #d1fae5;
+      border: 2px solid #6ee7b7;
+      color: #065f46;
+    `}
 
   ${(p) =>
     p.$variant === 'info' &&
     `
-    background: #dbeafe;
-    border: 2px solid #93c5fd;
-    color: #1e3a8a;
-  `}
-
-  ${(p) =>
-    p.$variant === 'warning' &&
-    `
-    background: #fef3c7;
-    border: 2px solid #fcd34d;
-    color: #92400e;
-  `}
+      background: #dbeafe;
+      border: 2px solid #93c5fd;
+      color: #1e3a8a;
+    `}
 `
 
 const ControlsRow = styled.div`
@@ -105,12 +99,15 @@ export function VisualizationPage({
   simulationType: initialSimulationType = 'weekly',
 }: VisualizationPageProps) {
   const simulationType = initialSimulationType
-  const { simulationResults, clearSimulationResults } = useDataStore()
   const navigate = useNavigate()
-  
-  const handleClearResults = () => {
-    clearSimulationResults()
-    console.log('[VisualizationPage] Simulation results cleared')
+
+  const { airports } = useDataStore()
+  const { data: flights, isLoading } = useFlights()
+
+  let mappedResults = null
+
+  if (!isLoading && flights && airports?.length) {
+    mappedResults = mapFlightsToSimulationResults(flights, airports)
   }
 
   return (
@@ -119,52 +116,44 @@ export function VisualizationPage({
         <div>
           <Title>Visualización de Rutas</Title>
           <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '14px' }}>
-            Mapa interactivo de rutas de vuelo y optimización
+            Mapa interactivo de rutas de vuelo generadas desde la base de datos
           </p>
         </div>
+
         <ControlsRow>
-          <BackButton onClick={() => navigate('/planificacion')}>Volver a Planificación</BackButton>
-          {simulationResults && (
-            <BackButton 
-              onClick={handleClearResults}
-              style={{ background: '#dc2626' }}
-            >
-              Limpiar Resultados
-            </BackButton>
-          )}
+          <BackButton onClick={() => navigate('/planificacion')}>
+            Volver a Planificación
+          </BackButton>
         </ControlsRow>
       </Header>
 
       <MapPanel>
-        {simulationResults && (
-          <>
-            <InfoBanner $variant="success">
-              <strong>Mostrando resultados de optimización ALNS</strong>
-              {' · '}
-              {simulationResults.assignedOrders || 0} rutas optimizadas
-              {' · '}
-              {simulationResults.productRoutes?.length || 0} vuelos planificados
-            </InfoBanner>
-            <InfoBanner $variant="warning">
-              <strong>⚠️ Nota:</strong> Estos son resultados de una ejecución anterior del algoritmo ALNS.
-              Si la base de datos ha cambiado (se eliminaron o agregaron vuelos/aeropuertos), 
-              estos resultados pueden no ser válidos. Ejecuta el algoritmo nuevamente desde la página de 
-              Planificación o usa el botón "Limpiar Resultados" para removerlos.
-            </InfoBanner>
-          </>
-        )}
-
-        {!simulationResults && (
+        {isLoading && (
           <InfoBanner $variant="info">
-            <strong>ℹ️ Sin resultados de simulación</strong>
-            {' · '}
-            Ejecuta el algoritmo ALNS desde la página de Planificación para ver rutas optimizadas.
-            {' · '}
-            <strong>Importante:</strong> Debes cargar datos (aeropuertos, vuelos y pedidos) desde la página "Datos" antes de ejecutar el algoritmo.
+            Cargando vuelos desde la base de datos...
           </InfoBanner>
         )}
 
-        <FlightMonitor simulationResults={simulationResults} simulationType={simulationType} />
+        {!isLoading && flights && (
+          <InfoBanner $variant="success">
+            <strong>Vuelos cargados desde la base de datos</strong>
+            {' · '}
+            {flights.length} vuelos encontrados
+            {' · '}
+            {mappedResults?.productRoutes?.length ?? 0} rutas generadas
+          </InfoBanner>
+        )}
+
+        {!isLoading && (!flights || flights.length === 0) && (
+          <InfoBanner $variant="info">
+            No se encontraron vuelos en la base de datos.
+          </InfoBanner>
+        )}
+
+        <FlightMonitor
+          simulationResults={mappedResults}
+          simulationType={simulationType}
+        />
       </MapPanel>
     </Wrapper>
   )
