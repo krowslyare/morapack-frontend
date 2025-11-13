@@ -3,7 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import { LoginPage } from '../pages/LoginPage'
 import { RegisterPage } from '../pages/RegisterPage'
 import { LandingPage } from '../pages/LandingPage'
-import { Sidebar } from '../components/layout/Sidebar'
+import { ProtectedLayout } from '../components/layout/ProtectedLayout'
 import { AuthLayoutWrapper } from '../components/layout/AuthLayoutWrapper'
 import { TrackingPage } from '../pages/TrackingPage'
 // import { MonitoringPage } from '../pages/MonitoringPage'
@@ -28,7 +28,6 @@ function AnimatedOutlet() {
 }
 
 const router = createBrowserRouter([
-  { path: '/', element: <LandingPage />, errorElement: <ErrorBoundary /> },
   {
     element: <AuthLayoutWrapper />,
     errorElement: <ErrorBoundary />,
@@ -38,8 +37,13 @@ const router = createBrowserRouter([
     ],
   },
   {
+    path: '/',
+    element: <LandingPage />,
+    errorElement: <ErrorBoundary />,
+  },
+  {
     path: '/envios',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [
       { index: true, element: <TrackingPage /> },
@@ -49,37 +53,37 @@ const router = createBrowserRouter([
   },
   {
     path: '/planificacion',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <SimulationPage /> }],
   },
   {
     path: '/simulacion/tiempo-real',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <RealtimeSimulationPage /> }],
   },
   {
     path: '/simulacion/semanal',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <VisualizationPage simulationType="weekly" /> }],
   },
   {
     path: '/simulacion/colapso',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <VisualizationPage simulationType="collapse" /> }],
   },
   {
     path: '/datos',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <DataPage /> }],
   },
   {
     path: '/reportes',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <ReportPage /> }],
   },

@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion'
+import { Navigate } from 'react-router-dom'
 import { MainHeader } from '../../components/layout/MainHeader'
 import { AnimatedBackground } from '../../components/ui/AnimatedBackground'
 import { AnimatedNumber } from '../../components/ui/AnimatedNumber'
 import { usePermissions } from '../../hooks/usePermissions'
+import { useAuthStore } from '../../store/useAuthStore'
 import { MODULE_INFO } from '../../config/permissions'
 import * as S from './LandingPage.styles'
 
@@ -48,8 +50,14 @@ const pageVariants = {
 }
 
 export function LandingPage() {
+  const session = useAuthStore((s) => s.session)
   const { getAvailableModules } = usePermissions()
   const availableModules = getAvailableModules()
+
+  // Si no hay sesión, redirigir a login
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
 
   return (
     <>
