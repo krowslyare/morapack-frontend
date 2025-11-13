@@ -231,6 +231,19 @@ function bezierPoint(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTupl
   return [lat, lng]
 }
 
+// Calculate bearing/heading from point A to point B
+function calculateBearing(from: LatLngTuple, to: LatLngTuple): number {
+  const lat1 = (from[0] * Math.PI) / 180
+  const lat2 = (to[0] * Math.PI) / 180
+  const dLng = ((to[1] - from[1]) * Math.PI) / 180
+
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI
+
+  return (bearing + 360) % 360 // Normalize to 0-360
+}
+
 // GSAP-based animated flights component
 interface AnimatedFlightsProps {
   flightInstances: FlightInstance[]
@@ -320,13 +333,16 @@ function AnimatedFlights({
       // Store animation data
       animDataRef.current[flight.id] = { origin, destination, ctrl }
 
-      // Create marker
-      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:18px;height:18px;display:block;transform-origin:50% 50%;" />`
+      // Calculate initial bearing (heading) from origin to destination
+      const initialBearing = calculateBearing(origin, destination)
+
+      // Create marker with rotation
+      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${initialBearing}deg);" />`
       const planeIcon = new DivIcon({
         className: 'plane-icon',
         html: planeHTML,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
       })
 
       const marker = L.marker(origin, { icon: planeIcon, interactive: true })
@@ -345,6 +361,7 @@ function AnimatedFlights({
 
       // Animation object for GSAP
       const animObj = { progress: 0 }
+      let lastPos: LatLngTuple = origin
 
       // Add animation to timeline at the correct time
       timeline.to(
@@ -356,6 +373,18 @@ function AnimatedFlights({
           onUpdate: () => {
             const pos = bezierPoint(animObj.progress, origin, ctrl, destination)
             marker.setLatLng(pos)
+
+            // Calculate bearing for plane rotation (direction of movement)
+            const bearing = calculateBearing(lastPos, pos)
+            const markerElement = marker.getElement()
+            if (markerElement) {
+              const img = markerElement.querySelector('img')
+              if (img) {
+                img.style.transform = `rotate(${bearing}deg)`
+              }
+            }
+
+            lastPos = pos
           },
           onStart: () => {
             marker.setOpacity(1) // Show when flight departs
@@ -381,18 +410,7 @@ function AnimatedFlights({
     timeline.seek(elapsedSeconds, false)
   }, [flightInstances, map, simulationStartTime, currentSimTime, onFlightClick])
 
-  // Sync timeline with simulation time
-  useEffect(() => {
-    if (!timelineRef.current) return
-
-    if (isPlaying) {
-      timelineRef.current.play()
-    } else {
-      timelineRef.current.pause()
-    }
-  }, [isPlaying])
-
-  // Update timeline progress based on current sim time
+  // Sync timeline with simulation time and play/pause state
   useEffect(() => {
     if (!timelineRef.current) return
 
@@ -401,7 +419,14 @@ function AnimatedFlights({
 
     // Seek to the current time in the timeline
     timelineRef.current.seek(elapsedSeconds, false)
-  }, [currentSimTime, simulationStartTime])
+
+    // Update play/pause state
+    if (isPlaying) {
+      timelineRef.current.play()
+    } else {
+      timelineRef.current.pause()
+    }
+  }, [currentSimTime, simulationStartTime, isPlaying])
 
   return null
 }
@@ -525,18 +550,16 @@ export function DailySimulationPage() {
     })
   }, [airports, simulationStartDate, dayCount])
 
-  // Run algorithm for a specific day
-  const runDailyAlgorithm = async (day: number) => {
+  // Run algorithm using CURRENT simulation time
+  const runDailyAlgorithm = useCallback(async (simTime: Date) => {
     if (!simulationStartDate) return
 
     setAlgorithmRunning(true)
     try {
-      const startTime = new Date(simulationStartDate)
-      startTime.setDate(startTime.getDate() + day)
-
-      console.log(`Running algorithm for day ${day}...`)
+      // Use the current simulation time directly
+      console.log(`Running algorithm at simulation time: ${simTime.toISOString()}`)
       const response = await simulationService.executeDaily({
-        simulationStartTime: startTime.toISOString(),
+        simulationStartTime: simTime.toISOString(),
         simulationDurationHours: 24, // 1 day
         useDatabase: true,
       })
@@ -548,8 +571,11 @@ export function DailySimulationPage() {
         return
       }
 
-      console.log(`Day ${day} algorithm completed:`, response)
-      toast.success(`Día ${day + 1}: ${response.assignedOrders || 0} órdenes asignadas`)
+      const dayNumber = Math.floor(
+        (simTime.getTime() - simulationStartDate.getTime()) / (24 * 60 * 60 * 1000)
+      )
+      console.log(`Day ${dayNumber} algorithm completed:`, response)
+      toast.success(`Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`)
 
       // Reload flight statuses (for next day)
       console.log('Reloading flight statuses after algorithm...')
@@ -573,39 +599,41 @@ export function DailySimulationPage() {
     } finally {
       setAlgorithmRunning(false)
     }
-  }
+  }, [simulationStartDate, addNextDayInstances])
 
-  // Simulation clock (1 real second = 1 simulation minute = 60 simulation seconds)
-  const startSimulationClock = () => {
+  // Simulation clock (1 real second = 1 simulation minute)
+  const startSimulationClock = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
 
     intervalRef.current = setInterval(() => {
       setCurrentSimTime((prev) => {
-        if (!prev) return prev
-        const next = new Date(prev.getTime() + 60000) // Add 1 minute
-        return next
-      })
+        if (!prev || !simulationStartDate) return prev
 
-      setDayCount(() => {
-        if (!simulationStartDate) return 0
-        const newDay = Math.floor(
-          (Date.now() - simulationStartDate.getTime()) / (24 * 60 * 1000)
-        )
+        // Add 1 simulation minute (60000 ms)
+        const next = new Date(prev.getTime() + 60000)
 
-        // Trigger algorithm every 24 hours
+        // Calculate which day we're on based on SIMULATION time
+        const elapsedSimulationMs = next.getTime() - simulationStartDate.getTime()
+        const newDay = Math.floor(elapsedSimulationMs / (24 * 60 * 60 * 1000))
+
+        // Update day count
+        setDayCount(newDay)
+
+        // Trigger algorithm every 24 simulation hours (when day changes)
         if (newDay > lastAlgorithmDayRef.current && newDay > 0) {
           lastAlgorithmDayRef.current = newDay
-          runDailyAlgorithm(newDay)
+          // Run algorithm with current simulation time
+          runDailyAlgorithm(next)
         }
 
-        return newDay
+        return next
       })
     }, 1000) // Every real second
-  }
+  }, [simulationStartDate, runDailyAlgorithm])
 
   // Start simulation
-  const handleStart = async () => {
-    if (!hasValidConfig()) {
+  const handleStart = useCallback(async () => {
+    if (!hasValidConfig() || !simulationStartDate) {
       toast.error('Debes configurar la fecha en Planificación primero')
       return
     }
@@ -618,12 +646,12 @@ export function DailySimulationPage() {
     // Load initial data
     await loadFlightData()
 
-    // Run first algorithm immediately
-    await runDailyAlgorithm(0)
+    // Run first algorithm with simulation start time
+    await runDailyAlgorithm(simulationStartDate)
 
     // Start the clock
     startSimulationClock()
-  }
+  }, [hasValidConfig, simulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock])
 
   // Pause simulation
   const handlePause = () => {
@@ -799,34 +827,49 @@ export function DailySimulationPage() {
             </CircleMarker>
           ))}
 
-          {/* Flight routes - show static routes for active flights */}
-          {flightInstances.slice(0, 100).map((flight) => {
-            const origin: LatLngTuple = [
-              flight.originAirport.latitude,
-              flight.originAirport.longitude,
-            ]
-            const destination: LatLngTuple = [
-              flight.destinationAirport.latitude,
-              flight.destinationAirport.longitude,
-            ]
-            const ctrl = computeControlPoint(origin, destination, 0.2)
-            const samples = 20
-            const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) => {
-              const t = i / samples
-              return bezierPoint(t, origin, ctrl, destination)
-            })
+          {/* Flight routes - show routes for upcoming and active flights */}
+          {currentSimTime &&
+            flightInstances
+              .filter((f) => {
+                const dept = new Date(f.departureTime)
+                const arr = new Date(f.arrivalTime)
+                // Show routes for flights departing within next 2 hours or currently flying
+                const twoHoursFromNow = new Date(currentSimTime.getTime() + 2 * 60 * 60 * 1000)
+                return dept <= twoHoursFromNow && arr >= currentSimTime
+              })
+              .slice(0, 150)
+              .map((flight) => {
+                const origin: LatLngTuple = [
+                  flight.originAirport.latitude,
+                  flight.originAirport.longitude,
+                ]
+                const destination: LatLngTuple = [
+                  flight.destinationAirport.latitude,
+                  flight.destinationAirport.longitude,
+                ]
+                const ctrl = computeControlPoint(origin, destination, 0.2)
+                const samples = 30
+                const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) => {
+                  const t = i / samples
+                  return bezierPoint(t, origin, ctrl, destination)
+                })
 
-            return (
-              <Polyline
-                key={flight.id}
-                positions={arc}
-                color="#f59e0b"
-                opacity={0.3}
-                weight={1}
-                pane="routes"
-              />
-            )
-          })}
+                // Check if flight is currently active
+                const dept = new Date(flight.departureTime)
+                const arr = new Date(flight.arrivalTime)
+                const isActive = currentSimTime >= dept && currentSimTime <= arr
+
+                return (
+                  <Polyline
+                    key={flight.id}
+                    positions={arc}
+                    color={isActive ? '#10b981' : '#f59e0b'}
+                    opacity={isActive ? 0.6 : 0.3}
+                    weight={isActive ? 2 : 1}
+                    pane="routes"
+                  />
+                )
+              })}
 
           {/* GSAP Animated planes */}
           {isRunning && simulationStartDate && currentSimTime && (
