@@ -84,8 +84,8 @@ export function RegisterPage() {
                 type="submit" 
                 disabled={isLoading}
                 background="#00C896"
-                shimmerColor="#ffffff"
-                shimmerDuration="2.5s"
+                shimmerColor="#174708ff"
+                shimmerDuration="1s"
               >
                 <span className="font-semibold text-white">
                   {isLoading ? 'Creando cuenta...' : 'Crear Cuenta'}

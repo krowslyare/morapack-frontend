@@ -62,7 +62,8 @@ const router = createBrowserRouter([
   },
   {
     path: '/simulacion/diaria',
-    element: <Sidebar />,
+    element: <ProtectedLayout />,
+    errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <DailySimulationPage /> }],
   },
   /*{
