@@ -246,6 +246,10 @@ export function Sidebar() {
             <span className="material-symbols-outlined">box</span>
             <span>Envíos</span>
           </NavItem>
+          <NavItem to="/datos" $collapsed={collapsed}>
+            <span className="material-symbols-outlined">database</span>
+            <span>Datos</span>
+          </NavItem>
           <NavItem to="/planificacion" $collapsed={collapsed}>
             <span className="material-symbols-outlined">settings</span>
             <span>Planificación</span>
@@ -253,10 +257,6 @@ export function Sidebar() {
           <NavItem to="/simulacion/diaria" $collapsed={collapsed}>
             <span className="material-symbols-outlined">play_circle</span>
             <span>Simulación Diaria</span>
-          </NavItem>
-          <NavItem to="/simulacion/tiempo-real" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">schedule</span>
-            <span>Tiempo Real</span>
           </NavItem>
           <NavItem to="/simulacion/semanal" $collapsed={collapsed}>
             <span className="material-symbols-outlined">calendar_month</span>
@@ -266,10 +266,7 @@ export function Sidebar() {
             <span className="material-symbols-outlined">warning</span>
             <span>Simulación Colapso</span>
           </NavItem>
-          <NavItem to="/datos" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">database</span>
-            <span>Datos</span>
-          </NavItem>
+          
           <NavItem to="/reportes" $collapsed={collapsed}>
             <span className="material-symbols-outlined">description</span>
             <span>Reportes</span>

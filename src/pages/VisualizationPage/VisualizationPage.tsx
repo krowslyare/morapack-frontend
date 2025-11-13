@@ -134,16 +134,6 @@ export function VisualizationPage({
           </InfoBanner>
         )}
 
-        {!isLoading && flights && (
-          <InfoBanner $variant="success">
-            <strong>Vuelos cargados desde la base de datos</strong>
-            {' · '}
-            {flights.length} vuelos encontrados
-            {' · '}
-            {mappedResults?.productRoutes?.length ?? 0} rutas generadas
-          </InfoBanner>
-        )}
-
         {!isLoading && (!flights || flights.length === 0) && (
           <InfoBanner $variant="info">
             No se encontraron vuelos en la base de datos.

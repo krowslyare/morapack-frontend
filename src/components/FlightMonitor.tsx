@@ -350,7 +350,8 @@ export function FlightMonitor({
       airportById[a.id] = a
     })
 
-    const now = tick / 60 // tiempo virtual en "unidades" arbitrarias
+    const SPEED_FACTOR = 0.3 // < 1 = más lento, > 1 = más rápido
+    const now = (tick / 60) * SPEED_FACTOR
 
     return flightsData
       .map((f: FlightSchema, index: number) => {

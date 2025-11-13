@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { simulationService } from '../../api/simulationService'
+import { uploadOrdersByDateRange, type ImportResultData } from '../../api'
 import { toast } from 'react-toastify'
 
 const Wrapper = styled.div`
@@ -80,6 +81,29 @@ const DateTimeInput = styled.input`
   }
 `
 
+const Select = styled.select`
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  font-size: 14px;
+  background: white;
+  color: #111827;
+  transition: all 0.2s;
+  font-family: inherit;
+  max-width: 200px;
+
+  &:focus {
+    outline: none;
+    border-color: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+  }
+
+  &:disabled {
+    background: #f3f4f6;
+    cursor: not-allowed;
+  }
+`
+
 const ButtonGroup = styled.div`
   display: flex;
   gap: 16px;
@@ -87,7 +111,10 @@ const ButtonGroup = styled.div`
   flex-wrap: wrap;
 `
 
-const Button = styled.button<{ $variant?: 'primary' | 'danger' | 'secondary' | 'success'; $isLoading?: boolean }>`
+const Button = styled.button<{
+  $variant?: 'primary' | 'danger' | 'secondary' | 'success'
+  $isLoading?: boolean
+}>`
   background: ${(p) => {
     if (p.$isLoading) return '#f59e0b'
     if (p.$variant === 'danger') return '#dc2626'
@@ -188,16 +215,34 @@ const ConfigValue = styled.span`
   font-family: 'Courier New', monospace;
 `
 
+interface OrdersImportState {
+  loading: boolean
+  result: ImportResultData | null
+}
+
 export function PlanificacionPage() {
   const navigate = useNavigate()
-  const { simulationStartDate, setSimulationStartDate, hasValidConfig, clearSimulationConfig } = useSimulationStore()
+  const { simulationStartDate, setSimulationStartDate, hasValidConfig, clearSimulationConfig } =
+    useSimulationStore()
 
-  // Local state for form
   const [selectedDateTime, setSelectedDateTime] = useState<string>('')
+  const [weeks, setWeeks] = useState<number>(1)
   const [isLoadingReset, setIsLoadingReset] = useState(false)
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ordersState, setOrdersState] = useState<OrdersImportState>({
+    loading: false,
+    result: null,
+  })
 
-  const handleConfirmDate = () => {
+  const formatToYYYYMMDD = (date: Date) => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}${m}${d}`
+  }
+
+  const handleConfirmDate = async () => {
     setError(null)
 
     if (!selectedDateTime) {
@@ -211,42 +256,59 @@ export function PlanificacionPage() {
       return
     }
 
-    setSimulationStartDate(parsedDate)
-    toast.success('Fecha de simulación configurada correctamente')
+    try {
+      setIsLoadingConfig(true)
+      setOrdersState({ loading: true, result: null })
+
+      // 1) Guardar fecha en el store para la simulación
+      setSimulationStartDate(parsedDate)
+
+      // 2) Calcular rango de fechas para pedidos (start → start + semanas*7 - 1 días)
+      const startDate = new Date(
+        parsedDate.getFullYear(),
+        parsedDate.getMonth(),
+        parsedDate.getDate(),
+      )
+      const endDate = new Date(startDate)
+      endDate.setDate(endDate.getDate() + weeks * 7 - 1)
+
+      const startStr = formatToYYYYMMDD(startDate)
+      const endStr = formatToYYYYMMDD(endDate)
+
+      // 3) Llamar backend para cargar pedidos en ese rango
+      const result = await uploadOrdersByDateRange(startStr, endStr)
+      setOrdersState({ loading: false, result })
+
+      if (result.success) {
+        toast.success(
+          `Fecha configurada y pedidos cargados (${result.orders ?? 0} pedidos, ${
+            result.products ?? 0
+          } productos)`,
+        )
+      } else {
+        toast.error(result.message || 'Error al cargar pedidos')
+      }
+    } catch (err: any) {
+      console.error('Error al configurar fecha/cargar pedidos:', err)
+      setError(err.message || 'Error al configurar la planificación')
+      setOrdersState((prev) => ({
+        ...prev,
+        loading: false,
+      }))
+      toast.error('Error al configurar la planificación')
+    } finally {
+      setIsLoadingConfig(false)
+    }
   }
 
-  const handleResetDatabase = async () => {
-    const confirmed = window.confirm(
-      '¿Estás seguro de que deseas resetear la base de datos de órdenes? Esta acción no se puede deshacer.'
-    )
-
-    if (!confirmed) return
-
-    setIsLoadingReset(true)
-    setError(null)
-
-    try {
-      // Try to reset or clear simulation state
-      clearSimulationConfig()
-
-      // Try to call reset endpoint
-      try {
-        await simulationService.resetDatabase()
-        toast.success('Base de datos reseteada correctamente')
-      } catch (err) {
-        // If no reset endpoint, just clear the config
-        console.warn('Reset endpoint not available, only clearing local config')
-        toast.info('Configuración local limpiada. Nota: No hay endpoint de reset en el backend.')
-      }
-
-      setSelectedDateTime('')
-    } catch (err: any) {
-      console.error('Error resetting database:', err)
-      setError(err.message || 'Error al resetear la base de datos')
-      toast.error('Error al resetear la base de datos')
-    } finally {
-      setIsLoadingReset(false)
-    }
+  // Limpia solo la configuración/local (no BD)
+  const handleResetData = () => {
+    clearSimulationConfig()          // borra config global de simulación
+    setSelectedDateTime('')          // limpia input
+    setWeeks(1)                      // vuelve a 1 semana
+    setOrdersState({ loading: false, result: null }) // quita mensaje de carga
+    setError(null)                   // limpia errores
+    toast.info('Datos de planificación limpiados')
   }
 
   const handleGoToSimulation = () => {
@@ -257,7 +319,6 @@ export function PlanificacionPage() {
     navigate('/simulacion/diaria')
   }
 
-  // Format date for display
   const formatDate = (date: Date | null) => {
     if (!date) return 'No configurada'
     return new Intl.DateTimeFormat('es-ES', {
@@ -276,7 +337,7 @@ export function PlanificacionPage() {
         <div>
           <Title>Planificación de Simulación</Title>
           <Subtitle>
-            Configura la fecha y hora inicial de la simulación diaria
+            Configura la fecha inicial y el rango de semanas que se usará para cargar los pedidos
           </Subtitle>
         </div>
 
@@ -288,12 +349,23 @@ export function PlanificacionPage() {
 
         {hasValidConfig() && (
           <CurrentConfigBox>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f766e', marginBottom: '4px' }}>
+            <div
+              style={{
+                fontSize: '16px',
+                fontWeight: 700,
+                color: '#0f766e',
+                marginBottom: '4px',
+              }}
+            >
               ✓ Configuración Actual
             </div>
             <ConfigItem>
               <ConfigLabel>Fecha de Inicio:</ConfigLabel>
               <ConfigValue>{formatDate(simulationStartDate)}</ConfigValue>
+            </ConfigItem>
+            <ConfigItem>
+              <ConfigLabel>Semanas de Datos:</ConfigLabel>
+              <ConfigValue>{weeks} semana(s)</ConfigValue>
             </ConfigItem>
             <ConfigItem>
               <ConfigLabel>Estado:</ConfigLabel>
@@ -304,18 +376,34 @@ export function PlanificacionPage() {
 
         <FormSection>
           <FormGroup>
-            <Label htmlFor="simulation-date">
-              Fecha y Hora de Inicio de la Simulación
-            </Label>
+            <Label htmlFor="simulation-date">Fecha y Hora de Inicio de la Simulación</Label>
             <DateTimeInput
               id="simulation-date"
               type="datetime-local"
               value={selectedDateTime}
               onChange={(e) => setSelectedDateTime(e.target.value)}
-              disabled={isLoadingReset}
+              disabled={isLoadingReset || isLoadingConfig}
             />
             <span style={{ fontSize: '13px', color: '#6b7280' }}>
-              Esta será la hora cero (T0) de tu simulación diaria
+              Esta será la hora cero (T0) de tu simulación diaria y la fecha desde la cual se
+              cargarán los pedidos.
+            </span>
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="weeks-select">Semanas</Label>
+            <Select
+              id="weeks-select"
+              value={weeks}
+              onChange={(e) => setWeeks(Number(e.target.value))}
+              disabled={isLoadingReset || isLoadingConfig}
+            >
+              <option value={1}>1 semana</option>
+              <option value={2}>2 semanas</option>
+            </Select>
+            <span style={{ fontSize: '13px', color: '#6b7280' }}>
+              Se cargarán pedidos desde la fecha de inicio hasta la fecha de inicio + (semanas × 7
+              días - 1).
             </span>
           </FormGroup>
 
@@ -324,31 +412,59 @@ export function PlanificacionPage() {
             <br />
             1. Selecciona la fecha y hora inicial para tu simulación
             <br />
-            2. Haz clic en "Confirmar Fecha" para guardar la configuración
+            2. Elige cuántas semanas de datos quieres cargar (1 o 2)
             <br />
-            3. Opcionalmente, puedes resetear la base de datos de órdenes
+            3. Haz clic en &quot;Confirmar Fecha&quot; para guardar la configuración y cargar los
+            pedidos en ese rango
             <br />
-            4. Ve a "Simulación Diaria" para iniciar la simulación
+            4. Si lo necesitas, usa &quot;Resetear datos&quot; para dejar la pantalla en blanco
+            nuevamente
+            <br />
+            5. Ve a &quot;Simulación Diaria&quot; para iniciar la simulación
           </InfoBox>
         </FormSection>
 
         <ButtonGroup>
-          <Button onClick={handleConfirmDate} disabled={!selectedDateTime || isLoadingReset}>
-            Confirmar Fecha
+          <Button
+            onClick={handleConfirmDate}
+            disabled={!selectedDateTime || isLoadingReset || isLoadingConfig}
+            $isLoading={isLoadingConfig}
+          >
+            {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar Fecha'}
           </Button>
 
-          <Button $variant="danger" onClick={handleResetDatabase} $isLoading={isLoadingReset} disabled={isLoadingReset}>
-            {isLoadingReset ? 'Reseteando...' : 'Resetear Base de Datos'}
+          <Button
+            $variant="secondary"
+            onClick={handleResetData}
+            disabled={isLoadingConfig}
+          >
+            Resetear datos
           </Button>
 
-          <Button $variant="success" onClick={handleGoToSimulation} disabled={!hasValidConfig()}>
+          <Button
+            $variant="success"
+            onClick={handleGoToSimulation}
+            disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
+          >
             Ir a Simulación Diaria →
           </Button>
         </ButtonGroup>
 
+        {ordersState.result && (
+          <InfoBox $variant={ordersState.result.success ? 'success' : 'error'}>
+            <strong>{ordersState.result.success ? '✓ Carga de pedidos:' : '✗ Error en la carga:'}</strong>{' '}
+            {ordersState.result.message}{' '}
+            {ordersState.result.orders !== undefined &&
+              `(${ordersState.result.orders} pedidos)`}{' '}
+            {ordersState.result.products !== undefined &&
+              `(${ordersState.result.products} productos)`}
+          </InfoBox>
+        )}
+
         {!hasValidConfig() && (
           <InfoBox $variant="warning">
-            <strong>⚠️ No hay configuración:</strong> Debes configurar una fecha antes de iniciar la simulación.
+            <strong>⚠️ No hay configuración:</strong> Debes configurar una fecha antes de iniciar la
+            simulación.
           </InfoBox>
         )}
       </ContentPanel>

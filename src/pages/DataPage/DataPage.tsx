@@ -3,9 +3,9 @@ import styled from 'styled-components'
 import {
   uploadAirports,
   uploadFlights,
-  uploadOrdersByDateRange,
   type ImportResultData,
 } from '../../api'
+import { toast } from 'react-toastify'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -115,9 +115,6 @@ interface UploadState {
 export function DataPage() {
   const [airportsState, setAirportsState] = useState<UploadState>({ loading: false, result: null })
   const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
-  const [ordersState, setOrdersState] = useState<UploadState>({ loading: false, result: null })
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
 
   // === Airports ===
   const handleAirportsUpload = async () => {
@@ -125,15 +122,26 @@ export function DataPage() {
     try {
       const result = await uploadAirports()
       setAirportsState({ loading: false, result })
+
+      if (result.success) {
+        // usa los campos que realmente devuelva tu back (count, cities, etc.)
+        const count = (result as any).count ?? 0
+        const cities = (result as any).cities ?? 0
+        toast.success(`Aeropuertos cargados (${count} aeropuertos, ${cities} ciudades)`)
+      } else {
+        toast.error(result.message || 'Error al cargar aeropuertos')
+      }
     } catch (e: any) {
+      const message = e.response?.data?.message || 'Error al cargar aeropuertos'
       setAirportsState({
         loading: false,
         result: {
           success: false,
-          message: e.response?.data?.message || 'Error al cargar aeropuertos',
+          message,
           error: e.message,
         },
       })
+      toast.error(message)
     }
   }
 
@@ -143,37 +151,24 @@ export function DataPage() {
     try {
       const result = await uploadFlights()
       setFlightsState({ loading: false, result })
+
+      if (result.success) {
+        const count = (result as any).count ?? 0
+        toast.success(`Vuelos cargados (${count} vuelos)`)
+      } else {
+        toast.error(result.message || 'Error al cargar vuelos')
+      }
     } catch (e: any) {
+      const message = e.response?.data?.message || 'Error al cargar vuelos'
       setFlightsState({
         loading: false,
         result: {
           success: false,
-          message: e.response?.data?.message || 'Error al cargar vuelos',
+          message,
           error: e.message,
         },
       })
-    }
-  }
-
-  // === Orders ===
-  const handleOrdersUpload = async () => {
-    if (!startDate || !endDate) {
-      alert('Debe seleccionar ambas fechas.')
-      return
-    }
-    setOrdersState({ loading: true, result: null })
-    try {
-      const result = await uploadOrdersByDateRange(startDate.replaceAll('-', ''), endDate.replaceAll('-', ''))
-      setOrdersState({ loading: false, result })
-    } catch (e: any) {
-      setOrdersState({
-        loading: false,
-        result: {
-          success: false,
-          message: e.response?.data?.message || 'Error al cargar pedidos',
-          error: e.message,
-        },
-      })
+      toast.error(message)
     }
   }
 
@@ -217,36 +212,6 @@ export function DataPage() {
           {flightsState.result && (
             <Message $type={flightsState.result.success ? 'success' : 'error'}>
               {flightsState.result.message}
-            </Message>
-          )}
-        </UploadSection>
-
-        {/* === Orders === */}
-        <UploadSection>
-          <UploadHeader>
-            <UploadTitle>📦 Pedidos y Productos</UploadTitle>
-            <UploadButton
-              $variant="primary"
-              onClick={handleOrdersUpload}
-              disabled={ordersState.loading}
-            >
-              {ordersState.loading ? 'Cargando...' : 'Cargar por Fechas'}
-            </UploadButton>
-          </UploadHeader>
-
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' }}>
-            <label>Desde:</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            <label>Hasta:</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </div>
-
-          {ordersState.result && (
-            <Message $type={ordersState.result.success ? 'success' : 'error'}>
-              <strong>{ordersState.result.success ? '✓ Éxito:' : '✗ Error:'}</strong>{' '}
-              {ordersState.result.message}{' '}
-              {ordersState.result.orders !== undefined && `(${ordersState.result.orders} pedidos)`}{' '}
-              {ordersState.result.products !== undefined && `(${ordersState.result.products} productos)`}
             </Message>
           )}
         </UploadSection>

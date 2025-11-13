@@ -65,12 +65,12 @@ const router = createBrowserRouter([
     element: <Sidebar />,
     children: [{ index: true, element: <DailySimulationPage /> }],
   },
-  {
-    path: '/simulacion/tiempo-real',
+  /*{
+    //path: '/simulacion/tiempo-real',
     element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <RealtimeSimulationPage /> }],
-  },
+  },*/
   {
     path: '/simulacion/semanal',
     element: <ProtectedLayout />,
