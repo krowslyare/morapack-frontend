@@ -1,9 +1,12 @@
 // Este componente representa la página de inicio de sesión completa.
-// Incluye placeholders dinámicos, toasts, y botones alternativos (Google / Correo).
+// Incluye placeholders dinámicos, toasts, y animaciones visuales mejoradas.
 
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { AuthLayout } from '../../components/layout/AuthLayout'
 import { Button, Card, Checkbox, Input } from '../../components/ui'
+import { ShimmerButton } from '../../components/ui/shimmer-button'
 import { useLoginForm } from './useLoginForm'
 import * as S from './LoginPage.styles'
 
@@ -11,43 +14,41 @@ import * as S from './LoginPage.styles'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
-// ✅ Iconos simples (si usas lucide-react o react-icons, puedes mejorar esto)
-import { FaGoogle, FaEnvelope } from 'react-icons/fa'
-
 export function LoginPage() {
   const { isLoading, handleSubmit } = useLoginForm()
 
-  const [email, setEmail] = useState('admin@example.com')
-  const [password, setPassword] = useState('123456')
+  // Valores por defecto para la cuenta mock solicitada
+  const [email, setEmail] = useState('monosupremo@gmail.com')
+  const [password, setPassword] = useState('monosupremo123')
 
   const handleEmailFocus = () => {
-    if (email === 'admin@example.com') setEmail('')
+    if (email === 'monosupremo@gmail.com') setEmail('')
   }
 
   const handlePasswordFocus = () => {
-    if (password === '123456') setPassword('')
+    if (password === 'monosupremo123') setPassword('')
   }
 
-  // ✅ Interacción de botones alternativos (por ahora solo logean en consola)
-  const handleGoogleLogin = () => {
-    console.log('Intentando iniciar sesión con Google...')
-  }
-
-  const handleEmailLogin = () => {
-    console.log('Intentando iniciar sesión con Correo...')
-  }
+  // Navegación para enlaces de registro
+  const navigate = useNavigate()
 
   const handleJoin = () => {
-    console.log('Redirigiendo al registro...')
+    navigate('/register')
   }
 
   return (
-    <AuthLayout illustration="/logo_login.png" illustrationAlt="Ilustración de login">
-      <Card>
-        {/* Encabezado */}
-        <S.Title>Iniciar Sesión</S.Title>
+    <AuthLayout>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.6, ease: 'easeInOut' }}
+          >
+        <Card>
+          {/* Encabezado */}
+          <S.Title>Iniciar Sesión</S.Title>
         <S.Subtitle>
-          ¿Todavía no tiene una cuenta? <a href="#">Cree una ahora</a>
+          ¿Todavía no tiene una cuenta? <Link to="/register">Cree una ahora</Link>
         </S.Subtitle>
 
         {/* Formulario principal */}
@@ -90,42 +91,50 @@ export function LoginPage() {
           </S.CheckboxWrapper>
 
           <S.ButtonGroup>
-            <Button type="submit" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              disabled={isLoading}
+              style={{ 
+                transition: 'all 0.3s ease',
+                transform: isLoading ? 'scale(0.98)' : 'scale(1)',
+              }}
+            >
               {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
             </Button>
           </S.ButtonGroup>
         </form>
 
-        {/* 🔹 Alternativas de inicio de sesión */}
-        <S.AltLoginContainer>
-          <S.AltButton onClick={handleGoogleLogin} bg="#f4f4f4" hover="#e5e5e5">
-            <FaGoogle color="#DB4437" /> Iniciar con Google
-          </S.AltButton>
+        {/* Opciones de inicio de sesión alternativo removidas (no funcionales) */}
 
-          <S.AltButton onClick={handleEmailLogin} bg="#f9fafb" hover="#e2e8f0">
-            <FaEnvelope color="#00c896" /> Iniciar con Correo
-          </S.AltButton>
-        </S.AltLoginContainer>
-
-        {/* 🔹 Mensaje motivacional con botón */}
+        {/* 🔹 Mensaje motivacional con botón shimmer */}
         <S.JoinSection>
           <p>¿Te gustaría formar parte de la experiencia?</p>
-          <S.JoinButton onClick={handleJoin}>Únete</S.JoinButton>
+          <div className="flex justify-center mt-3">
+            <ShimmerButton 
+              onClick={handleJoin}
+              background="#00C896"
+              shimmerColor="#ffffff"
+              shimmerDuration="2.5s"
+            >
+              <span className="font-semibold text-white">Únete</span>
+            </ShimmerButton>
+          </div>
         </S.JoinSection>
       </Card>
+          </motion.div>
 
-      {/* ✅ Contenedor global de toasts */}
-      <ToastContainer
-        position="top-center"
-        autoClose={2500}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="colored"
-      />
+          {/* ✅ Contenedor global de toasts */}
+          <ToastContainer
+            position="top-center"
+            autoClose={2500}
+            hideProgressBar={false}
+            newestOnTop
+            closeOnClick
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="colored"
+          />
     </AuthLayout>
   )
 }
