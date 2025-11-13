@@ -86,9 +86,6 @@ export function LoginPage() {
             </div>
           </S.FormField>
 
-          <S.CheckboxWrapper>
-            <Checkbox name="remember" label="Recordarme" disabled={isLoading} />
-          </S.CheckboxWrapper>
 
           <S.ButtonGroup>
             <Button 
@@ -113,8 +110,8 @@ export function LoginPage() {
             <ShimmerButton 
               onClick={handleJoin}
               background="#00C896"
-              shimmerColor="#ffffff"
-              shimmerDuration="2.5s"
+              shimmerColor="#174708ff"
+              shimmerDuration="1s"
             >
               <span className="font-semibold text-white">Únete</span>
             </ShimmerButton>

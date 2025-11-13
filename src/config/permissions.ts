@@ -6,8 +6,8 @@ export type RouteKey =
   | 'landing'
   | 'envios'
   | 'envios-registrar'
-  | 'monitoreo'
   | 'planificacion'
+  | 'simulacion-diaria'
   | 'simulacion-tiempo-real'
   | 'simulacion-semanal'
   | 'simulacion-colapso'
@@ -15,7 +15,14 @@ export type RouteKey =
   | 'reportes'
 
 // Módulos visibles en la landing page
-export type ModuleKey = 'envios' | 'monitoreo' | 'datos' | 'reportes'
+export type ModuleKey = 
+  | 'envios' 
+  | 'datos' 
+  | 'planificacion' 
+  | 'simulacion-diaria' 
+  | 'simulacion-semanal' 
+  | 'simulacion-colapso' 
+  | 'reportes'
 
 // Configuración de permisos por tipo de usuario
 export const PERMISSIONS: Record<UserType, {
@@ -30,7 +37,6 @@ export const PERMISSIONS: Record<UserType, {
       'landing',
       'envios',
       'envios-registrar',
-      'monitoreo',
       'planificacion',
       'simulacion-tiempo-real',
       'simulacion-semanal',
@@ -38,7 +44,7 @@ export const PERMISSIONS: Record<UserType, {
       'datos',
       'reportes',
     ],
-    modules: ['envios', 'monitoreo', 'datos', 'reportes'],
+    modules: ['envios', 'datos', 'planificacion', 'simulacion-diaria', 'simulacion-semanal', 'simulacion-colapso', 'reportes'],
     canEdit: true,
     canDelete: true,
     canExport: true,
@@ -63,8 +69,8 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'landing': '/',
   'envios': '/envios',
   'envios-registrar': '/envios/registrar',
-  'monitoreo': '/monitoreo',
   'planificacion': '/planificacion',
+  'simulacion-diaria': '/simulacion/diaria',
   'simulacion-tiempo-real': '/simulacion/tiempo-real',
   'simulacion-semanal': '/simulacion/semanal',
   'simulacion-colapso': '/simulacion/colapso',
@@ -79,19 +85,34 @@ export const MODULE_INFO: Record<ModuleKey, {
   path: string
 }> = {
   envios: {
-    icon: 'box',
+    icon: 'local_shipping',
     label: 'ENVIOS',
     path: '/envios',
-  },
-  monitoreo: {
-    icon: 'connecting_airports',
-    label: 'MONITOREO',
-    path: '/monitoreo',
   },
   datos: {
     icon: 'database',
     label: 'DATOS',
     path: '/datos',
+  },
+  planificacion: {
+    icon: 'calendar_month',
+    label: 'PLANIFICACION',
+    path: '/planificacion',
+  },
+  'simulacion-diaria': {
+    icon: 'wb_sunny',
+    label: 'SIMULACION DIARIA',
+    path: '/simulacion/diaria',
+  },
+  'simulacion-semanal': {
+    icon: 'date_range',
+    label: 'SIMULACION SEMANAL',
+    path: '/simulacion/semanal',
+  },
+  'simulacion-colapso': {
+    icon: 'warning',
+    label: 'SIMULACION COLAPSO',
+    path: '/simulacion/colapso',
   },
   reportes: {
     icon: 'description',

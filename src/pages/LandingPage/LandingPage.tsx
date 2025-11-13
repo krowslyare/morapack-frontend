@@ -2,7 +2,6 @@ import { motion } from 'framer-motion'
 import { Navigate } from 'react-router-dom'
 import { MainHeader } from '../../components/layout/MainHeader'
 import { AnimatedBackground } from '../../components/ui/AnimatedBackground'
-import { AnimatedNumber } from '../../components/ui/AnimatedNumber'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../store/useAuthStore'
 import { MODULE_INFO } from '../../config/permissions'
@@ -49,6 +48,24 @@ const pageVariants = {
   },
 }
 
+const guideCards = [
+  {
+    title: 'Preparar datos',
+    description: 'Carga aeropuertos, vuelos y productos desde Datos.',
+    tags: ['Carga masiva', 'Validaciones'] as const,
+  },
+  {
+    title: 'Ajustar planificación',
+    description: 'Define parámetros y metas antes de publicar propuestas.',
+    tags: ['Parámetros', 'KPIs'] as const,
+  },
+  {
+    title: 'Probar simulaciones',
+    description: 'Ejecuta escenarios diario, semanal o colapso antes de enviar.',
+    tags: ['Diaria', 'Semanal', 'Colapso'] as const,
+  },
+]
+
 export function LandingPage() {
   const session = useAuthStore((s) => s.session)
   const { getAvailableModules } = usePermissions()
@@ -93,32 +110,23 @@ export function LandingPage() {
           </motion.div>
 
           <motion.div variants={containerVariants}>
-            <S.Stats>
-              <motion.div variants={itemVariants}>
-                <S.StatCard>
-                  <S.StatValue>
-                    <AnimatedNumber value={80} suffix="%" />
-                  </S.StatValue>
-                  <S.StatLabel>Entregas A Tiempo</S.StatLabel>
-                </S.StatCard>
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <S.StatCard>
-                  <S.StatValue>
-                    <AnimatedNumber value={50} />
-                  </S.StatValue>
-                  <S.StatLabel>Capacidad Usada De Almacenes</S.StatLabel>
-                </S.StatCard>
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <S.StatCard>
-                  <S.StatValue>
-                    <AnimatedNumber value={60} />
-                  </S.StatValue>
-                  <S.StatLabel>Vuelos Enviados</S.StatLabel>
-                </S.StatCard>
-              </motion.div>
-            </S.Stats>
+            <S.Guides>
+              {guideCards.map((card) => (
+                <motion.div key={card.title} variants={itemVariants}>
+                  <S.GuideCard>
+                    <div>
+                      <S.GuideTitle>{card.title}</S.GuideTitle>
+                      <S.GuideDescription>{card.description}</S.GuideDescription>
+                    </div>
+                    <S.GuideTags>
+                      {card.tags.map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </S.GuideTags>
+                  </S.GuideCard>
+                </motion.div>
+              ))}
+            </S.Guides>
           </motion.div>
         </S.Container>
       </S.Page>
