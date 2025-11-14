@@ -13,34 +13,37 @@ const Wrapper = styled.div`
   flex-direction: column;
   gap: 16px;
   min-height: 100vh;
+  background: #f9fafb;
 `
 
 const ContentPanel = styled.div`
   background: white;
   border-radius: 12px;
-  padding: 40px;
-  min-height: 600px;
+  padding: 32px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
 `
 
 const Title = styled.h2`
-  margin: 0 0 8px 0;
+  margin: 0 0 16px 0;
   color: #111827;
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 700;
 `
 
 const Description = styled.p`
-  margin: 0 0 32px 0;
+  margin: 0 0 28px 0;
   color: #6b7280;
   font-size: 14px;
 `
 
 const UploadSection = styled.div`
-  border: 2px dashed #d1d5db;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 24px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
   transition: all 0.2s;
 
   &:hover {
@@ -53,42 +56,46 @@ const UploadHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  gap: 12px;
 `
 
 const UploadTitle = styled.h3`
-  font-size: 16px;
+  font-size: 15px;
   color: #111827;
   margin: 0;
   font-weight: 600;
 `
 
 const UploadButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
-  padding: 10px 20px;
+  padding: 8px 16px;
   border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  border: 1px solid ${(p) => (p.$variant === 'primary' ? '#14b8a6' : '#d1d5db')};
-  background: ${(p) => (p.$variant === 'primary' ? '#14b8a6' : 'white')};
+  border: none;
+  background: ${(p) => (p.$variant === 'primary' ? '#14b8a6' : '#f3f4f6')};
   color: ${(p) => (p.$variant === 'primary' ? 'white' : '#374151')};
+  white-space: nowrap;
 
   &:hover {
-    background: ${(p) => (p.$variant === 'primary' ? '#0d9488' : '#f3f4f6')};
+    background: ${(p) => (p.$variant === 'primary' ? '#0d9488' : '#e5e7eb')};
+    transform: translateY(-1px);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none;
   }
 `
 
 const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
-  margin-top: 16px;
-  padding: 12px 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   background: ${(p) => {
     if (p.$type === 'success') return '#d1fae5'
     if (p.$type === 'error') return '#fee2e2'
