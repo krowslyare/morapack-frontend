@@ -203,6 +203,56 @@ const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'paused' }>`
   }};
 `
 
+const SpeedControlContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const SpeedLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+`
+
+const SpeedButtonGroup = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+`
+
+const SpeedButton = styled.button<{ $active: boolean }>`
+  padding: 8px 12px;
+  border: 2px solid ${(p) => (p.$active ? '#14b8a6' : '#e5e7eb')};
+  background: ${(p) => (p.$active ? '#d1fae5' : 'white')};
+  color: ${(p) => (p.$active ? '#065f46' : '#6b7280')};
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    border-color: #14b8a6;
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const SpeedHint = styled.div`
+  font-size: 10px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 4px;
+`
+
 // Helper to compute curved flight path
 function computeControlPoint(a: LatLngTuple, b: LatLngTuple, curvature = 0.25): LatLngTuple {
   const lat1 = a[0]
@@ -231,6 +281,14 @@ function bezierPoint(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTupl
   return [lat, lng]
 }
 
+// Calculate tangent vector of Bezier curve (derivative)
+function bezierTangent(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTuple): LatLngTuple {
+  const oneMinusT = 1 - t
+  const dlat = 2 * oneMinusT * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0])
+  const dlng = 2 * oneMinusT * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1])
+  return [dlat, dlng]
+}
+
 // Calculate bearing/heading from point A to point B
 function calculateBearing(from: LatLngTuple, to: LatLngTuple): number {
   const lat1 = (from[0] * Math.PI) / 180
@@ -250,6 +308,7 @@ interface AnimatedFlightsProps {
   simulationStartTime: Date
   currentSimTime: Date
   isPlaying: boolean
+  playbackSpeed: number
   onFlightClick: (flight: FlightInstance) => void
 }
 
@@ -258,6 +317,7 @@ function AnimatedFlights({
   simulationStartTime,
   currentSimTime,
   isPlaying,
+  playbackSpeed,
   onFlightClick,
 }: AnimatedFlightsProps) {
   const map = useMap()
@@ -337,7 +397,7 @@ function AnimatedFlights({
       const initialBearing = calculateBearing(origin, destination)
 
       // Create marker with rotation
-      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${initialBearing}deg);" />`
+      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${initialBearing}deg);transition:transform 0.3s linear;" />`
       const planeIcon = new DivIcon({
         className: 'plane-icon',
         html: planeHTML,
@@ -361,7 +421,6 @@ function AnimatedFlights({
 
       // Animation object for GSAP
       const animObj = { progress: 0 }
-      let lastPos: LatLngTuple = origin
 
       // Add animation to timeline at the correct time
       timeline.to(
@@ -374,17 +433,17 @@ function AnimatedFlights({
             const pos = bezierPoint(animObj.progress, origin, ctrl, destination)
             marker.setLatLng(pos)
 
-            // Calculate bearing for plane rotation (direction of movement)
-            const bearing = calculateBearing(lastPos, pos)
+            // Calculate bearing from tangent of Bezier curve for accurate direction
+            const tangent = bezierTangent(animObj.progress, origin, ctrl, destination)
+            const bearing = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
+
             const markerElement = marker.getElement()
             if (markerElement) {
-              const img = markerElement.querySelector('img')
+              const img = markerElement.querySelector('img') as HTMLImageElement
               if (img) {
                 img.style.transform = `rotate(${bearing}deg)`
               }
             }
-
-            lastPos = pos
           },
           onStart: () => {
             marker.setOpacity(1) // Show when flight departs
@@ -428,6 +487,15 @@ function AnimatedFlights({
     }
   }, [currentSimTime, simulationStartTime, isPlaying])
 
+  // Adjust timeline speed when playbackSpeed changes
+  useEffect(() => {
+    if (!timelineRef.current) return
+
+    // Set the timeScale: at playbackSpeed 1, timeScale is 1
+    // At playbackSpeed 60, timeScale should be 60 (timeline runs 60x faster)
+    timelineRef.current.timeScale(playbackSpeed)
+  }, [playbackSpeed])
+
   return null
 }
 
@@ -439,6 +507,7 @@ export function DailySimulationPage() {
   const [isRunning, setIsRunning] = useState(false)
   const [currentSimTime, setCurrentSimTime] = useState<Date | null>(simulationStartDate)
   const [dayCount, setDayCount] = useState(0)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1) // 1 = 1 sec sim per real sec, 60 = 1 min per sec, etc.
 
   // Data
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
@@ -601,7 +670,7 @@ export function DailySimulationPage() {
     }
   }, [simulationStartDate, addNextDayInstances])
 
-  // Simulation clock (1 real second = 1 simulation minute)
+  // Simulation clock - advances by playbackSpeed * 1000ms every real second
   const startSimulationClock = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
 
@@ -609,8 +678,8 @@ export function DailySimulationPage() {
       setCurrentSimTime((prev) => {
         if (!prev || !simulationStartDate) return prev
 
-        // Add 1 simulation minute (60000 ms)
-        const next = new Date(prev.getTime() + 60000)
+        // Add playbackSpeed simulation seconds (playbackSpeed * 1000 ms)
+        const next = new Date(prev.getTime() + playbackSpeed * 1000)
 
         // Calculate which day we're on based on SIMULATION time
         const elapsedSimulationMs = next.getTime() - simulationStartDate.getTime()
@@ -629,7 +698,7 @@ export function DailySimulationPage() {
         return next
       })
     }, 1000) // Every real second
-  }, [simulationStartDate, runDailyAlgorithm])
+  }, [simulationStartDate, runDailyAlgorithm, playbackSpeed])
 
   // Start simulation
   const handleStart = useCallback(async () => {
@@ -763,6 +832,46 @@ export function DailySimulationPage() {
             )}
           </StatsRow>
 
+          <SpeedControlContainer>
+            <SpeedLabel>Velocidad de Reproducción</SpeedLabel>
+            <SpeedButtonGroup>
+              <SpeedButton
+                $active={playbackSpeed === 1}
+                onClick={() => setPlaybackSpeed(1)}
+                disabled={!isRunning}
+              >
+                1x (1 seg)
+              </SpeedButton>
+              <SpeedButton
+                $active={playbackSpeed === 60}
+                onClick={() => setPlaybackSpeed(60)}
+                disabled={!isRunning}
+              >
+                60x (1 min)
+              </SpeedButton>
+              <SpeedButton
+                $active={playbackSpeed === 1800}
+                onClick={() => setPlaybackSpeed(1800)}
+                disabled={!isRunning}
+              >
+                30x min (30 min)
+              </SpeedButton>
+              <SpeedButton
+                $active={playbackSpeed === 3600}
+                onClick={() => setPlaybackSpeed(3600)}
+                disabled={!isRunning}
+              >
+                1h (1 hora)
+              </SpeedButton>
+            </SpeedButtonGroup>
+            <SpeedHint>
+              {playbackSpeed === 1 && '1 seg simulado = 1 seg real'}
+              {playbackSpeed === 60 && '1 min simulado = 1 seg real'}
+              {playbackSpeed === 1800 && '30 min simulados = 1 seg real'}
+              {playbackSpeed === 3600 && '1 hora simulada = 1 seg real'}
+            </SpeedHint>
+          </SpeedControlContainer>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
             {!isRunning ? (
               <ControlButton
@@ -878,6 +987,7 @@ export function DailySimulationPage() {
               simulationStartTime={simulationStartDate}
               currentSimTime={currentSimTime}
               isPlaying={isRunning}
+              playbackSpeed={playbackSpeed}
               onFlightClick={handleFlightClick}
             />
           )}

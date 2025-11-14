@@ -2,30 +2,45 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
 
-export interface FlightPackage {
+export interface FlightPackageProduct {
   id: number
-  orderId: number
-  productCode: string
-  pieces: number
-  weightKg?: number
-  volumeM3?: number
-  originIATA?: string
-  destinationIATA?: string
   status?: string
+  assignedFlightInstance?: string
+  createdAt?: string
+  order?: {
+    id?: number
+    name?: string
+    destination?: string
+    customer?: string
+  }
+}
+
+export interface FlightPackagesResult {
+  products: FlightPackageProduct[]
+  totals: {
+    productCount: number
+    statusBreakdown: Record<string, number>
+  }
 }
 
 export const flightKeys = {
-  // ...lo que ya tienes
-  packages: (flightId: number) => ['flight', flightId, 'packages'] as const,
+  packages: (flightCode: string) => ['flight', flightCode, 'packages'] as const,
 }
 
-export function useFlightPackages(flightId?: number) {
+export function useFlightPackages(flightCode?: string) {
   return useQuery({
-    queryKey: flightId ? flightKeys.packages(flightId) : ['flight', 'packages', 'disabled'],
-    enabled: !!flightId,
-    queryFn: async (): Promise<FlightPackage[]> => {
-      const { data } = await api.get(`/flights/${flightId}/packages`)
-      return data ?? []
+    queryKey: flightCode ? flightKeys.packages(flightCode) : ['flight', 'packages', 'disabled'],
+    enabled: Boolean(flightCode),
+    queryFn: async (): Promise<FlightPackagesResult> => {
+      const { data } = await api.get(`/query/flights/${flightCode}/products`)
+
+      return {
+        products: (data?.products ?? []) as FlightPackageProduct[],
+        totals: {
+          productCount: data?.productCount ?? data?.products?.length ?? 0,
+          statusBreakdown: data?.statusBreakdown ?? {},
+        },
+      }
     },
   })
 }

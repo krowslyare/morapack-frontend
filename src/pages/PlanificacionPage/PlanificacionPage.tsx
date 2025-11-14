@@ -15,6 +15,187 @@ const Wrapper = styled.div`
   background: #f9fafb;
 `
 
+const DatePickerButton = styled.button`
+  background: #14b8a6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  margin-top: 2px;
+  white-space: nowrap;
+
+  &:hover {
+    background: #0d9488;
+    transform: translateY(-2px);
+  }
+
+  &:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+  }
+`
+
+const ModalOverlay = styled.div<{ $isOpen: boolean }>`
+  display: ${(p) => (p.$isOpen ? 'flex' : 'none')};
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 420px;
+  width: 90%;
+`
+
+const ModalTitle = styled.h3`
+  margin: 0 0 24px 0;
+  font-size: 18px;
+  color: #111827;
+  font-weight: 700;
+`
+
+const DatePickerContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+`
+
+const DayButton = styled.button<{ $isSelected?: boolean; $isToday?: boolean; $isOtherMonth?: boolean }>`
+  aspect-ratio: 1;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: ${(p) => {
+    if (p.$isSelected) return '#14b8a6';
+    if (p.$isToday) return '#e0f2fe';
+    if (p.$isOtherMonth) return '#f9fafb';
+    return 'white';
+  }};
+  color: ${(p) => {
+    if (p.$isSelected) return 'white';
+    if (p.$isOtherMonth) return '#d1d5db';
+    return '#111827';
+  }};
+  font-weight: ${(p) => (p.$isToday ? 700 : 500)};
+  cursor: ${(p) => (p.$isOtherMonth ? 'not-allowed' : 'pointer')};
+  font-size: 13px;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    border-color: #14b8a6;
+    background: ${(p) => (p.$isOtherMonth ? '#f9fafb' : '#f0fdfa')};
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+`
+
+const TimeInputContainer = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+`
+
+const TimeInput = styled.input`
+  padding: 10px 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+  }
+`
+
+const MonthNavigation = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+`
+
+const MonthButton = styled.button`
+  background: #f3f4f6;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #e5e7eb;
+  }
+`
+
+const MonthTitle = styled.div`
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+  text-align: center;
+`
+
+const WeekdayLabels = styled.div`
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+  text-align: center;
+`
+
+const WeekdayLabel = styled.div`
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+`
+
+const ModalButtonGroup = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+`
+
+const ModalButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: ${(p) => (p.$variant === 'secondary' ? '#f3f4f6' : '#14b8a6')};
+  color: ${(p) => (p.$variant === 'secondary' ? '#111827' : 'white')};
+
+  &:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+`
+
 const ContentPanel = styled.div`
   background: white;
   border-radius: 12px;
@@ -215,6 +396,23 @@ const ConfigValue = styled.span`
   font-family: 'Courier New', monospace;
 `
 
+const LoadingSpinner = styled.div`
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`
+
 interface OrdersImportState {
   loading: boolean
   result: ImportResultData | null
@@ -234,12 +432,85 @@ export function PlanificacionPage() {
     loading: false,
     result: null,
   })
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [pickerDate, setPickerDate] = useState<Date>(new Date())
+  const [pickerHour, setPickerHour] = useState<string>('00')
+  const [pickerMinute, setPickerMinute] = useState<string>('00')
 
   const formatToYYYYMMDD = (date: Date) => {
     const y = date.getFullYear()
     const m = String(date.getMonth() + 1).padStart(2, '0')
     const d = String(date.getDate()).padStart(2, '0')
     return `${y}${m}${d}`
+  }
+
+  const getDaysInMonth = (date: Date): number => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  }
+
+  const getFirstDayOfMonth = (date: Date): number => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay()
+  }
+
+  const handlePickerDateSelect = (day: number) => {
+    const newDate = new Date(pickerDate.getFullYear(), pickerDate.getMonth(), day)
+    setPickerDate(newDate)
+  }
+
+  const handlePickerConfirm = () => {
+    const hour = String(parseInt(pickerHour) || 0).padStart(2, '0')
+    const minute = String(parseInt(pickerMinute) || 0).padStart(2, '0')
+    const dateStr = pickerDate.toISOString().split('T')[0]
+    const datetimeStr = `${dateStr}T${hour}:${minute}`
+    setSelectedDateTime(datetimeStr)
+    setShowDatePicker(false)
+  }
+
+  const handleMonthChange = (offset: number) => {
+    const newDate = new Date(pickerDate.getFullYear(), pickerDate.getMonth() + offset, 1)
+    setPickerDate(newDate)
+  }
+
+  const renderDatePickerDays = () => {
+    const daysInMonth = getDaysInMonth(pickerDate)
+    const firstDay = getFirstDayOfMonth(pickerDate)
+    const days = []
+
+    // Empty cells for days from previous month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(
+        <DayButton key={`empty-${i}`} disabled $isOtherMonth>
+          -
+        </DayButton>,
+      )
+    }
+
+    // Days of the current month
+    const today = new Date()
+    const isCurrentMonth =
+      pickerDate.getMonth() === today.getMonth() &&
+      pickerDate.getFullYear() === today.getFullYear()
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isToday = isCurrentMonth && day === today.getDate()
+      const isSelected =
+        pickerDate.getFullYear() === new Date(selectedDateTime || Date.now()).getFullYear() &&
+        pickerDate.getMonth() === new Date(selectedDateTime || Date.now()).getMonth() &&
+        day === new Date(selectedDateTime || Date.now()).getDate()
+
+      days.push(
+        <DayButton
+          key={day}
+          $isToday={isToday}
+          $isSelected={isSelected}
+          onClick={() => handlePickerDateSelect(day)}
+        >
+          {day}
+        </DayButton>,
+      )
+    }
+
+    return days
   }
 
   const handleConfirmDate = async () => {
@@ -377,13 +648,34 @@ export function PlanificacionPage() {
         <FormSection>
           <FormGroup>
             <Label htmlFor="simulation-date">Fecha y Hora de Inicio de la Simulación</Label>
-            <DateTimeInput
-              id="simulation-date"
-              type="datetime-local"
-              value={selectedDateTime}
-              onChange={(e) => setSelectedDateTime(e.target.value)}
-              disabled={isLoadingReset || isLoadingConfig}
-            />
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <DateTimeInput
+                  id="simulation-date"
+                  type="datetime-local"
+                  value={selectedDateTime}
+                  onChange={(e) => setSelectedDateTime(e.target.value)}
+                  disabled={isLoadingReset || isLoadingConfig}
+                />
+              </div>
+              <DatePickerButton
+                onClick={() => {
+                  if (selectedDateTime) {
+                    setPickerDate(new Date(selectedDateTime))
+                    const parsedDate = new Date(selectedDateTime)
+                    setPickerHour(String(parsedDate.getHours()).padStart(2, '0'))
+                    setPickerMinute(String(parsedDate.getMinutes()).padStart(2, '0'))
+                  }
+                  setShowDatePicker(true)
+                }}
+                disabled={isLoadingReset || isLoadingConfig}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                  calendar_month
+                </span>
+                Seleccionar
+              </DatePickerButton>
+            </div>
             <span style={{ fontSize: '13px', color: '#6b7280' }}>
               Esta será la hora cero (T0) de tu simulación diaria y la fecha desde la cual se
               cargarán los pedidos.
@@ -430,6 +722,7 @@ export function PlanificacionPage() {
             disabled={!selectedDateTime || isLoadingReset || isLoadingConfig}
             $isLoading={isLoadingConfig}
           >
+            {isLoadingConfig && <LoadingSpinner />}
             {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar Fecha'}
           </Button>
 
@@ -468,6 +761,85 @@ export function PlanificacionPage() {
           </InfoBox>
         )}
       </ContentPanel>
+
+      <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
+        <ModalContent onClick={(e) => e.stopPropagation()}>
+          <ModalTitle>Selecciona una fecha y hora</ModalTitle>
+
+          <MonthNavigation>
+            <MonthButton onClick={() => handleMonthChange(-1)}>← Mes anterior</MonthButton>
+            <MonthTitle>
+              {pickerDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+            </MonthTitle>
+            <MonthButton onClick={() => handleMonthChange(1)}>Mes siguiente →</MonthButton>
+          </MonthNavigation>
+
+          <WeekdayLabels>
+            <WeekdayLabel>Do</WeekdayLabel>
+            <WeekdayLabel>Lu</WeekdayLabel>
+            <WeekdayLabel>Ma</WeekdayLabel>
+            <WeekdayLabel>Mi</WeekdayLabel>
+            <WeekdayLabel>Ju</WeekdayLabel>
+            <WeekdayLabel>Vi</WeekdayLabel>
+            <WeekdayLabel>Sa</WeekdayLabel>
+          </WeekdayLabels>
+
+          <DatePickerContainer>{renderDatePickerDays()}</DatePickerContainer>
+
+          <div style={{ marginBottom: '16px', fontSize: '13px', color: '#6b7280' }}>
+            Fecha seleccionada:{' '}
+            <strong style={{ color: '#111827' }}>
+              {pickerDate.toLocaleDateString('es-ES', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </strong>
+          </div>
+
+          <Label style={{ marginBottom: '8px' }}>Hora y Minuto</Label>
+          <TimeInputContainer>
+            <TimeInput
+              type="number"
+              min="0"
+              max="23"
+              value={pickerHour}
+              onChange={(e) =>
+                setPickerHour(
+                  String(Math.min(23, Math.max(0, parseInt(e.target.value) || 0))).padStart(
+                    2,
+                    '0',
+                  ),
+                )
+              }
+              placeholder="HH"
+            />
+            <TimeInput
+              type="number"
+              min="0"
+              max="59"
+              value={pickerMinute}
+              onChange={(e) =>
+                setPickerMinute(
+                  String(Math.min(59, Math.max(0, parseInt(e.target.value) || 0))).padStart(
+                    2,
+                    '0',
+                  ),
+                )
+              }
+              placeholder="MM"
+            />
+          </TimeInputContainer>
+
+          <ModalButtonGroup>
+            <ModalButton $variant="secondary" onClick={() => setShowDatePicker(false)}>
+              Cancelar
+            </ModalButton>
+            <ModalButton onClick={handlePickerConfirm}>Confirmar</ModalButton>
+          </ModalButtonGroup>
+        </ModalContent>
+      </ModalOverlay>
     </Wrapper>
   )
 }

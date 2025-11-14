@@ -65,17 +65,23 @@ export function FlightPackagesModal({
   flightCode?: string
   onClose: () => void
 }) {
-  const { data, isLoading, isError } = useFlightPackages(flightId)
+  const { data, isLoading, isError } = useFlightPackages(flightCode)
+  const products = data?.products ?? []
+  const formatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat('es-PE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }),
+    [],
+  )
 
   const totals = useMemo(() => {
-    const items = data ?? []
     return {
-      count: items.length,
-      pieces: items.reduce((s, x) => s + (x.pieces ?? 0), 0),
-      weight: items.reduce((s, x) => s + (x.weightKg ?? 0), 0),
-      volume: items.reduce((s, x) => s + (x.volumeM3 ?? 0), 0),
+      count: data?.totals.productCount ?? products.length,
+      statusBreakdown: data?.totals.statusBreakdown ?? {},
     }
-  }, [data])
+  }, [data, products.length])
 
   return (
     <Overlay>
@@ -85,13 +91,27 @@ export function FlightPackagesModal({
           <CloseBtn onClick={onClose}>Cerrar</CloseBtn>
         </Toolbar>
 
-        {isLoading && <div style={{color:'#000000ff'}}>Cargando paquetes…</div>}
+        {!flightCode && (
+          <ErrorText>El código del vuelo es requerido para consultar paquetes.</ErrorText>
+        )}
+
+        {isLoading && <div style={{ color: '#000000ff' }}>Cargando paquetes…</div>}
         {isError && <ErrorText>Error al cargar paquetes.</ErrorText>}
 
-        {!isLoading && !isError && (
+        {!isLoading && !isError && flightCode && (
           <>
-            <div style={{fontSize:12, color:'#6b7280'}}>
-              Paquetes: <b>{totals.count}</b> · Piezas: <b>{totals.pieces}</b> · Peso: <b>{totals.weight.toFixed(2)} kg</b> · Volumen: <b>{totals.volume.toFixed(3)} m³</b>
+            <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <span>
+                Productos asignados: <b>{totals.count}</b>
+              </span>
+              <span>
+                Estados:{' '}
+                {Object.entries(totals.statusBreakdown).length === 0
+                  ? '—'
+                  : Object.entries(totals.statusBreakdown)
+                      .map(([status, value]) => `${status}: ${value}`)
+                      .join(' · ')}
+              </span>
             </div>
 
             <TableWrap>
@@ -100,27 +120,25 @@ export function FlightPackagesModal({
                   <tr>
                     <th>ID</th>
                     <th>Orden</th>
-                    <th>Producto</th>
-                    <th>Pzas</th>
-                    <th>Peso (kg)</th>
-                    <th>Vol (m³)</th>
-                    <th>Ori</th>
-                    <th>Dest</th>
+                    <th>Nombre de orden</th>
+                    <th>Destino</th>
+                    <th>Cliente</th>
                     <th>Estado</th>
+                    <th>Instancia asignada</th>
+                    <th>Creado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(data ?? []).map(p => (
+                  {products.map((p) => (
                     <tr key={p.id}>
                       <td>{p.id}</td>
-                      <td>{p.orderId}</td>
-                      <td>{p.productCode}</td>
-                      <td>{p.pieces ?? 0}</td>
-                      <td>{p.weightKg ?? '-'}</td>
-                      <td>{p.volumeM3 ?? '-'}</td>
-                      <td>{p.originIATA ?? '-'}</td>
-                      <td>{p.destinationIATA ?? '-'}</td>
-                      <td>{p.status ?? '-'}</td>
+                      <td>{p.order?.id ?? '-'}</td>
+                      <td>{p.order?.name ?? '—'}</td>
+                      <td>{p.order?.destination ?? '—'}</td>
+                      <td>{p.order?.customer ?? '—'}</td>
+                      <td>{p.status ?? '—'}</td>
+                      <td>{p.assignedFlightInstance ?? '—'}</td>
+                      <td>{p.createdAt ? formatter.format(new Date(p.createdAt)) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
