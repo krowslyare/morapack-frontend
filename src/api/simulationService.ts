@@ -6,6 +6,7 @@ export interface DailyAlgorithmRequest {
   simulationStartTime: string // ISO 8601 format
   simulationDurationHours: number
   useDatabase: boolean
+  simulationSpeed?: number // Optional: 1 = normal, 60 = 60x faster, etc.
 }
 
 export interface DailyAlgorithmResponse {

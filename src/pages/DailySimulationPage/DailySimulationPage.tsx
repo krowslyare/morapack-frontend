@@ -367,9 +367,23 @@ function AnimatedFlights({
 
     const timeline = timelineRef.current
 
-    // Find new instances that haven't been processed
+    // Only process flights departing within the next 30 minutes to optimize performance
+    // Older/future flights won't create markers until they're about to depart
+    const thirttyMinutesFromNow = new Date(currentSimTime.getTime() + 30 * 60 * 1000)
+    const thirtyMinutesAgo = new Date(currentSimTime.getTime() - 30 * 60 * 1000)
+
+    // Find new instances that haven't been processed and are about to fly
     const newInstances = flightInstances
-      .filter((f) => !processedIdsRef.current.has(f.id))
+      .filter((f) => {
+        const dept = new Date(f.departureTime)
+        const arr = new Date(f.arrivalTime)
+        // Include flights that: depart soon, are currently flying, or recently arrived (cleanup window)
+        return (
+          !processedIdsRef.current.has(f.id) &&
+          dept <= thirttyMinutesFromNow &&
+          arr >= thirtyMinutesAgo
+        )
+      })
       .slice(0, MAX_FLIGHTS - processedIdsRef.current.size)
 
     if (newInstances.length === 0) return
@@ -394,10 +408,12 @@ function AnimatedFlights({
       animDataRef.current[flight.id] = { origin, destination, ctrl }
 
       // Calculate initial bearing (heading) from origin to destination
+      // Add 90 degree offset because airplane image points left (270°), not right (90°)
       const initialBearing = calculateBearing(origin, destination)
+      const adjustedInitialBearing = (initialBearing + 90) % 360
 
       // Create marker with rotation
-      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${initialBearing}deg);transition:transform 0.3s linear;" />`
+      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${adjustedInitialBearing}deg);transition:transform 0.3s linear;" />`
       const planeIcon = new DivIcon({
         className: 'plane-icon',
         html: planeHTML,
@@ -436,12 +452,14 @@ function AnimatedFlights({
             // Calculate bearing from tangent of Bezier curve for accurate direction
             const tangent = bezierTangent(animObj.progress, origin, ctrl, destination)
             const bearing = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
+            // Add 90 degree offset because airplane image points left, not right
+            const adjustedBearing = (bearing + 90) % 360
 
             const markerElement = marker.getElement()
             if (markerElement) {
               const img = markerElement.querySelector('img') as HTMLImageElement
               if (img) {
-                img.style.transform = `rotate(${bearing}deg)`
+                img.style.transform = `rotate(${adjustedBearing}deg)`
               }
             }
           },
@@ -631,6 +649,7 @@ export function DailySimulationPage() {
         simulationStartTime: simTime.toISOString(),
         simulationDurationHours: 24, // 1 day
         useDatabase: true,
+        simulationSpeed: playbackSpeed, // Pass the current playback speed to backend
       })
 
       // Validate algorithm response
@@ -838,28 +857,28 @@ export function DailySimulationPage() {
               <SpeedButton
                 $active={playbackSpeed === 1}
                 onClick={() => setPlaybackSpeed(1)}
-                disabled={!isRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning}
               >
                 1x (1 seg)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 60}
                 onClick={() => setPlaybackSpeed(60)}
-                disabled={!isRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning}
               >
                 60x (1 min)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 1800}
                 onClick={() => setPlaybackSpeed(1800)}
-                disabled={!isRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning}
               >
                 30x min (30 min)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 3600}
                 onClick={() => setPlaybackSpeed(3600)}
-                disabled={!isRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning}
               >
                 1h (1 hora)
               </SpeedButton>
@@ -936,17 +955,11 @@ export function DailySimulationPage() {
             </CircleMarker>
           ))}
 
-          {/* Flight routes - show routes for upcoming and active flights */}
-          {currentSimTime &&
+          {/* Flight routes - only show route for selected flight (performance optimization) */}
+          {selectedFlight &&
+            currentSimTime &&
             flightInstances
-              .filter((f) => {
-                const dept = new Date(f.departureTime)
-                const arr = new Date(f.arrivalTime)
-                // Show routes for flights departing within next 2 hours or currently flying
-                const twoHoursFromNow = new Date(currentSimTime.getTime() + 2 * 60 * 60 * 1000)
-                return dept <= twoHoursFromNow && arr >= currentSimTime
-              })
-              .slice(0, 150)
+              .filter((f) => f.flightId === selectedFlight.id)
               .map((flight) => {
                 const origin: LatLngTuple = [
                   flight.originAirport.latitude,
