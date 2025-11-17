@@ -310,6 +310,7 @@ interface AnimatedFlightsProps {
   isPlaying: boolean
   playbackSpeed: number
   onFlightClick: (flight: FlightInstance) => void
+  onFlightHover: (flight: FlightInstance | null) => void
 }
 
 function AnimatedFlights({
@@ -319,6 +320,7 @@ function AnimatedFlights({
   isPlaying,
   playbackSpeed,
   onFlightClick,
+  onFlightHover,
 }: AnimatedFlightsProps) {
   const map = useMap()
   const markersRef = useRef<Record<string, Marker>>({})
@@ -479,6 +481,8 @@ function AnimatedFlights({
         },
         startOffsetSeconds
       )
+      marker.on('mouseover', () => onFlightHover(flight))
+      marker.on('mouseout', () => onFlightHover(null))
     })
 
     // Seek to current time to update new animations
@@ -530,6 +534,7 @@ export function DailySimulationPage() {
   // Data
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+  const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
 
   // Loading states
   const [isLoadingData, setIsLoadingData] = useState(false)
@@ -642,31 +647,62 @@ export function DailySimulationPage() {
     if (!simulationStartDate) return
 
     setAlgorithmRunning(true)
+    const algorithmStartTime = performance.now()
+    
     try {
-      // Use the current simulation time directly
-      console.log(`Running algorithm at simulation time: ${simTime.toISOString()}`)
+      // Log request details
+      const dayNumber = Math.floor(
+        (simTime.getTime() - simulationStartDate.getTime()) / (24 * 60 * 60 * 1000)
+      )
+      
+      console.group(`%c📊 Algorithm Execution - Day ${dayNumber + 1}`, 'color: #14b8a6; font-weight: bold; font-size: 14px')
+      console.log('Simulation time:', simTime.toISOString())
+      console.log('Playback speed:', `${playbackSpeed}x`)
+      console.log('Request:', {
+        simulationStartTime: simTime.toISOString(),
+        simulationDurationHours: 24,
+        useDatabase: true,
+        simulationSpeed: playbackSpeed,
+      })
+      
       const response = await simulationService.executeDaily({
         simulationStartTime: simTime.toISOString(),
-        simulationDurationHours: 24, // 1 day
+        simulationDurationHours: 24,
         useDatabase: true,
-        simulationSpeed: playbackSpeed, // Pass the current playback speed to backend
+        simulationSpeed: playbackSpeed,
       })
+
+      const algorithmDuration = (performance.now() - algorithmStartTime) / 1000
 
       // Validate algorithm response
       if (!response) {
         console.error('executeDaily returned null/undefined')
+        console.groupEnd()
         toast.error('Error: respuesta del algoritmo inválida')
         return
       }
 
-      const dayNumber = Math.floor(
-        (simTime.getTime() - simulationStartDate.getTime()) / (24 * 60 * 60 * 1000)
-      )
-      console.log(`Day ${dayNumber} algorithm completed:`, response)
+      // Log detailed response
+      console.log('Response received:', {
+        success: response.success,
+        executionTimeSeconds: response.executionTimeSeconds,
+        totalOrders: response.totalOrders,
+        assignedOrders: response.assignedOrders,
+        unassignedOrders: response.unassignedOrders,
+        totalProducts: response.totalProducts,
+        assignedProducts: response.assignedProducts,
+        unassignedProducts: response.unassignedProducts,
+        score: response.score,
+      })
+      
+      console.log('Frontend received response in:', `${algorithmDuration.toFixed(2)}s`)
+      console.log('Message:', response.message)
+      console.groupEnd()
+      
       toast.success(`Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`)
 
       // Reload flight statuses (for next day)
-      console.log('Reloading flight statuses after algorithm...')
+      console.log('📍 Reloading flight statuses from database...')
       const updatedResponse = await simulationService.getFlightStatuses()
 
       // Validate updated response
@@ -676,18 +712,21 @@ export function DailySimulationPage() {
         return
       }
 
-      console.log(`Reloaded ${updatedResponse.flights.length} flight statuses`)
+      console.log(`✈️ Loaded ${updatedResponse.flights.length} active flights`)
+      console.log('Flight statistics:', updatedResponse.statistics)
+      
       flightStatusesRef.current = updatedResponse.flights
 
       // Add instances for the next day using rolling window
       addNextDayInstances()
     } catch (error) {
-      console.error('Error running algorithm:', error)
+      const errorDuration = (performance.now() - algorithmStartTime) / 1000
+      console.error(`❌ Algorithm error (after ${errorDuration.toFixed(2)}s):`, error)
       toast.error('Error al ejecutar el algoritmo')
     } finally {
       setAlgorithmRunning(false)
     }
-  }, [simulationStartDate, addNextDayInstances])
+  }, [simulationStartDate, addNextDayInstances, playbackSpeed])
 
   // Simulation clock - advances by playbackSpeed * 1000ms every real second
   const startSimulationClock = useCallback(() => {
@@ -783,10 +822,18 @@ export function DailySimulationPage() {
 
   const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
   const tileAttribution = '&copy; OpenStreetMap & CARTO'
+  const MAIN_HUB_CODES = ['SPIM', 'EBCI', 'UBBB']
+  const mainWarehouses = airports.filter(
+    (airport: any) => airport.codeIATA && MAIN_HUB_CODES.includes(airport.codeIATA.toUpperCase()),
+  )
 
   // Handle flight click
   const handleFlightClick = (flight: FlightInstance) => {
     setSelectedFlight({ id: flight.flightId, code: flight.flightCode })
+  }
+
+  const handleFlightHover = (flight: FlightInstance | null) => {
+    setHoveredFlightId(flight ? flight.flightId : null)
   }
 
   // Count active flights
@@ -929,8 +976,52 @@ export function DailySimulationPage() {
         >
           <Pane name="routes" style={{ zIndex: 400 }} />
           <Pane name="airports" style={{ zIndex: 500 }} />
+          <Pane name="main-hubs" style={{ zIndex: 600 }} />
 
           <TileLayer attribution={tileAttribution} url={tileUrl} noWrap={true} />
+
+          {/* Main warehouses */}
+          {mainWarehouses.map((airport: any) => {
+            const center: LatLngTuple = [
+              parseFloat(airport.latitude),
+              parseFloat(airport.longitude),
+            ]
+            const hubFill = '#f6b53b'
+            const hubStroke = '#ebc725'
+
+            return (
+              <g key={`hub-${airport.id}`}>
+                <CircleMarker
+                  center={center}
+                  radius={18}
+                  color="transparent"
+                  fillColor={hubFill}
+                  fillOpacity={0.2}
+                  weight={0}
+                  pane="main-hubs"
+                />
+
+                <CircleMarker
+                  center={center}
+                  radius={10}
+                  color={hubStroke}
+                  fillColor={hubFill}
+                  fillOpacity={0.95}
+                  weight={2.5}
+                  pane="main-hubs"
+                >
+                  <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                    <div style={{ textAlign: 'center' }}>
+                      <strong>{airport.cityName}</strong>
+                      <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
+                        Hub principal ({airport.codeIATA || airport.alias})
+                      </div>
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              </g>
+            )
+          })}
 
           {/* Airports */}
           {airports.map((airport: any) => (
@@ -955,11 +1046,14 @@ export function DailySimulationPage() {
             </CircleMarker>
           ))}
 
-          {/* Flight routes - only show route for selected flight (performance optimization) */}
-          {selectedFlight &&
-            currentSimTime &&
+          {/* Flight routes - show for selected flight and hovered preview */}
+          {currentSimTime &&
             flightInstances
-              .filter((f) => f.flightId === selectedFlight.id)
+              .filter((f) => {
+                if (selectedFlight && f.flightId === selectedFlight.id) return true
+                if (hoveredFlightId !== null && f.flightId === hoveredFlightId) return true
+                return false
+              })
               .map((flight) => {
                 const origin: LatLngTuple = [
                   flight.originAirport.latitude,
@@ -980,14 +1074,16 @@ export function DailySimulationPage() {
                 const dept = new Date(flight.departureTime)
                 const arr = new Date(flight.arrivalTime)
                 const isActive = currentSimTime >= dept && currentSimTime <= arr
+                const isSelected = selectedFlight?.id === flight.flightId
+                const isHovered = hoveredFlightId === flight.flightId && !isSelected
 
                 return (
                   <Polyline
                     key={flight.id}
                     positions={arc}
-                    color={isActive ? '#10b981' : '#f59e0b'}
-                    opacity={isActive ? 0.6 : 0.3}
-                    weight={isActive ? 2 : 1}
+                    color={isHovered ? '#3b82f6' : isActive ? '#10b981' : '#f59e0b'}
+                    opacity={isHovered ? 0.85 : isActive ? 0.6 : 0.3}
+                    weight={isSelected ? 3 : isHovered ? 2.5 : isActive ? 2 : 1}
                     pane="routes"
                   />
                 )
@@ -1002,6 +1098,7 @@ export function DailySimulationPage() {
               isPlaying={isRunning}
               playbackSpeed={playbackSpeed}
               onFlightClick={handleFlightClick}
+              onFlightHover={handleFlightHover}
             />
           )}
         </MapContainer>

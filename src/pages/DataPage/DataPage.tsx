@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styled from 'styled-components'
 import {
   uploadAirports,
   uploadFlights,
+  getDataStatus,
   type ImportResultData,
 } from '../../api'
 import { toast } from 'react-toastify'
@@ -37,6 +38,35 @@ const Description = styled.p`
   margin: 0 0 28px 0;
   color: #6b7280;
   font-size: 14px;
+`
+
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+`
+
+const StatCard = styled.div`
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  padding: 20px;
+  border-radius: 10px;
+  color: white;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+`
+
+const StatValue = styled.div`
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+`
+
+const StatLabel = styled.div`
+  font-size: 12px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 `
 
 const UploadSection = styled.div`
@@ -119,9 +149,42 @@ interface UploadState {
   result: ImportResultData | null
 }
 
+interface DataStats {
+  airports: number
+  flights: number
+  orders: number
+  loading: boolean
+}
+
 export function DataPage() {
   const [airportsState, setAirportsState] = useState<UploadState>({ loading: false, result: null })
   const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
+  const [stats, setStats] = useState<DataStats>({ airports: 0, flights: 0, orders: 0, loading: true })
+
+  // Load initial data statistics
+  useEffect(() => {
+    loadStats()
+  }, [])
+
+  const loadStats = async () => {
+    try {
+      setStats((s) => ({ ...s, loading: true }))
+      const response = await getDataStatus()
+      if (response.success && response.statistics) {
+        setStats({
+          airports: response.statistics.airports,
+          flights: response.statistics.flights,
+          orders: response.statistics.orders,
+          loading: false,
+        })
+      } else {
+        setStats({ airports: 0, flights: 0, orders: 0, loading: false })
+      }
+    } catch (e) {
+      console.error('Error loading data statistics:', e)
+      setStats({ airports: 0, flights: 0, orders: 0, loading: false })
+    }
+  }
 
   // === Airports ===
   const handleAirportsUpload = async () => {
@@ -135,6 +198,8 @@ export function DataPage() {
         const count = (result as any).count ?? 0
         const cities = (result as any).cities ?? 0
         toast.success(`Aeropuertos cargados (${count} aeropuertos, ${cities} ciudades)`)
+        // Reload statistics
+        await loadStats()
       } else {
         toast.error(result.message || 'Error al cargar aeropuertos')
       }
@@ -162,6 +227,8 @@ export function DataPage() {
       if (result.success) {
         const count = (result as any).count ?? 0
         toast.success(`Vuelos cargados (${count} vuelos)`)
+        // Reload statistics
+        await loadStats()
       } else {
         toast.error(result.message || 'Error al cargar vuelos')
       }
@@ -184,6 +251,22 @@ export function DataPage() {
       <ContentPanel>
         <Title>Carga de Datos</Title>
         <Description>Actualiza la información almacenada en el backend.</Description>
+
+        {/* === Statistics === */}
+        <StatsGrid>
+          <StatCard>
+            <StatValue>{stats.loading ? '...' : stats.airports.toLocaleString()}</StatValue>
+            <StatLabel>Aeropuertos</StatLabel>
+          </StatCard>
+          <StatCard>
+            <StatValue>{stats.loading ? '...' : stats.flights.toLocaleString()}</StatValue>
+            <StatLabel>Vuelos</StatLabel>
+          </StatCard>
+          <StatCard>
+            <StatValue>{stats.loading ? '...' : stats.orders.toLocaleString()}</StatValue>
+            <StatLabel>Órdenes</StatLabel>
+          </StatCard>
+        </StatsGrid>
 
         {/* === Airports === */}
         <UploadSection>
