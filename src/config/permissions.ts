@@ -85,7 +85,7 @@ export const MODULE_INFO: Record<ModuleKey, {
   path: string
 }> = {
   envios: {
-    icon: 'local_shipping',
+    icon: 'box',
     label: 'ENVIOS',
     path: '/envios',
   },
@@ -95,17 +95,17 @@ export const MODULE_INFO: Record<ModuleKey, {
     path: '/datos',
   },
   planificacion: {
-    icon: 'calendar_month',
+    icon: 'settings',
     label: 'PLANIFICACION',
     path: '/planificacion',
   },
   'simulacion-diaria': {
-    icon: 'wb_sunny',
+    icon: 'play_circle',
     label: 'SIMULACION DIARIA',
     path: '/simulacion/diaria',
   },
   'simulacion-semanal': {
-    icon: 'date_range',
+    icon: 'calendar_month',
     label: 'SIMULACION SEMANAL',
     path: '/simulacion/semanal',
   },

@@ -51,14 +51,19 @@ export async function uploadOrders(file: File): Promise<ImportResultData> {
 }
 
 /**
- * Get import service status
- * @returns Service status information
+ * Get data status (count of airports, flights, orders in database)
+ * @returns Data status with counts
  */
-export async function getImportStatus(): Promise<{
+export async function getDataStatus(): Promise<{
+  success: boolean
   message: string
-  endpoints: Record<string, string>
+  statistics: {
+    airports: number
+    flights: number
+    orders: number
+  }
 }> {
-  const response = await api.get('/data-import/status')
+  const response = await api.get('/data/status')
   return response.data
 }
 
