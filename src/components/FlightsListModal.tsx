@@ -3,119 +3,142 @@ import type { FlightSchema } from '../types'
 
 const Overlay = styled.div`
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 20000;
+  backdrop-filter: blur(2px);
   animation: fadeIn 0.2s ease-in;
 
   @keyframes fadeIn {
     from {
       opacity: 0;
+      transform: scale(0.98);
     }
     to {
       opacity: 1;
+      transform: scale(1);
     }
   }
 `
 
 const Modal = styled.div`
-  background: white;
-  border-radius: 16px;
-  padding: 0;
-  width: 90%;
-  max-width: 800px;
+  background: #ffffff;
+  border-radius: 18px;
+  width: min(820px, 96vw);
   max-height: 90vh;
   overflow-y: auto;
   box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  position: relative;
-  animation: slideUp 0.3s ease-out;
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(20px);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
+    0 24px 48px rgba(15, 23, 42, 0.35),
+    0 0 0 1px rgba(148, 163, 184, 0.2);
+  display: flex;
+  flex-direction: column;
 `
 
 const Header = styled.div`
-  padding: 24px;
+  padding: 18px 24px 14px;
   border-bottom: 1px solid #e5e7eb;
-  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 `
 
-const CloseButton = styled.button`
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
+const TitleBlock = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-  color: #6b7280;
-  font-size: 20px;
-
-  &:hover {
-    background: #f3f4f6;
-    color: #111827;
-  }
+  flex-direction: column;
+  gap: 4px;
 `
 
 const Title = styled.h2`
   margin: 0;
-  font-size: 22px;
-  color: #111827;
-  font-weight: 600;
+  font-size: 20px;
+  color: #0f172a;
+  font-weight: 700;
 `
 
 const Subtitle = styled.p`
-  margin: 4px 0 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 13px;
   color: #6b7280;
 `
 
+const CloseButton = styled.button`
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  color: #6b7280;
+  font-size: 18px;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+    transform: translateY(-1px);
+  }
+`
+
 const Content = styled.div`
-  padding: 24px;
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+`
+
+const SummaryRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: #6b7280;
+`
+
+const SummaryChip = styled.div`
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+`
+
+const SummaryStrong = styled.span`
+  color: #111827;
+  font-weight: 600;
 `
 
 const FlightsList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  margin-top: 4px;
 `
 
 const FlightItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
+  padding: 12px 14px;
   background: #f9fafb;
+  border-radius: 10px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
 
   &:hover {
     background: #f3f4f6;
     border-color: #d1d5db;
+    transform: translateY(-1px);
   }
 `
 
@@ -124,17 +147,18 @@ const FlightInfo = styled.div`
   flex-direction: column;
   gap: 4px;
   flex: 1;
+  min-width: 0;
 `
 
 const FlightCode = styled.div`
-  font-size: 16px;
+  font-size: 15px;
   color: #111827;
   font-weight: 600;
 `
 
 const FlightRoute = styled.div`
   font-size: 13px;
-  color: #6b7280;
+  color: #4b5563;
 `
 
 const FlightDetails = styled.div`
@@ -143,10 +167,13 @@ const FlightDetails = styled.div`
 `
 
 const FlightStatus = styled.span<{ $status: string }>`
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
   background: ${(props) => {
     switch (props.$status) {
       case 'PROGRAMADO':
@@ -181,28 +208,31 @@ const EmptyState = styled.div`
   text-align: center;
   padding: 40px 20px;
   color: #9ca3af;
+  font-size: 14px;
 `
 
 const Footer = styled.div`
-  padding: 16px 24px;
+  padding: 14px 24px 18px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: center;
 `
 
 const Button = styled.button`
-  padding: 12px 32px;
-  border-radius: 8px;
+  padding: 10px 26px;
+  border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
   border: none;
   background: #14b8a6;
   color: white;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.1s;
 
   &:hover {
     background: #0d9488;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 16px rgba(13, 148, 136, 0.35);
   }
 `
 
@@ -213,20 +243,34 @@ interface FlightsListModalProps {
 }
 
 export function FlightsListModal({ airportName, flights, onClose }: FlightsListModalProps) {
+  const scheduledCount = flights.length
+  const activeCount = flights.filter((f) => f.status === 'EN_VUELO').length
+
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
         <Header>
-          <Title>Vuelos Programados</Title>
-          <Subtitle>
-            {airportName} • {flights.length} vuelo{flights.length !== 1 ? 's' : ''}
-          </Subtitle>
+          <TitleBlock>
+            <Title>Vuelos programados</Title>
+            <Subtitle>
+              {airportName} • {scheduledCount} vuelo{scheduledCount !== 1 ? 's' : ''}
+            </Subtitle>
+          </TitleBlock>
           <CloseButton onClick={onClose}>✕</CloseButton>
         </Header>
 
         <Content>
+          <SummaryRow>
+            <SummaryChip>
+              Total: <SummaryStrong>{scheduledCount}</SummaryStrong>
+            </SummaryChip>
+            <SummaryChip>
+              En vuelo: <SummaryStrong>{activeCount}</SummaryStrong>
+            </SummaryChip>
+          </SummaryRow>
+
           {flights.length === 0 ? (
-            <EmptyState>No hay vuelos programados para este aeropuerto</EmptyState>
+            <EmptyState>No hay vuelos programados para este aeropuerto.</EmptyState>
           ) : (
             <FlightsList>
               {flights.map((flight) => (
@@ -238,9 +282,11 @@ export function FlightsListModal({ airportName, flights, onClose }: FlightsListM
                     </FlightRoute>
                     <FlightDetails>
                       Capacidad: {flight.usedCapacity || 0}/{flight.maxCapacity} • Tiempo de
-                      transporte: {flight.transportTimeDays}d • Frecuencia: {flight.dailyFrequency}x/día
+                      transporte: {flight.transportTimeDays}d • Frecuencia:{' '}
+                      {flight.dailyFrequency}x/día
                     </FlightDetails>
                   </FlightInfo>
+
                   <FlightStatus $status={flight.status || 'PROGRAMADO'}>
                     {flight.status || 'PROGRAMADO'}
                   </FlightStatus>

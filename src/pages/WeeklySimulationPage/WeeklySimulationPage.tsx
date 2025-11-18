@@ -9,6 +9,10 @@ import { WeeklyKPICard } from "../../components/ui/WeeklyKPICard"
 import { toast } from "react-toastify"
 import { useMap } from "react-leaflet"
 import { useSimulationStore } from "../../store/useSimulationStore"
+import type { Continent } from '../../types/Continent'
+
+import type { SimAirport } from '../../hooks/useFlightSimulation'
+import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 
 // ====================== Styled =========================
 const Wrapper = styled.div`
@@ -247,6 +251,8 @@ const KPIContainer = styled.div`
   gap: 8px;
 `
 
+
+
 // =============================================================
 //                 AnimatedFlights (igual que diario)
 // =============================================================
@@ -277,6 +283,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   const markersRef = useRef<Record<string, Marker>>({})
   const timelineRef = useRef<gsap.core.Timeline | null>(null)
   const processedRef = useRef<Set<string>>(new Set())
+  const arrivalTimesRef = useRef<Record<string, number>>({})
 
   const MAX_FLIGHTS = 300
 
@@ -286,9 +293,13 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     return () => {
       timelineRef.current?.kill()
       Object.values(markersRef.current).forEach(m => m.remove())
+      markersRef.current = {}
+      processedRef.current.clear()
+      arrivalTimesRef.current = {}
     }
   }, [map])
 
+  // 2) Añadir vuelos al timeline + hacer seek al tiempo actual
   useEffect(() => {
     if (!timelineRef.current || flightInstances.length === 0) return
 
@@ -321,17 +332,18 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         const dest: LatLngTuple   = [f.destinationAirport.latitude, f.destinationAirport.longitude]
         const ctrl = computeControlPoint(origin, dest)
 
+        
         const initialAngle = (calculateBearing(origin, dest) + 90) % 360
         
 
         const icon = new DivIcon({
-        className: 'plane-icon',
-        html: `<img src="/airplane.png"
-                    style="width:20px;height:20px;display:block;
-                            transform-origin:50% 50%;
-                            transform:rotate(${initialAngle}deg);" />`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
+            className: 'plane-icon',
+            html: `<img src="/airplane.png"
+                        style="width:20px;height:20px;display:block;
+                                transform-origin:50% 50%;
+                                transform:rotate(${initialAngle}deg);" />`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
         })
 
         const marker = L.marker(origin, { icon }).addTo(map)
@@ -344,6 +356,8 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 
         const depMs = new Date(f.departureTime).getTime()
         const arrMs = new Date(f.arrivalTime).getTime()
+        arrivalTimesRef.current[f.id] = arrMs
+
         const durationSec = (arrMs - depMs) / 1000
         const offsetSec   = (depMs - simulationStartTime.getTime()) / 1000
 
@@ -382,18 +396,57 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         )
     })
 
+    
     const elapsedSec = (currentSimTime.getTime() - simulationStartTime.getTime()) / 1000
-    timeline.seek(elapsedSec)
+    timeline.seek(elapsedSec, false)
     }, [flightInstances, currentSimTime, playbackSpeed])
 
-  useEffect(() => {
-    if (!timelineRef.current) return
-    timelineRef.current.timeScale(playbackSpeed)
-    isPlaying ? timelineRef.current.play() : timelineRef.current.pause()
-  }, [isPlaying, playbackSpeed])
+    // 3) Limpieza adicional por tiempo de llegada (por si algún onComplete no se dispara)
+    useEffect(() => {
+        if (!currentSimTime) return
+
+        const now = currentSimTime.getTime()
+
+        Object.entries(arrivalTimesRef.current).forEach(([id, arrMs]) => {
+        if (now > arrMs + 60_000) {
+            const marker = markersRef.current[id]
+            if (marker) {
+            marker.remove()
+            delete markersRef.current[id]
+            }
+            delete arrivalTimesRef.current[id]
+        }
+        })
+    }, [currentSimTime])
+
+
+    useEffect(() => {
+        if (!timelineRef.current) return
+        timelineRef.current.timeScale(playbackSpeed)
+        isPlaying ? timelineRef.current.play() : timelineRef.current.pause()
+    }, [isPlaying, playbackSpeed])
 
   return null
 }
+
+function mapAirportToSimAirport(a: any): SimAirport {
+  return {
+    id: a.id,
+    city: a.cityName ?? a.city ?? '',
+    country: a.countryName ?? a.country ?? '',
+    // si tu API ya trae el continente, úsalo; si no, ponle un default válido
+    continent: (a.continent as Continent) ?? 'America', 
+
+    latitude: Number(a.latitude ?? 0),
+    longitude: Number(a.longitude ?? 0),
+
+    // si el aeropuerto del backend no tiene esto, puedes:
+    //  - usar un campo existente (p.ej. a.capacityPercent)
+    //  - o fijar un valor calculado / por defecto
+    capacityPercent: Number(a.capacityPercent ?? 0),
+  }
+}
+
 
 // ===============================
 //        Weekly Simulation
@@ -401,7 +454,6 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 export function WeeklySimulationPage() {
 
     const TOTAL_DAYS = 7
-
     const SPEED_SLOW = 1800   // 30 min simulados por segundo real
     const SPEED_FAST = 3600   // 1 hora simulada por segundo real
 
@@ -416,6 +468,8 @@ export function WeeklySimulationPage() {
     }, [playbackSpeed])
 
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
+
+    const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
 
     const { data: airports } = useAirports()
 
@@ -665,12 +719,15 @@ export function WeeklySimulationPage() {
                     <g key={`hub-${airport.id}`}>
                     <CircleMarker
                         center={center}
-                        radius={18}
-                        color="transparent"
+                        radius={10}
+                        color={hubStroke}
                         fillColor={hubFill}
-                        fillOpacity={0.2}
-                        weight={0}
+                        fillOpacity={0.95}
+                        weight={2.5}
                         pane="main-hubs"
+                        eventHandlers={{
+                            click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                        }}
                     />
                     <CircleMarker
                         center={center}
@@ -680,6 +737,9 @@ export function WeeklySimulationPage() {
                         fillOpacity={0.95}
                         weight={2.5}
                         pane="main-hubs"
+                        eventHandlers={{
+                            click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                        }}
                     >
                         <Tooltip direction="top" offset={[0, -10]} opacity={1}>
                         <div style={{ textAlign: 'center' }}>
@@ -695,16 +755,19 @@ export function WeeklySimulationPage() {
                 })}
 
                 {airports?.map((airport: any) => (
-                <CircleMarker
-                    key={airport.id}
-                    center={[Number(airport.latitude), Number(airport.longitude)]}
-                    radius={6}
-                    color="#14b8a6"
-                    fillColor="#14b8a6"
-                    fillOpacity={0.8}
-                    weight={2}
-                    pane="airports"
-                />
+                    <CircleMarker
+                        key={airport.id}
+                        center={[Number(airport.latitude), Number(airport.longitude)]}
+                        radius={6}
+                        color="#14b8a6"
+                        fillColor="#14b8a6"
+                        fillOpacity={0.8}
+                        weight={2}
+                        pane="airports"
+                        eventHandlers={{
+                        click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                        }}
+                    />
                 ))}
 
                 {hoveredFlight && (
@@ -750,6 +813,15 @@ export function WeeklySimulationPage() {
                 )}
             </MapContainer>
             </MapWrapper>
+
+            {selectedAirport && (
+                <AirportDetailsModal
+                airport={selectedAirport}
+                onClose={() => setSelectedAirport(null)}
+                readOnly
+                />
+            )}
+
         </Wrapper>
         )
 
