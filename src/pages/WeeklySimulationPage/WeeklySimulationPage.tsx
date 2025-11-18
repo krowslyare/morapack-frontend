@@ -8,7 +8,7 @@ import { simulationService, type FlightInstance } from "../../api/simulationServ
 import { WeeklyKPICard } from "../../components/ui/WeeklyKPICard"
 import { toast } from "react-toastify"
 import { useMap } from "react-leaflet"
-
+import { useSimulationStore } from "../../store/useSimulationStore"
 
 // ====================== Styled =========================
 const Wrapper = styled.div`
@@ -100,6 +100,119 @@ const ControlButton = styled.button<{ $variant?: 'play' | 'stop' }>`
     box-shadow: none;
     transform: none;
   }
+`
+
+const MapWrapper = styled.div`
+  width: 100%;
+  height: 70vh;
+  position: relative;
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+`
+
+const SimulationControls = styled.div`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 260px;
+`
+
+const Clock = styled.div`
+  font-size: 24px;
+  font-weight: 900;
+  color: #111827;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  padding: 10px;
+  background: linear-gradient(135deg, #14b8a6 0%, #10b981 100%);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
+`
+
+const ClockLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.9;
+  margin-bottom: 4px;
+`
+
+const StatsRow = styled.div`
+  font-size: 12px;
+  color: #6b7280;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`
+
+const StatLine = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`
+
+const SpeedControlContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const SpeedLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+`
+
+const SpeedButtonGroup = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+`
+
+const SpeedButton = styled.button<{ $active: boolean }>`
+  padding: 8px 12px;
+  border: 2px solid ${(p) => (p.$active ? '#14b8a6' : '#e5e7eb')};
+  background: ${(p) => (p.$active ? '#d1fae5' : 'white')};
+  color: ${(p) => (p.$active ? '#065f46' : '#6b7280')};
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    border-color: #14b8a6;
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const SpeedHint = styled.div`
+  font-size: 10px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 4px;
 `
 
 const KPIPanel = styled.div`
@@ -271,219 +384,334 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 //        Weekly Simulation
 // ===============================
 export function WeeklySimulationPage() {
-  const { data: airports } = useAirports()
 
-  const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
+    const TOTAL_DAYS = 7
 
-  const mainWarehouses =
-    airports?.filter(
-      (a: any) =>
-        a.codeIATA && MAIN_HUB_CODES.includes(a.codeIATA.toUpperCase())
-    ) ?? []
+    const { simulationStartDate, hasValidConfig } = useSimulationStore()
+    const startTime = simulationStartDate ?? new Date()
 
-  const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
-  const [currentTime, setCurrentTime] = useState<Date | null>(null)
-  const startTime = new Date("2025-01-01T00:00:00Z")
-  const [dayIndex, setDayIndex] = useState(0)
-  const [isRunning, setIsRunning] = useState(false)
-  const intervalRef = useRef<any>(null)
+    const [playbackSpeed, setPlaybackSpeed] = useState(3600) // 1 hora simulada por segundo
+    const speedRef = useRef(3600)
 
-  const [kpi, setKpi] = useState({
-    totalFlights: 0,
-    avgCapacityUsage: 0,
-    busiestAirport: "-",
-    busiestDay: "-",
-  })
+    useEffect(() => {
+    speedRef.current = playbackSpeed
+    }, [playbackSpeed])
 
-  const loadWeeklyFlights = useCallback(async () => {
-    try {
-        const response = await simulationService.getFlightStatuses()
+    const { data: airports } = useAirports()
 
-        // VALIDACIÓN — evita el error TS2345
-        if (!airports || airports.length === 0) {
-        toast.error("No hay aeropuertos cargados")
-        return
-        }
+    const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
 
-        const inst = simulationService.generateFlightInstances(
-        response.flights,
-        startTime,   // <-- asegúrate de definirlo antes
-        168,         // 7 días
-        airports     // <-- ahora ya no puede ser undefined
-        )
+    const mainWarehouses =
+        airports?.filter(
+        (a: any) =>
+            a.codeIATA && MAIN_HUB_CODES.includes(a.codeIATA.toUpperCase())
+        ) ?? []
 
-        setFlightInstances(inst)
+    const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
 
-        setKpi({
-        totalFlights: inst.length,
-        avgCapacityUsage: response.statistics?.averageUtilization ?? 0,
+    const [currentTime, setCurrentTime] = useState<Date | null>(null)
+
+    const [dayIndex, setDayIndex] = useState(0)
+
+    const [isRunning, setIsRunning] = useState(false)
+
+    const intervalRef = useRef<any>(null)
+
+    const [kpi, setKpi] = useState({
+        totalFlights: 0,
+        avgCapacityUsage: 0,
         busiestAirport: "-",
         busiestDay: "-",
-        })
+    })
 
-    } catch {
-        toast.error("Error cargando vuelos semanales")
-    }
+    const loadWeeklyFlights = useCallback(async () => {
+        try {
+            const response = await simulationService.getFlightStatuses()
+
+            // VALIDACIÓN — evita el error TS2345
+            if (!airports || airports.length === 0) {
+            toast.error("No hay aeropuertos cargados")
+            return
+            }
+
+            const inst = simulationService.generateFlightInstances(
+            response.flights,
+            startTime,   // <-- asegúrate de definirlo antes
+            168,         // 7 días
+            airports     // <-- ahora ya no puede ser undefined
+            )
+
+            setFlightInstances(inst)
+
+            setKpi({
+            totalFlights: inst.length,
+            avgCapacityUsage: response.statistics?.averageUtilization ?? 0,
+            busiestAirport: "-",
+            busiestDay: "-",
+            })
+
+        } catch {
+            toast.error("Error cargando vuelos semanales")
+        }
     }, [airports, startTime])
 
-  const start = () => {
-    if (!airports) return toast.error("Cargar aeropuertos primero")
+    const stop = () => {
+        setIsRunning(false)
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+        intervalRef.current = null
+        }
+    }
 
-    setIsRunning(true)
-    setCurrentTime(startTime)
+    const start = () => {
 
-    intervalRef.current = setInterval(() => {
-      setCurrentTime(prev => {
-        if (!prev) return prev
+        if (!hasValidConfig() || !simulationStartDate) {
+            toast.error("Debes configurar la fecha en Planificación primero")
+            return
+        }
 
-        const next = new Date(prev.getTime() + 3600 * 1000) // 1 hora simulada por segundo
+        if (!airports) return toast.error("Cargar aeropuertos primero")
 
-        const d = Math.floor((next.getTime() - startTime.getTime()) / (24 * 3600 * 1000))
-        setDayIndex(d)
+        // limpiar cualquier intervalo viejo y estado de semana
+        stop()
+        setDayIndex(0)
+        setCurrentTime(startTime)
 
-        return next
-      })
-    }, 1000)
+        setIsRunning(true)
 
-    loadWeeklyFlights()
-  }
+        intervalRef.current = setInterval(() => {
+        setCurrentTime(prev => {
+            if (!prev) return prev
 
-  const stop = () => {
-    setIsRunning(false)
-    clearInterval(intervalRef.current)
-  }
+            const next = new Date(prev.getTime() + speedRef.current * 1000)
 
-  // ✈ Filtrar vuelos solo del día actual
-  const flightsOfDay = flightInstances.filter(f => {
-    const dep = new Date(f.departureTime)
-    const d = Math.floor((dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000))
-    return d === dayIndex
-  })
-
-  const bounds = airports?.length
-    ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
-    : L.latLngBounds([[-60, -180], [60, 180]])
-
-  return (
-    <Wrapper>
-      <Header>
-        <TitleBlock>
-            <Title>Simulación semanal</Title>
-            <Subtitle>
-            Semana de operación — vuelos programados y uso de capacidad
-            </Subtitle>
-        </TitleBlock>
-
-        <HeaderRight>
-            <DayBadge>Día {Math.min(dayIndex + 1, 7)} / 7</DayBadge>
-
-            <StatusBadge $running={isRunning}>
-            {isRunning ? '● Ejecutando' : '○ Detenido'}
-            </StatusBadge>
-
-            <ControlButton
-            $variant={isRunning ? 'stop' : 'play'}
-            onClick={isRunning ? stop : start}
-            disabled={!airports || airports.length === 0}
-            >
-            {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
-            </ControlButton>
-        </HeaderRight>
-      </Header>
-
-      <KPIPanel>
-        <KPIPanelHeader>
-            <KPIPanelTitle>Indicadores de la semana</KPIPanelTitle>
-            <KPIPanelSubtitle>
-            Corte del día {Math.min(dayIndex + 1, 7)} / 7
-            </KPIPanelSubtitle>
-        </KPIPanelHeader>
-
-        <KPIContainer>
-            <WeeklyKPICard label="Total de vuelos" value={kpi.totalFlights} />
-            <WeeklyKPICard label="Capacidad Promedio" value={kpi.avgCapacityUsage + "%"} />
-            <WeeklyKPICard label="Aeropuerto más activo" value={kpi.busiestAirport} />
-            <WeeklyKPICard label="Día más activo" value={kpi.busiestDay} />
-        </KPIContainer>
-      </KPIPanel>
-
-      <MapContainer bounds={bounds} style={{ height: "70vh", width: "100%" }}>
-        {/* panes opcionales, solo para tener orden */}
-        <Pane name="routes" style={{ zIndex: 400 }} />
-        <Pane name="airports" style={{ zIndex: 450 }} />
-        <Pane name="main-hubs" style={{ zIndex: 500 }} />
-
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
-
-        {/* Hubs principales */}
-        {mainWarehouses.map((airport: any) => {
-            const center: LatLngTuple = [
-            Number(airport.latitude),
-            Number(airport.longitude),
-            ]
-            const hubFill = "#f6b53b"
-            const hubStroke = "#ebc725"
-
-            return (
-            <g key={`hub-${airport.id}`}>
-                <CircleMarker
-                center={center}
-                radius={18}
-                color="transparent"
-                fillColor={hubFill}
-                fillOpacity={0.2}
-                weight={0}
-                pane="main-hubs"
-                />
-                <CircleMarker
-                center={center}
-                radius={10}
-                color={hubStroke}
-                fillColor={hubFill}
-                fillOpacity={0.95}
-                weight={2.5}
-                pane="main-hubs"
-                >
-                <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                    <div style={{ textAlign: "center" }}>
-                    <strong>{airport.cityName}</strong>
-                    <div style={{ fontSize: "11px", color: hubStroke, fontWeight: 700 }}>
-                        Hub principal ({airport.codeIATA || airport.alias})
-                    </div>
-                    </div>
-                </Tooltip>
-                </CircleMarker>
-            </g>
+            const d = Math.floor(
+                (next.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
             )
-        })}
 
-        {/* Aeropuertos */}
-        {airports?.map((airport: any) => (
-            <CircleMarker
-            key={airport.id}
-            center={[Number(airport.latitude), Number(airport.longitude)]}
-            radius={6}
-            color="#14b8a6"
-            fillColor="#14b8a6"
-            fillOpacity={0.8}
-            weight={2}
-            pane="airports"
-            />
-        ))}
+            // si ya completó los 7 días, detener y congelar en el último valor válido
+            if (d >= TOTAL_DAYS) {
+                stop()
+                return prev  // no avanzamos más el reloj
+            }
 
-        {isRunning && currentTime && (
-            <AnimatedFlights
-            flightInstances={flightsOfDay}
-            currentSimTime={currentTime}
-            simulationStartTime={startTime}
-            isPlaying={isRunning}
-            playbackSpeed={3600}
-            onFlightClick={() => {}}
-            onFlightHover={() => {}}
-            />
-        )}
-        </MapContainer>
+            setDayIndex(d)
+            return next
+        })
+        }, 1000)
 
-    </Wrapper>
-  )
+        loadWeeklyFlights()
+    }
+
+    
+
+    // ✈ Filtrar vuelos solo del día actual
+    const flightsOfDay = flightInstances.filter(f => {
+        const dep = new Date(f.departureTime)
+        const d = Math.floor((dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000))
+        return d === dayIndex
+    })
+
+    const activeFlightsCount = currentTime
+    ? flightsOfDay.filter(f => {
+        const dep = new Date(f.departureTime)
+        const arr = new Date(f.arrivalTime)
+        return currentTime >= dep && currentTime <= arr
+        }).length
+    : 0
+
+    const bounds = airports?.length
+        ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
+        : L.latLngBounds([[-60, -180], [60, 180]])
+
+    return (
+        <Wrapper>
+            <Header>
+            <TitleBlock>
+                <Title>Simulación semanal</Title>
+                <Subtitle>
+                Semana de operación — vuelos programados y uso de capacidad
+                </Subtitle>
+            </TitleBlock>
+
+            <HeaderRight>
+                <DayBadge>Día {Math.min(dayIndex + 1, 7)} / 7</DayBadge>
+
+                <StatusBadge $running={isRunning}>
+                {isRunning ? '● Ejecutando' : '○ Detenido'}
+                </StatusBadge>
+
+                <ControlButton
+                $variant={isRunning ? 'stop' : 'play'}
+                onClick={isRunning ? stop : start}
+                disabled={!airports || airports.length === 0}
+                >
+                {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
+                </ControlButton>
+            </HeaderRight>
+            </Header>
+
+            <KPIPanel>
+            <KPIPanelHeader>
+                <KPIPanelTitle>Indicadores de la semana</KPIPanelTitle>
+                <KPIPanelSubtitle>
+                Corte del día {Math.min(dayIndex + 1, 7)} / 7
+                </KPIPanelSubtitle>
+            </KPIPanelHeader>
+
+            <KPIContainer>
+                <WeeklyKPICard label="Total de vuelos" value={kpi.totalFlights} />
+                <WeeklyKPICard label="Capacidad Promedio" value={kpi.avgCapacityUsage + "%"} />
+                <WeeklyKPICard label="Aeropuerto más activo" value={kpi.busiestAirport} />
+                <WeeklyKPICard label="Día más activo" value={kpi.busiestDay} />
+            </KPIContainer>
+            </KPIPanel>
+
+            {/* AQUÍ va el panel lateral + mapa */}
+            <MapWrapper>
+            <SimulationControls>
+                <div>
+                <ClockLabel>Tiempo de simulación</ClockLabel>
+                <Clock>
+                    {currentTime
+                    ? currentTime.toLocaleDateString('es-ES')
+                    : '--/--/----'}
+                </Clock>
+                <Clock style={{ marginTop: '8px', fontSize: '20px' }}>
+                    {currentTime
+                    ? currentTime.toLocaleTimeString('es-ES', { hour12: false })
+                    : '--:--:--'}
+                </Clock>
+                </div>
+
+                <StatsRow>
+                <StatLine>
+                    <span>Día de la semana:</span>
+                    <strong>{Math.min(dayIndex + 1, 7)} / 7</strong>
+                </StatLine>
+                <StatLine>
+                    <span>Vuelos del día:</span>
+                    <strong>{flightsOfDay.length}</strong>
+                </StatLine>
+                <StatLine>
+                    <span>Vuelos activos ahora:</span>
+                    <strong>{activeFlightsCount}</strong>
+                </StatLine>
+                </StatsRow>
+
+                <SpeedControlContainer>
+                <SpeedLabel>Velocidad de reproducción</SpeedLabel>
+                <SpeedButtonGroup>
+                    <SpeedButton
+                    $active={playbackSpeed === 3600}
+                    onClick={() => setPlaybackSpeed(3600)}
+                    disabled={!isRunning}
+                    >
+                    1h / seg
+                    </SpeedButton>
+                    <SpeedButton
+                    $active={playbackSpeed === 10800}
+                    onClick={() => setPlaybackSpeed(10800)}
+                    disabled={!isRunning}
+                    >
+                    3h / seg
+                    </SpeedButton>
+                    <SpeedButton
+                    $active={playbackSpeed === 21600}
+                    onClick={() => setPlaybackSpeed(21600)}
+                    disabled={!isRunning}
+                    >
+                    6h / seg
+                    </SpeedButton>
+                    <SpeedButton
+                    $active={playbackSpeed === 43200}
+                    onClick={() => setPlaybackSpeed(43200)}
+                    disabled={!isRunning}
+                    >
+                    12h / seg
+                    </SpeedButton>
+                </SpeedButtonGroup>
+                <SpeedHint>
+                    La simulación avanza playbackSpeed segundos por segundo real.
+                </SpeedHint>
+                </SpeedControlContainer>
+            </SimulationControls>
+
+            <MapContainer bounds={bounds} style={{ height: '100%', width: '100%' }}>
+                <Pane name="routes" style={{ zIndex: 400 }} />
+                <Pane name="airports" style={{ zIndex: 450 }} />
+                <Pane name="main-hubs" style={{ zIndex: 500 }} />
+
+                <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+
+                {mainWarehouses.map((airport: any) => {
+                const center: LatLngTuple = [
+                    Number(airport.latitude),
+                    Number(airport.longitude),
+                ]
+                const hubFill = '#f6b53b'
+                const hubStroke = '#ebc725'
+
+                return (
+                    <g key={`hub-${airport.id}`}>
+                    <CircleMarker
+                        center={center}
+                        radius={18}
+                        color="transparent"
+                        fillColor={hubFill}
+                        fillOpacity={0.2}
+                        weight={0}
+                        pane="main-hubs"
+                    />
+                    <CircleMarker
+                        center={center}
+                        radius={10}
+                        color={hubStroke}
+                        fillColor={hubFill}
+                        fillOpacity={0.95}
+                        weight={2.5}
+                        pane="main-hubs"
+                    >
+                        <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                        <div style={{ textAlign: 'center' }}>
+                            <strong>{airport.cityName}</strong>
+                            <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
+                            Hub principal ({airport.codeIATA || airport.alias})
+                            </div>
+                        </div>
+                        </Tooltip>
+                    </CircleMarker>
+                    </g>
+                )
+                })}
+
+                {airports?.map((airport: any) => (
+                <CircleMarker
+                    key={airport.id}
+                    center={[Number(airport.latitude), Number(airport.longitude)]}
+                    radius={6}
+                    color="#14b8a6"
+                    fillColor="#14b8a6"
+                    fillOpacity={0.8}
+                    weight={2}
+                    pane="airports"
+                />
+                ))}
+
+                {isRunning && currentTime && (
+                <AnimatedFlights
+                    flightInstances={flightsOfDay}
+                    currentSimTime={currentTime}
+                    simulationStartTime={startTime}
+                    isPlaying={isRunning}
+                    playbackSpeed={playbackSpeed}
+                    onFlightClick={() => {}}
+                    onFlightHover={() => {}}
+                />
+                )}
+            </MapContainer>
+            </MapWrapper>
+        </Wrapper>
+        )
+
 }
