@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import styled from "styled-components"
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from "react-leaflet"
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane, Polyline } from "react-leaflet"
 import L, { DivIcon, Marker, type LatLngTuple } from "leaflet"
 import gsap from "gsap"
 import { useAirports } from "../../hooks/api/useAirports"
@@ -263,7 +263,15 @@ interface AnimatedFlightsProps {
 }
 
 function AnimatedFlights(props: AnimatedFlightsProps) {
-  const { flightInstances, simulationStartTime, currentSimTime, isPlaying, playbackSpeed } = props
+  const { 
+    flightInstances, 
+    simulationStartTime, 
+    currentSimTime, 
+    isPlaying, 
+    playbackSpeed,
+    onFlightClick,
+    onFlightHover,
+  } = props
 
   const map = useMap()
   const markersRef = useRef<Record<string, Marker>>({})
@@ -314,6 +322,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         const ctrl = computeControlPoint(origin, dest)
 
         const initialAngle = (calculateBearing(origin, dest) + 90) % 360
+        
 
         const icon = new DivIcon({
         className: 'plane-icon',
@@ -328,6 +337,10 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         const marker = L.marker(origin, { icon }).addTo(map)
         marker.setOpacity(0)
         markersRef.current[f.id] = marker
+
+        marker.on('click', () => onFlightClick(f))
+        marker.on('mouseover', () => onFlightHover(f))
+        marker.on('mouseout', () => onFlightHover(null))
 
         const depMs = new Date(f.departureTime).getTime()
         const arrMs = new Date(f.arrivalTime).getTime()
@@ -399,8 +412,10 @@ export function WeeklySimulationPage() {
     const speedRef = useRef(SPEED_FAST)
 
     useEffect(() => {
-    speedRef.current = playbackSpeed
+        speedRef.current = playbackSpeed
     }, [playbackSpeed])
+
+    const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
 
     const { data: airports } = useAirports()
 
@@ -692,15 +707,45 @@ export function WeeklySimulationPage() {
                 />
                 ))}
 
+                {hoveredFlight && (
+                    (() => {
+                        const origin: LatLngTuple = [
+                        hoveredFlight.originAirport.latitude,
+                        hoveredFlight.originAirport.longitude,
+                        ]
+                        const dest: LatLngTuple = [
+                        hoveredFlight.destinationAirport.latitude,
+                        hoveredFlight.destinationAirport.longitude,
+                        ]
+                        const ctrl = computeControlPoint(origin, dest) // ya lo importas de bezierUtils
+
+                        const samples = 30
+                        const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) => {
+                        const t = i / samples
+                        return bezierPoint(t, origin, ctrl, dest)
+                        })
+
+                        return (
+                        <Polyline
+                            positions={arc}
+                            color="#3b82f6"
+                            weight={2.5}
+                            opacity={0.85}
+                            pane="routes"
+                        />
+                        )
+                    })()
+                )}
+
                 {isRunning && currentTime && (
                 <AnimatedFlights
-                    flightInstances={flightsOfDay}
+                    flightInstances={flightInstances}         // ← ANTES: flightsOfDay
                     currentSimTime={currentTime}
                     simulationStartTime={startTime}
                     isPlaying={isRunning}
                     playbackSpeed={playbackSpeed}
                     onFlightClick={() => {}}
-                    onFlightHover={() => {}}
+                    onFlightHover={setHoveredFlight}
                 />
                 )}
             </MapContainer>
