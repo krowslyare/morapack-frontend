@@ -503,7 +503,7 @@ export function AirportDetailsModal({
                 </InfoField>
                 <InfoField>
                   <Label>País</Label>
-                  <Value>{airport.country}</Value>
+                  <Value>{airport.city}</Value>
                 </InfoField>
                 <InfoField>
                   <Label>Código IATA</Label>

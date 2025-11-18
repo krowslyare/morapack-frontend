@@ -413,6 +413,88 @@ const LoadingSpinner = styled.div`
   }
 `
 
+const ProgressSection = styled.div`
+  margin-top: 8px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`
+
+const ProgressHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+`
+
+const ProgressTitle = styled.div`
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+`
+
+const ProgressSubtitle = styled.div`
+  font-size: 12px;
+  color: #6b7280;
+`
+
+const ProgressBarContainer = styled.div`
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+  position: relative;
+`
+
+const ProgressBarFill = styled.div<{ $percent: number; $isLoading?: boolean }>`
+  height: 100%;
+  border-radius: inherit;
+  width: ${({ $percent }) => `${$percent}%`};
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+  transition: width 0.45s ease-out;
+  position: relative;
+
+  ${({ $isLoading }) =>
+    $isLoading &&
+    `
+    animation: progressPulse 1.2s ease-in-out infinite;
+  `}
+
+  @keyframes progressPulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+`
+
+const ProgressStatsRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: #6b7280;
+`
+
+const ProgressStat = styled.div`
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+`
+
+const ProgressValue = styled.span`
+  font-weight: 600;
+  color: #111827;
+`
+
 interface OrdersImportState {
   loading: boolean
   result: ImportResultData | null
@@ -436,6 +518,19 @@ export function PlanificacionPage() {
   const [pickerDate, setPickerDate] = useState<Date>(new Date())
   const [pickerHour, setPickerHour] = useState<string>('00')
   const [pickerMinute, setPickerMinute] = useState<string>('00')
+
+  const totalOrders = ordersState.result?.orders ?? 0
+  const totalProducts = ordersState.result?.products ?? 0
+  const loadedItems = totalOrders + totalProducts
+
+  // Ajusta este valor según tu realidad de negocio:
+  // cuántos registros (pedidos + productos) consideras como "base llena" por semana.
+  const MAX_ITEMS_PER_WEEK = 5000
+
+  const capacityTarget = weeks * MAX_ITEMS_PER_WEEK
+  const rawPercent =
+    capacityTarget > 0 ? Math.round((loadedItems / capacityTarget) * 100) : 0
+  const fillPercent = Math.max(0, Math.min(100, rawPercent))
 
   const formatToYYYYMMDD = (date: Date) => {
     const y = date.getFullYear()
@@ -715,6 +810,37 @@ export function PlanificacionPage() {
             5. Ve a &quot;Simulación Diaria&quot; para iniciar la simulación
           </InfoBox>
         </FormSection>
+
+        {(ordersState.loading || ordersState.result) && (
+          <ProgressSection>
+            <ProgressHeader>
+              <ProgressTitle>Llenado de datos en la base</ProgressTitle>
+              <ProgressSubtitle>
+                Objetivo estimado: {capacityTarget.toLocaleString('es-PE')} registros
+                (pedidos + productos)
+              </ProgressSubtitle>
+            </ProgressHeader>
+
+            <ProgressBarContainer>
+              <ProgressBarFill
+                $percent={ordersState.loading ? Math.max(fillPercent, 20) : fillPercent}
+                $isLoading={ordersState.loading}
+              />
+            </ProgressBarContainer>
+
+            <ProgressStatsRow>
+              <ProgressStat>
+                Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Productos: <ProgressValue>{totalProducts}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Porcentaje: <ProgressValue>{fillPercent}%</ProgressValue>
+              </ProgressStat>
+            </ProgressStatsRow>
+          </ProgressSection>
+        )}
 
         <ButtonGroup>
           <Button

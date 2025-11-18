@@ -13,6 +13,7 @@ import type { Continent } from '../../types/Continent'
 
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 
 // ====================== Styled =========================
 const Wrapper = styled.div`
@@ -447,6 +448,13 @@ function mapAirportToSimAirport(a: any): SimAirport {
   }
 }
 
+const INITIAL_KPI = {
+  totalFlights: 0,
+  avgCapacityUsage: 0,
+  busiestAirport: "-",
+  busiestDay: "-",
+}
+
 
 // ===============================
 //        Weekly Simulation
@@ -463,6 +471,8 @@ export function WeeklySimulationPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST) // 1 hora simulada por segundo
     const speedRef = useRef(SPEED_FAST)
 
+    
+
     useEffect(() => {
         speedRef.current = playbackSpeed
     }, [playbackSpeed])
@@ -470,6 +480,15 @@ export function WeeklySimulationPage() {
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
 
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+    const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+
+    const handleFlightClick = (flight: FlightInstance) => {
+        // usa los campos que tengas en FlightInstance
+        setSelectedFlight({
+        id: flight.flightId,      // o flight.id si ese es el ID base
+        code: flight.flightCode,  // o flight.code
+        })
+    }
 
     const { data: airports } = useAirports()
 
@@ -488,15 +507,11 @@ export function WeeklySimulationPage() {
     const [dayIndex, setDayIndex] = useState(0)
 
     const [isRunning, setIsRunning] = useState(false)
+    const [isPaused, setIsPaused] = useState(false)
 
     const intervalRef = useRef<any>(null)
 
-    const [kpi, setKpi] = useState({
-        totalFlights: 0,
-        avgCapacityUsage: 0,
-        busiestAirport: "-",
-        busiestDay: "-",
-    })
+    const [kpi, setKpi] = useState(INITIAL_KPI)
 
     const loadWeeklyFlights = useCallback(async () => {
         try {
@@ -517,11 +532,61 @@ export function WeeklySimulationPage() {
 
             setFlightInstances(inst)
 
+            // ==== Aeropuerto más activo (por salidas) ====
+            const flightsByAirport: Record<string, number> = {}
+
+            inst.forEach((f) => {
+                // Normalizar código: primero IATA, luego alias, luego nombre de ciudad
+                const rawCode =
+                    f.originAirport.codeIATA ??
+                    (typeof f.originAirport.city === 'string'
+                    ? f.originAirport.city
+                    : f.originAirport.city?.name)
+
+                if (!rawCode) return
+
+                const code = String(rawCode) // aquí garantizamos que es string
+
+                flightsByAirport[code] = (flightsByAirport[code] ?? 0) + 1
+            })
+
+            let busiestAirport = "-"
+            let maxFlightsAirport = 0
+
+            Object.entries(flightsByAirport).forEach(([code, count]) => {
+                if (count > maxFlightsAirport) {
+                    maxFlightsAirport = count
+                    busiestAirport = `${code} (${count} vuelos)`
+                }
+            })
+
+            // ==== Día más activo (por fecha de salida) ====
+            const flightsByDay = Array(TOTAL_DAYS).fill(0)
+
+            inst.forEach(f => {
+            const dep = new Date(f.departureTime)
+            const d = Math.floor(
+                (dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
+            )
+            if (d >= 0 && d < TOTAL_DAYS) {
+                flightsByDay[d] += 1
+            }
+            })
+
+            let busiestDay = "-"
+            let maxFlightsDay = 0
+            for (let i = 0; i < TOTAL_DAYS; i++) {
+            if (flightsByDay[i] > maxFlightsDay) {
+                maxFlightsDay = flightsByDay[i]
+                busiestDay = `Día ${i + 1} (${flightsByDay[i]} vuelos)`
+            }
+            }
+
             setKpi({
             totalFlights: inst.length,
             avgCapacityUsage: response.statistics?.averageUtilization ?? 0,
-            busiestAirport: "-",
-            busiestDay: "-",
+            busiestAirport,
+            busiestDay,
             })
 
         } catch {
@@ -529,12 +594,41 @@ export function WeeklySimulationPage() {
         }
     }, [airports, startTime])
 
+    const setupInterval = () => {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+
+        intervalRef.current = setInterval(() => {
+            setCurrentTime(prev => {
+            if (!prev) return prev
+
+            const next = new Date(prev.getTime() + speedRef.current * 1000)
+
+            const d = Math.floor(
+                (next.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
+            )
+
+            if (d >= TOTAL_DAYS) {
+                stop()
+                return prev
+            }
+
+            setDayIndex(d)
+            return next
+            })
+        }, 1000)
+    }
+
     const stop = () => {
         setIsRunning(false)
+        setIsPaused(false)
         if (intervalRef.current) {
             clearInterval(intervalRef.current)
-        intervalRef.current = null
+            intervalRef.current = null
         }
+        setCurrentTime(null)
+        setDayIndex(0)
+        setFlightInstances([])
+        setKpi(INITIAL_KPI)    // ← aquí lo dejas “sin data”
     }
 
     const start = () => {
@@ -552,32 +646,32 @@ export function WeeklySimulationPage() {
         setCurrentTime(startTime)
 
         setIsRunning(true)
+        setIsPaused(false)
 
-        intervalRef.current = setInterval(() => {
-        setCurrentTime(prev => {
-            if (!prev) return prev
-
-            const next = new Date(prev.getTime() + speedRef.current * 1000)
-
-            const d = Math.floor(
-                (next.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
-            )
-
-            // si ya completó los 7 días, detener y congelar en el último valor válido
-            if (d >= TOTAL_DAYS) {
-                stop()
-                return prev  // no avanzamos más el reloj
-            }
-
-            setDayIndex(d)
-            return next
-        })
-        }, 1000)
-
+        setupInterval()
         loadWeeklyFlights()
     }
 
-    
+    const togglePause = () => {
+        if (!isRunning) return
+
+        setIsPaused(prev => {
+            const next = !prev
+
+            if (next) {
+            // pausar
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current)
+                intervalRef.current = null
+            }
+            } else {
+            // reanudar
+            setupInterval()
+            }
+
+            return next
+        })
+    }
 
     // ✈ Filtrar vuelos solo del día actual
     const flightsOfDay = flightInstances.filter(f => {
@@ -611,9 +705,21 @@ export function WeeklySimulationPage() {
             <HeaderRight>
                 <DayBadge>Día {Math.min(dayIndex + 1, 7)} / 7</DayBadge>
 
-                <StatusBadge $running={isRunning}>
-                {isRunning ? '● Ejecutando' : '○ Detenido'}
+                <StatusBadge $running={isRunning && !isPaused}>
+                {!isRunning
+                    ? '○ Detenido'
+                    : isPaused
+                    ? '▮▮ Pausado'
+                    : '● Ejecutando'}
                 </StatusBadge>
+
+                <ControlButton
+                $variant="play"
+                onClick={togglePause}
+                disabled={!isRunning}
+                >
+                {isPaused ? 'Reanudar' : 'Pausar'}
+                </ControlButton>
 
                 <ControlButton
                 $variant={isRunning ? 'stop' : 'play'}
@@ -622,6 +728,7 @@ export function WeeklySimulationPage() {
                 >
                 {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
                 </ControlButton>
+
             </HeaderRight>
             </Header>
 
@@ -636,8 +743,8 @@ export function WeeklySimulationPage() {
             <KPIContainer>
                 <WeeklyKPICard label="Total de vuelos" value={kpi.totalFlights} />
                 <WeeklyKPICard label="Capacidad Promedio" value={kpi.avgCapacityUsage + "%"} />
-                <WeeklyKPICard label="Aeropuerto más activo" value={kpi.busiestAirport} />
-                <WeeklyKPICard label="Día más activo" value={kpi.busiestDay} />
+                <WeeklyKPICard label="Aeropuerto más activo" value={kpi.busiestAirport}  />
+                <WeeklyKPICard label="Día más activo" value={kpi.busiestDay}  />
             </KPIContainer>
             </KPIPanel>
 
@@ -802,14 +909,14 @@ export function WeeklySimulationPage() {
 
                 {isRunning && currentTime && (
                 <AnimatedFlights
-                    flightInstances={flightInstances}         // ← ANTES: flightsOfDay
+                    flightInstances={flightInstances}
                     currentSimTime={currentTime}
                     simulationStartTime={startTime}
-                    isPlaying={isRunning}
+                    isPlaying={isRunning && !isPaused}
                     playbackSpeed={playbackSpeed}
-                    onFlightClick={() => {}}
+                    onFlightClick={handleFlightClick}     // ← antes: () => {}
                     onFlightHover={setHoveredFlight}
-                />
+                    />
                 )}
             </MapContainer>
             </MapWrapper>
@@ -819,6 +926,14 @@ export function WeeklySimulationPage() {
                 airport={selectedAirport}
                 onClose={() => setSelectedAirport(null)}
                 readOnly
+                />
+            )}
+
+            {selectedFlight && (
+                <FlightPackagesModal
+                flightId={selectedFlight.id}
+                flightCode={selectedFlight.code}
+                onClose={() => setSelectedFlight(null)}
                 />
             )}
 
