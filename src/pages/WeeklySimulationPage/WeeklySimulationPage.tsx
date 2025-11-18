@@ -286,32 +286,37 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 
     const timeline = timelineRef.current
 
-    const ahead = new Date(currentSimTime.getTime() + 30 * 60000)
-    const behind = new Date(currentSimTime.getTime() - 30 * 60000)
+    // ventana dinámica en función de la velocidad
+    // siempre al menos 30 min, pero como mínimo ~2 pasos de reloj
+    const stepMs = playbackSpeed * 1000           // segundos sim por seg real -> ms
+    const halfWindowMs = Math.max(30 * 60 * 1000, stepMs * 2)
+
+    const ahead  = new Date(currentSimTime.getTime() + halfWindowMs)
+    const behind = new Date(currentSimTime.getTime() - halfWindowMs)
 
     const newFlights = flightInstances
-      .filter(f => {
+        .filter(f => {
         const dep = new Date(f.departureTime)
         const arr = new Date(f.arrivalTime)
         return (
-          !processedRef.current.has(f.id) &&
-          dep <= ahead &&
-          arr >= behind
+            !processedRef.current.has(f.id) &&
+            dep <= ahead &&
+            arr >= behind
         )
-      })
-      .slice(0, MAX_FLIGHTS)
+        })
+        .slice(0, MAX_FLIGHTS)
 
     newFlights.forEach(f => {
-      processedRef.current.add(f.id)
+        processedRef.current.add(f.id)
 
-      const origin: LatLngTuple = [f.originAirport.latitude, f.originAirport.longitude]
-      const dest: LatLngTuple = [f.destinationAirport.latitude, f.destinationAirport.longitude]
-      const ctrl = computeControlPoint(origin, dest)
+        const origin: LatLngTuple = [f.originAirport.latitude, f.originAirport.longitude]
+        const dest: LatLngTuple   = [f.destinationAirport.latitude, f.destinationAirport.longitude]
+        const ctrl = computeControlPoint(origin, dest)
 
-      const initialAngle = (calculateBearing(origin, dest) + 90) % 360
+        const initialAngle = (calculateBearing(origin, dest) + 90) % 360
 
-      const icon = new DivIcon({
-        className: 'plane-icon', // <- igual que en la diaria
+        const icon = new DivIcon({
+        className: 'plane-icon',
         html: `<img src="/airplane.png"
                     style="width:20px;height:20px;display:block;
                             transform-origin:50% 50%;
@@ -320,24 +325,23 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         iconAnchor: [10, 10],
         })
 
-      const marker = L.marker(origin, { icon }).addTo(map)
-      marker.setOpacity(0)
-      markersRef.current[f.id] = marker
+        const marker = L.marker(origin, { icon }).addTo(map)
+        marker.setOpacity(0)
+        markersRef.current[f.id] = marker
 
-      const dep = new Date(f.departureTime).getTime()
-      const arr = new Date(f.arrivalTime).getTime()
-      const durationSec = (arr - dep) / 1000
-      const offsetSec = (dep - simulationStartTime.getTime()) / 1000
+        const depMs = new Date(f.departureTime).getTime()
+        const arrMs = new Date(f.arrivalTime).getTime()
+        const durationSec = (arrMs - depMs) / 1000
+        const offsetSec   = (depMs - simulationStartTime.getTime()) / 1000
 
-      const animObj = { t: 0 }
+        const animObj = { t: 0 }
 
-      timeline.to(
+        timeline.to(
         animObj,
         {
             t: 1,
             duration: durationSec,
-            ease: "none",
-
+            ease: 'none',
             onUpdate() {
             const pos = bezierPoint(animObj.t, origin, ctrl, dest)
             marker.setLatLng(pos)
@@ -346,14 +350,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
             const angle = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
             const adj = (angle + 90) % 360
 
-            const img = marker.getElement()?.querySelector("img")
+            const img = marker.getElement()?.querySelector('img') as HTMLImageElement | null
             if (img) img.style.transform = `rotate(${adj}deg)`
             },
-
             onStart() {
             marker.setOpacity(1)
             },
-
             onComplete() {
             const id = f.id
             const m = markersRef.current[id]
@@ -361,7 +363,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
                 m.remove()
                 delete markersRef.current[id]
             }
-            }
+            },
         },
         offsetSec
         )
@@ -369,7 +371,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 
     const elapsedSec = (currentSimTime.getTime() - simulationStartTime.getTime()) / 1000
     timeline.seek(elapsedSec)
-  }, [flightInstances, currentSimTime])
+    }, [flightInstances, currentSimTime, playbackSpeed])
 
   useEffect(() => {
     if (!timelineRef.current) return
@@ -387,11 +389,14 @@ export function WeeklySimulationPage() {
 
     const TOTAL_DAYS = 7
 
+    const SPEED_SLOW = 1800   // 30 min simulados por segundo real
+    const SPEED_FAST = 3600   // 1 hora simulada por segundo real
+
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
     const startTime = simulationStartDate ?? new Date()
 
-    const [playbackSpeed, setPlaybackSpeed] = useState(3600) // 1 hora simulada por segundo
-    const speedRef = useRef(3600)
+    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST) // 1 hora simulada por segundo
+    const speedRef = useRef(SPEED_FAST)
 
     useEffect(() => {
     speedRef.current = playbackSpeed
@@ -600,40 +605,29 @@ export function WeeklySimulationPage() {
                 </StatsRow>
 
                 <SpeedControlContainer>
-                <SpeedLabel>Velocidad de reproducción</SpeedLabel>
-                <SpeedButtonGroup>
-                    <SpeedButton
-                    $active={playbackSpeed === 3600}
-                    onClick={() => setPlaybackSpeed(3600)}
-                    disabled={!isRunning}
-                    >
-                    1h / seg
-                    </SpeedButton>
-                    <SpeedButton
-                    $active={playbackSpeed === 10800}
-                    onClick={() => setPlaybackSpeed(10800)}
-                    disabled={!isRunning}
-                    >
-                    3h / seg
-                    </SpeedButton>
-                    <SpeedButton
-                    $active={playbackSpeed === 21600}
-                    onClick={() => setPlaybackSpeed(21600)}
-                    disabled={!isRunning}
-                    >
-                    6h / seg
-                    </SpeedButton>
-                    <SpeedButton
-                    $active={playbackSpeed === 43200}
-                    onClick={() => setPlaybackSpeed(43200)}
-                    disabled={!isRunning}
-                    >
-                    12h / seg
-                    </SpeedButton>
-                </SpeedButtonGroup>
-                <SpeedHint>
-                    La simulación avanza playbackSpeed segundos por segundo real.
-                </SpeedHint>
+                    <SpeedLabel>Velocidad de reproducción</SpeedLabel>
+                    <SpeedButtonGroup>
+                        <SpeedButton
+                        $active={playbackSpeed === SPEED_SLOW}
+                        onClick={() => setPlaybackSpeed(SPEED_SLOW)}
+                        disabled={!isRunning}
+                        >
+                        30 min / seg
+                        </SpeedButton>
+                        <SpeedButton
+                        $active={playbackSpeed === SPEED_FAST}
+                        onClick={() => setPlaybackSpeed(SPEED_FAST)}
+                        disabled={!isRunning}
+                        >
+                        1h / seg
+                        </SpeedButton>
+                    </SpeedButtonGroup>
+                    <SpeedHint>
+                        {playbackSpeed === SPEED_SLOW &&
+                        '30 minutos simulados = 1 segundo real'}
+                        {playbackSpeed === SPEED_FAST &&
+                        '1 hora simulada = 1 segundo real'}
+                    </SpeedHint>
                 </SpeedControlContainer>
             </SimulationControls>
 
