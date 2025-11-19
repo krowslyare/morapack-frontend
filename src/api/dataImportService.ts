@@ -80,3 +80,11 @@ export async function uploadOrdersByDateRange(
 )
   return result.data
 }
+
+/**
+ * Clear all orders and products from database
+ */
+export async function clearOrders(): Promise<ImportResultData> {
+  const response = await api.delete<ImportResultData>('/data/clear-orders')
+  return response.data
+}

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
 interface SimulationStore {
   // Simulation configuration
@@ -12,7 +12,7 @@ interface SimulationStore {
   hasValidConfig: () => boolean
 }
 
-export const useSimulationStore = create<SimulationStore>(
+export const useSimulationStore = create<SimulationStore>()(
   persist(
     (set, get) => ({
       simulationStartDate: null,
@@ -39,13 +39,13 @@ export const useSimulationStore = create<SimulationStore>(
     }),
     {
       name: 'morapack-simulation-store',
-      storage: localStorage,
-      partialize: (state) => ({
-        simulationStartDate: state.simulationStartDate
-          ? new Date(state.simulationStartDate)
-          : null,
-        isSimulationConfigured: state.isSimulationConfigured,
-      }),
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state && state.simulationStartDate) {
+          // Convert string back to Date object
+          state.simulationStartDate = new Date(state.simulationStartDate)
+        }
+      },
     },
   ),
 )

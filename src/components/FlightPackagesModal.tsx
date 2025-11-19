@@ -134,16 +134,21 @@ const Table = styled.table`
   th,
   td {
     padding: 8px 10px;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid #d1d5db;
     text-align: left;
     white-space: nowrap;
+    color: #111827;
   }
 
   th {
-    background: #f9fafb;
+    background: #f3f4f6;
     font-weight: 700;
-    color: #4b5563;
+    color: #111827;
     font-size: 12px;
+  }
+
+  tbody td {
+    color: #374151;
   }
 
   tbody tr:nth-child(even) {
