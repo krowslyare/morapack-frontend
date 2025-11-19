@@ -3,7 +3,11 @@ import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { simulationService } from '../../api/simulationService'
-import { uploadOrdersByDateRange, type ImportResultData } from '../../api'
+import {
+  uploadOrdersByDateRange,
+  clearOrders,
+  type ImportResultData,
+} from '../../api'
 import { toast } from 'react-toastify'
 
 const Wrapper = styled.div`
@@ -667,14 +671,28 @@ export function PlanificacionPage() {
     }
   }
 
-  // Limpia solo la configuración/local (no BD)
-  const handleResetData = () => {
-    clearSimulationConfig()          // borra config global de simulación
-    setSelectedDateTime('')          // limpia input
-    setWeeks(1)                      // vuelve a 1 semana
-    setOrdersState({ loading: false, result: null }) // quita mensaje de carga
-    setError(null)                   // limpia errores
-    toast.info('Datos de planificación limpiados')
+  // Limpia configuración y datos en BD
+  const handleResetData = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas resetear la planificación? Esto borrará los pedidos cargados.')) {
+      return
+    }
+
+    try {
+      setIsLoadingReset(true)
+      await clearOrders()
+      
+      clearSimulationConfig()          // borra config global de simulación
+      setSelectedDateTime('')          // limpia input
+      setWeeks(1)                      // vuelve a 1 semana
+      setOrdersState({ loading: false, result: null }) // quita mensaje de carga
+      setError(null)                   // limpia errores
+      toast.info('Datos de planificación y base de datos limpiados')
+    } catch (error) {
+      console.error('Error al resetear datos:', error)
+      toast.error('Error al limpiar la base de datos')
+    } finally {
+      setIsLoadingReset(false)
+    }
   }
 
   const handleGoToSimulation = () => {

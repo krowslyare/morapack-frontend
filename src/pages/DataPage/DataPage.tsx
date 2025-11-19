@@ -4,6 +4,7 @@ import {
   uploadAirports,
   uploadFlights,
   getDataStatus,
+  clearOrders,
   type ImportResultData,
 } from '../../api'
 import { toast } from 'react-toastify'
@@ -159,6 +160,7 @@ interface DataStats {
 export function DataPage() {
   const [airportsState, setAirportsState] = useState<UploadState>({ loading: false, result: null })
   const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
+  const [clearState, setClearState] = useState<UploadState>({ loading: false, result: null })
   const [stats, setStats] = useState<DataStats>({ airports: 0, flights: 0, orders: 0, loading: true })
 
   // Load initial data statistics
@@ -246,6 +248,37 @@ export function DataPage() {
     }
   }
 
+  // === Clear Data ===
+  const handleClearData = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar todos los pedidos y productos? Esta acción no se puede deshacer.')) {
+      return
+    }
+
+    setClearState({ loading: true, result: null })
+    try {
+      const result = await clearOrders()
+      setClearState({ loading: false, result })
+
+      if (result.success) {
+        toast.success('Base de datos limpiada correctamente')
+        await loadStats()
+      } else {
+        toast.error(result.message || 'Error al limpiar datos')
+      }
+    } catch (e: any) {
+      const message = e.response?.data?.message || 'Error al limpiar datos'
+      setClearState({
+        loading: false,
+        result: {
+          success: false,
+          message,
+          error: e.message,
+        },
+      })
+      toast.error(message)
+    }
+  }
+
   return (
     <Wrapper>
       <ContentPanel>
@@ -302,6 +335,26 @@ export function DataPage() {
           {flightsState.result && (
             <Message $type={flightsState.result.success ? 'success' : 'error'}>
               {flightsState.result.message}
+            </Message>
+          )}
+        </UploadSection>
+
+        {/* === Clear Data === */}
+        <UploadSection style={{ borderColor: '#fca5a5', background: '#fff1f2' }}>
+          <UploadHeader>
+            <UploadTitle style={{ color: '#991b1b' }}>🗑️ Limpiar Base de Datos</UploadTitle>
+            <UploadButton
+              $variant="secondary"
+              style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}
+              onClick={handleClearData}
+              disabled={clearState.loading}
+            >
+              {clearState.loading ? 'Limpiando...' : 'Eliminar Pedidos y Productos'}
+            </UploadButton>
+          </UploadHeader>
+          {clearState.result && (
+            <Message $type={clearState.result.success ? 'success' : 'error'}>
+              {clearState.result.message}
             </Message>
           )}
         </UploadSection>

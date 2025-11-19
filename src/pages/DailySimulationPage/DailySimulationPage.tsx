@@ -9,6 +9,7 @@ import { simulationService, type FlightStatus, type FlightInstance } from '../..
 import { useAirports } from '../../hooks/api/useAirports'
 import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -251,6 +252,95 @@ const SpeedHint = styled.div`
   color: #9ca3af;
   text-align: center;
   margin-top: 4px;
+`
+
+const LoadingOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  border-radius: 12px;
+`
+
+const Spinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #14b8a6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`
+
+const LoadingText = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+`
+
+const AlgorithmBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  border-radius: 6px;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+  
+  &::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border: 2px solid #c2410c;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+`
+
+const KPIPanel = styled.div`
+  margin: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`
+
+const KPIPanelHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+`
+
+const KPIPanelTitle = styled.span`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+`
+
+const KPIPanelSubtitle = styled.span`
+  font-size: 10px;
+  color: #9ca3af;
+`
+
+const KPIContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
 `
 
 // Helper to compute curved flight path
@@ -539,6 +629,14 @@ export function DailySimulationPage() {
   // Loading states
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [algorithmRunning, setAlgorithmRunning] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(false)
+
+  const [kpi, setKpi] = useState({
+    totalOrders: 0,
+    assignedOrders: 0,
+    totalProducts: 0,
+    assignedProducts: 0,
+  })
 
   // Refs
   const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
@@ -701,6 +799,13 @@ export function DailySimulationPage() {
       
       toast.success(`Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`)
 
+      setKpi({
+        totalOrders: response.totalOrders || 0,
+        assignedOrders: response.assignedOrders || 0,
+        totalProducts: response.totalProducts || 0,
+        assignedProducts: response.assignedProducts || 0,
+      })
+
       // Reload flight statuses (for next day)
       console.log('📍 Reloading flight statuses from database...')
       const updatedResponse = await simulationService.getFlightStatuses()
@@ -765,19 +870,29 @@ export function DailySimulationPage() {
       return
     }
 
-    setIsRunning(true)
+    setIsInitializing(true)
     setCurrentSimTime(simulationStartDate)
     setDayCount(0)
     lastAlgorithmDayRef.current = -1
 
-    // Load initial data
-    await loadFlightData()
+    try {
+      // Load initial data
+      await loadFlightData()
 
-    // Run first algorithm with simulation start time
-    await runDailyAlgorithm(simulationStartDate)
+      // Run first algorithm with simulation start time
+      await runDailyAlgorithm(simulationStartDate)
 
-    // Start the clock
-    startSimulationClock()
+      // Only start running after everything is loaded
+      setIsRunning(true)
+      
+      // Start the clock
+      startSimulationClock()
+    } catch (error) {
+      console.error('Error starting simulation:', error)
+      toast.error('Error al iniciar la simulación')
+    } finally {
+      setIsInitializing(false)
+    }
   }, [hasValidConfig, simulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock])
 
   // Pause simulation
@@ -796,6 +911,12 @@ export function DailySimulationPage() {
     setDayCount(0)
     setFlightInstances([])
     lastAlgorithmDayRef.current = -1
+    setKpi({
+      totalOrders: 0,
+      assignedOrders: 0,
+      totalProducts: 0,
+      assignedProducts: 0,
+    })
   }
 
   // Format time for display
@@ -836,12 +957,12 @@ export function DailySimulationPage() {
     setHoveredFlightId(flight ? flight.flightId : null)
   }
 
-  // Count active flights
+  // Calculate active flights for KPI
   const activeFlightsCount = currentSimTime
     ? flightInstances.filter((f) => {
-        const dept = new Date(f.departureTime)
+        const dep = new Date(f.departureTime)
         const arr = new Date(f.arrivalTime)
-        return currentSimTime >= dept && currentSimTime <= arr
+        return currentSimTime >= dep && currentSimTime <= arr
       }).length
     : 0
 
@@ -870,7 +991,31 @@ export function DailySimulationPage() {
         </StatusBadge>
       </Header>
 
+      <KPIPanel>
+        <KPIPanelHeader>
+          <KPIPanelTitle>Indicadores del día</KPIPanelTitle>
+          <KPIPanelSubtitle>
+            Día {dayCount + 1}
+          </KPIPanelSubtitle>
+        </KPIPanelHeader>
+
+        <KPIContainer>
+          <WeeklyKPICard label="Total Productos" value={kpi.totalProducts} />
+          <WeeklyKPICard label="Productos Asignados" value={kpi.assignedProducts} />
+          <WeeklyKPICard label="Vuelos Activos" value={activeFlightsCount} />
+        </KPIContainer>
+      </KPIPanel>
+
       <MapWrapper>
+        {(isLoadingData || isInitializing) && (
+          <LoadingOverlay>
+            <Spinner />
+            <LoadingText>
+              {isLoadingData ? 'Cargando datos de vuelos...' : 'Ejecutando algoritmo inicial...'}
+            </LoadingText>
+          </LoadingOverlay>
+        )}
+
         <SimulationControls>
           <div>
             <ClockLabel>Tiempo de Simulación</ClockLabel>
@@ -891,10 +1036,10 @@ export function DailySimulationPage() {
               <span>Vuelos activos ahora:</span>
               <strong>{activeFlightsCount}</strong>
             </StatLine>
-            {algorithmRunning && (
-              <StatLine style={{ color: '#f59e0b' }}>
-                <span>⏳ Ejecutando algoritmo...</span>
-              </StatLine>
+            {algorithmRunning && !isInitializing && (
+              <AlgorithmBadge>
+                Ejecutando algoritmo...
+              </AlgorithmBadge>
             )}
           </StatsRow>
 
@@ -904,28 +1049,28 @@ export function DailySimulationPage() {
               <SpeedButton
                 $active={playbackSpeed === 1}
                 onClick={() => setPlaybackSpeed(1)}
-                disabled={isRunning || isLoadingData || algorithmRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
               >
                 1x (1 seg)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 60}
                 onClick={() => setPlaybackSpeed(60)}
-                disabled={isRunning || isLoadingData || algorithmRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
               >
                 60x (1 min)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 1800}
                 onClick={() => setPlaybackSpeed(1800)}
-                disabled={isRunning || isLoadingData || algorithmRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
               >
                 30x min (30 min)
               </SpeedButton>
               <SpeedButton
                 $active={playbackSpeed === 3600}
                 onClick={() => setPlaybackSpeed(3600)}
-                disabled={isRunning || isLoadingData || algorithmRunning}
+                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
               >
                 1h (1 hora)
               </SpeedButton>
@@ -939,7 +1084,7 @@ export function DailySimulationPage() {
           </SpeedControlContainer>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-            {!isRunning ? (
+            {!isRunning && !isInitializing ? (
               <ControlButton
                 $variant="play"
                 onClick={handleStart}
@@ -947,13 +1092,21 @@ export function DailySimulationPage() {
               >
                 {isLoadingData ? 'Cargando...' : '▶ Iniciar Simulación'}
               </ControlButton>
+            ) : isInitializing ? (
+              <ControlButton disabled>
+                Iniciando...
+              </ControlButton>
             ) : (
               <>
                 <ControlButton $variant="pause" onClick={handlePause}>
                   ⏸ Pausar
                 </ControlButton>
-                <ControlButton $variant="danger" onClick={handleStop}>
-                  ⏹ Detener
+                <ControlButton
+                  $variant="danger"
+                  onClick={handleStop}
+                  disabled={!isRunning && !currentSimTime}
+                >
+                  Detener
                 </ControlButton>
               </>
             )}
@@ -970,8 +1123,8 @@ export function DailySimulationPage() {
             [90, 180],
           ])}
           maxBoundsViscosity={1.0}
-          minZoom={2}
-          maxZoom={6}
+          minZoom={3}
+          maxZoom={7}
           zoomControl={true}
         >
           <Pane name="routes" style={{ zIndex: 400 }} />
