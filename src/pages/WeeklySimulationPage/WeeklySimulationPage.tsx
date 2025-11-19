@@ -608,7 +608,8 @@ export function WeeklySimulationPage() {
             )
 
             if (d >= TOTAL_DAYS) {
-                stop()
+                // terminó la semana → solo detiene, NO resetea contador ni KPIs
+                stop(false)
                 return prev
             }
 
@@ -618,17 +619,19 @@ export function WeeklySimulationPage() {
         }, 1000)
     }
 
-    const stop = () => {
+    const stop = (reset: boolean = true) => {
         setIsRunning(false)
         setIsPaused(false)
         if (intervalRef.current) {
             clearInterval(intervalRef.current)
             intervalRef.current = null
         }
-        setCurrentTime(null)
-        setDayIndex(0)
-        setFlightInstances([])
-        setKpi(INITIAL_KPI)    // ← aquí lo dejas “sin data”
+        if (reset) {
+          setCurrentTime(null)
+          setDayIndex(0)
+          setFlightInstances([])
+          setKpi(INITIAL_KPI)   // KPI “en blanco” solo cuando reset = true
+         }
     }
 
     const start = () => {
@@ -723,7 +726,7 @@ export function WeeklySimulationPage() {
 
                 <ControlButton
                 $variant={isRunning ? 'stop' : 'play'}
-                onClick={isRunning ? stop : start}
+                onClick={isRunning ? () => stop() : start}
                 disabled={!airports || airports.length === 0}
                 >
                 {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
