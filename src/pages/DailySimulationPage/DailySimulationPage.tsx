@@ -489,6 +489,18 @@ function AnimatedFlights({
           arr >= thirtyMinutesAgo
         )
       })
+      // Prioritize flights with cargo to ensure they are visualized when concurrency limit is hit
+      .sort((a, b) => {
+        const cargoA = a.assignedProducts || 0
+        const cargoB = b.assignedProducts || 0
+        
+        // Priority 1: Cargo vs No Cargo (Flights with cargo come first)
+        if (cargoA > 0 && cargoB === 0) return -1
+        if (cargoB > 0 && cargoA === 0) return 1
+        
+        // Priority 2: Departure time (FIFO - earlier flights first)
+        return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
+      })
       // Limit the number of NEW animations added per cycle to avoid flooding
       // This respects the MAX_CONCURRENT_ANIMATIONS somewhat indirectly by throttling
       // But better to limit based on available slots
@@ -581,11 +593,11 @@ function AnimatedFlights({
               if (markersRef.current[flight.id]) {
                 markersRef.current[flight.id].remove()
                 delete markersRef.current[flight.id]
-                // Also remove from processedIds to allow re-processing if needed (though unlikely for same flight ID)
-                // But more importantly to keep set size manageable
-                processedIdsRef.current.delete(flight.id) // use flight.id
+                // Do NOT remove from processedIdsRef here. 
+                // Keeping it prevents the system from trying to re-add this same flight 
+                // if it's still within the 30min visibility window.
               }
-            }, 2000) // Remove 2 seconds after arrival
+            }, 100) // Remove 100ms after arrival (almost instant)
           },
         },
         startOffsetSeconds
@@ -619,7 +631,7 @@ function AnimatedFlights({
     }
 
     // If playing, only correct if drift is noticeable (> 1s) to prevent visual stutter
-    if (Math.abs(currentTime - elapsedSeconds) > 1.0) { 
+    if (Math.abs(currentTime - elapsedSeconds) > 2) { 
         timelineRef.current.seek(elapsedSeconds, false)
     }
     
@@ -671,6 +683,7 @@ export function DailySimulationPage() {
   // Refs
   const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const lastAlgorithmDayRef = useRef(-1)
+  const lastStateUpdateDayRef = useRef(-1)
   // Lifted refs for cleanup access
   const processedIdsRef = useRef<Set<string>>(new Set())
   const markersRef = useRef<Record<string, Marker>>({})
@@ -900,7 +913,7 @@ export function DailySimulationPage() {
 
         // Trigger algorithm pre-calculation logic
         // Calculate dynamic trigger threshold based on playback speed
-        // We want enough REAL time buffer for the API to respond (e.g., 23 seconds)
+        // We want enough REAL time buffer for the API to respond (e.g., 35 seconds)
         const REAL_TIME_BUFFER_SEC = 35
         const simSecondsBuffer = REAL_TIME_BUFFER_SEC * playbackSpeed
         const simHoursBuffer = simSecondsBuffer / 3600
@@ -909,6 +922,18 @@ export function DailySimulationPage() {
         // We allow triggering as early as 1am if necessary for high speeds
         let triggerHour = 24 - simHoursBuffer
         triggerHour = Math.max(1, Math.min(22, triggerHour))
+
+        // Update package states near the end of the day (e.g., 23:00)
+        // This ensures orders transition to DELIVERED status
+        if (hourOfDay >= 23 && currentDay > lastStateUpdateDayRef.current) {
+           console.log(`🔄 Updating package states for Day ${currentDay + 1} at ${next.toLocaleTimeString()}`)
+           lastStateUpdateDayRef.current = currentDay
+           simulationService.updateStates({
+             currentTime: next.toISOString()
+           }).then(response => {
+             console.log('✅ States updated:', response.transitions)
+           }).catch(err => console.error('Failed to update states:', err))
+        }
 
         // If we are past the trigger hour, prepare next day
         if (hourOfDay >= triggerHour) {
