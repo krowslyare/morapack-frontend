@@ -483,6 +483,7 @@ export function WeeklySimulationPage() {
     const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
 
     const handleFlightClick = (flight: FlightInstance) => {
+        console.log('CLICK flightId:', flight.flightId, 'flightCode:', flight.flightCode)
         // usa los campos que tengas en FlightInstance
         setSelectedFlight({
         id: flight.flightId,      // o flight.id si ese es el ID base
