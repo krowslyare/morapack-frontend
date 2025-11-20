@@ -14,6 +14,7 @@ import type { Continent } from '../../types/Continent'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import './index.css' 
 
 // ====================== Styled =========================
 const Wrapper = styled.div`
@@ -254,6 +255,7 @@ const KPIContainer = styled.div`
 
 
 
+
 // =============================================================
 //                 AnimatedFlights (igual que diario)
 // =============================================================
@@ -267,6 +269,7 @@ interface AnimatedFlightsProps {
   playbackSpeed: number
   onFlightClick: (flight: FlightInstance) => void
   onFlightHover: (flight: FlightInstance | null) => void
+  flightHasProducts: Record<number, boolean>   // ← nuevo
 }
 
 function AnimatedFlights(props: AnimatedFlightsProps) {
@@ -278,6 +281,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     playbackSpeed,
     onFlightClick,
     onFlightHover,
+    flightHasProducts,
   } = props
 
   const map = useMap()
@@ -336,15 +340,18 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         
         const initialAngle = (calculateBearing(origin, dest) + 90) % 360
         
+        const hasProducts = !!flightHasProducts[f.flightId]   // ← mira el mapa
 
         const icon = new DivIcon({
-            className: 'plane-icon',
-            html: `<img src="/airplane.png"
+          className: hasProducts
+            ? 'plane-icon plane-icon--loaded'
+            : 'plane-icon plane-icon--empty',
+          html: `<img src="/airplane.png"
                         style="width:20px;height:20px;display:block;
-                                transform-origin:50% 50%;
-                                transform:rotate(${initialAngle}deg);" />`,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+                              transform-origin:50% 50%;
+                              transform:rotate(${initialAngle}deg);" />`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
         })
 
         const marker = L.marker(origin, { icon }).addTo(map)
@@ -471,7 +478,7 @@ export function WeeklySimulationPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST) // 1 hora simulada por segundo
     const speedRef = useRef(SPEED_FAST)
 
-    
+    const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
 
     useEffect(() => {
         speedRef.current = playbackSpeed
@@ -501,6 +508,8 @@ export function WeeklySimulationPage() {
             a.codeIATA && MAIN_HUB_CODES.includes(a.codeIATA.toUpperCase())
         ) ?? []
 
+    
+
     const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
 
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
@@ -525,13 +534,29 @@ export function WeeklySimulationPage() {
             }
 
             const inst = simulationService.generateFlightInstances(
-            response.flights,
-            startTime,   // <-- asegúrate de definirlo antes
-            168,         // 7 días
-            airports     // <-- ahora ya no puede ser undefined
+              response.flights,
+              startTime,
+              168,
+              airports
             )
 
             setFlightInstances(inst)
+
+            // === marcar vuelos que tienen paquetes ===
+            const hasProductsMap: Record<number, boolean> = {}
+            response.flights.forEach((f: any) => {
+              console.log(
+                'flightInstance',
+                f.flightId,
+                f.flightCode,
+                'hasProducts?',
+                !!flightHasProducts[f.flightId]
+              )
+              // usa el mismo campo que expone el backend
+              const assigned = f.assignedProducts ?? 0   // o f.usedCapacity ?? 0
+              hasProductsMap[f.id] = assigned > 0
+            })
+            setFlightHasProducts(hasProductsMap)
 
             // ==== Aeropuerto más activo (por salidas) ====
             const flightsByAirport: Record<string, number> = {}
@@ -912,15 +937,16 @@ export function WeeklySimulationPage() {
                 )}
 
                 {isRunning && currentTime && (
-                <AnimatedFlights
+                  <AnimatedFlights
                     flightInstances={flightInstances}
                     currentSimTime={currentTime}
                     simulationStartTime={startTime}
                     isPlaying={isRunning && !isPaused}
                     playbackSpeed={playbackSpeed}
-                    onFlightClick={handleFlightClick}     // ← antes: () => {}
+                    onFlightClick={handleFlightClick}
                     onFlightHover={setHoveredFlight}
-                    />
+                    flightHasProducts={flightHasProducts}   // ← nuevo prop
+                  />
                 )}
             </MapContainer>
             </MapWrapper>
