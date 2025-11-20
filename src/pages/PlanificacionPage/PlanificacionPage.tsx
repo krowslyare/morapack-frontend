@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationStore } from '../../store/useSimulationStore'
@@ -448,32 +448,84 @@ const ProgressSubtitle = styled.div`
 
 const ProgressBarContainer = styled.div`
   width: 100%;
-  height: 14px;
+  height: 16px;
   border-radius: 999px;
   background: #e5e7eb;
   overflow: hidden;
   position: relative;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.45) 0,
+      transparent 40%,
+      transparent 60%,
+      rgba(255, 255, 255, 0.45) 100%
+    );
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+  }
 `
 
 const ProgressBarFill = styled.div<{ $percent: number; $isLoading?: boolean }>`
   height: 100%;
   border-radius: inherit;
   width: ${({ $percent }) => `${$percent}%`};
-  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+  background: linear-gradient(90deg, #22c55e, #14b8a6, #0ea5e9);
   transition: width 0.45s ease-out;
   position: relative;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.05);
 
   ${({ $isLoading }) =>
     $isLoading &&
     `
-    animation: progressPulse 1.2s ease-in-out infinite;
+    animation: progressShimmer 1.1s linear infinite;
   `}
 
-  @keyframes progressPulse {
-    0% { opacity: 0.7; }
-    50% { opacity: 1; }
-    100% { opacity: 0.7; }
+  @keyframes progressShimmer {
+    0% { filter: brightness(0.96); }
+    50% { filter: brightness(1.1); }
+    100% { filter: brightness(0.96); }
   }
+`
+
+const ProgressStatusChip = styled.div<{ $status: 'loading' | 'done' | 'idle' }>`
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  ${({ $status }) => {
+    if ($status === 'loading') {
+      return `
+        background: #fef9c3;
+        color: #854d0e;
+        border: 1px solid #facc15;
+      `
+    }
+    if ($status === 'done') {
+      return `
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #22c55e;
+      `
+    }
+    return `
+      background: #e5e7eb;
+      color: #4b5563;
+      border: 1px solid #d1d5db;
+    `
+  }}
 `
 
 const ProgressStatsRow = styled.div`
@@ -526,12 +578,43 @@ export function PlanificacionPage() {
   const totalOrders = ordersState.result?.orders ?? 0
   const totalProducts = ordersState.result?.products ?? 0
   const loadedItems = totalOrders + totalProducts
-
+  
+  const [showResetModal, setShowResetModal] = useState(false)
   // Ajusta este valor según tu realidad de negocio:
   // cuántos registros (pedidos + productos) consideras como "base llena" por semana.
-  const MAX_ITEMS_PER_WEEK = 5000
+  const [displayPercent, setDisplayPercent] = useState(0)
 
+  const MAX_ITEMS_PER_WEEK = 5000
   const capacityTarget = weeks * MAX_ITEMS_PER_WEEK
+
+  const realPercent =
+    capacityTarget > 0 ? Math.round((loadedItems / capacityTarget) * 100) : 0
+  const clampedRealPercent = Math.max(0, Math.min(100, realPercent))
+
+  useEffect(() => {
+    // Mientras está cargando, animamos poco a poco hasta un máximo (ej. 90%)
+    if (ordersState.loading) {
+      const maxWhileLoading =
+        clampedRealPercent > 0
+          ? Math.min(90, clampedRealPercent)
+          : 90 // si aún no hay datos, avanza hasta 90%
+
+      const interval = setInterval(() => {
+        setDisplayPercent(prev => {
+          if (prev >= maxWhileLoading) {
+            return prev
+          }
+          return prev + 2 // velocidad de avance (2% cada tick)
+        })
+      }, 150) // frecuencia de actualización (ms)
+
+      return () => clearInterval(interval)
+    }
+
+    // Cuando termina (éxito o error), fijamos el porcentaje real
+    setDisplayPercent(clampedRealPercent)
+  }, [ordersState.loading, clampedRealPercent])
+
   const rawPercent =
     capacityTarget > 0 ? Math.round((loadedItems / capacityTarget) * 100) : 0
   const fillPercent = Math.max(0, Math.min(100, rawPercent))
@@ -649,6 +732,10 @@ export function PlanificacionPage() {
       const result = await uploadOrdersByDateRange(startStr, endStr)
       setOrdersState({ loading: false, result })
 
+      // NUEVO: usamos el total real como "100 %"
+      const expectedItems =
+        (result.orders ?? 0) + (result.products ?? 0)
+
       if (result.success) {
         toast.success(
           `Fecha configurada y pedidos cargados (${result.orders ?? 0} pedidos, ${
@@ -671,27 +758,22 @@ export function PlanificacionPage() {
     }
   }
 
-  // Limpia configuración y datos en BD
-  const handleResetData = async () => {
-    if (!window.confirm('¿Estás seguro de que deseas resetear la planificación? Esto borrará los pedidos cargados.')) {
-      return
-    }
-
+  const doResetData = () => {
     try {
       setIsLoadingReset(true)
-      await clearOrders()
-      
-      clearSimulationConfig()          // borra config global de simulación
-      setSelectedDateTime('')          // limpia input
-      setWeeks(1)                      // vuelve a 1 semana
-      setOrdersState({ loading: false, result: null }) // quita mensaje de carga
-      setError(null)                   // limpia errores
-      toast.info('Datos de planificación y base de datos limpiados')
-    } catch (error) {
-      console.error('Error al resetear datos:', error)
-      toast.error('Error al limpiar la base de datos')
+
+      // solo limpio UI/local state
+      setSelectedDateTime('')                // input de fecha/hora
+      setWeeks(1)                            // combo semanas
+      setOrdersState({ loading: false, result: null }) // quita mensaje y progreso real
+      setError(null)                         // errores
+      setDisplayPercent(0)                   // barra de progreso a 0
+      // OJO: NO llamamos clearOrders ni clearSimulationConfig
+
+      toast.info('Se limpió la configuración de la pantalla (la base de datos no se modificó)')
     } finally {
       setIsLoadingReset(false)
+      setShowResetModal(false)
     }
   }
 
@@ -731,33 +813,58 @@ export function PlanificacionPage() {
           </InfoBox>
         )}
 
-        {hasValidConfig() && (
-          <CurrentConfigBox>
-            <div
-              style={{
-                fontSize: '16px',
-                fontWeight: 700,
-                color: '#0f766e',
-                marginBottom: '4px',
-              }}
-            >
-              ✓ Configuración Actual
-            </div>
-            <ConfigItem>
-              <ConfigLabel>Fecha de Inicio:</ConfigLabel>
-              <ConfigValue>{formatDate(simulationStartDate)}</ConfigValue>
-            </ConfigItem>
-            <ConfigItem>
-              <ConfigLabel>Semanas de Datos:</ConfigLabel>
-              <ConfigValue>{weeks} semana(s)</ConfigValue>
-            </ConfigItem>
-            <ConfigItem>
-              <ConfigLabel>Estado:</ConfigLabel>
-              <ConfigValue>Configurado y listo</ConfigValue>
-            </ConfigItem>
-          </CurrentConfigBox>
-        )}
+        {(ordersState.loading || ordersState.result) && (
+          <ProgressSection>
+            <ProgressHeader>
+              <div>
+                <ProgressTitle>Llenado de datos en la base</ProgressTitle>
+                <ProgressSubtitle>
+                  Objetivo estimado: {capacityTarget.toLocaleString('es-PE')} registros
+                  (pedidos + productos)
+                </ProgressSubtitle>
+              </div>
 
+              <ProgressStatusChip
+                $status={
+                  ordersState.loading
+                    ? 'loading'
+                    : ordersState.result
+                    ? 'done'
+                    : 'idle'
+                }
+              >
+                {ordersState.loading && <>● Cargando…</>}
+                {!ordersState.loading && ordersState.result && <>✓ Completado</>}
+                {!ordersState.loading && !ordersState.result && <>– En espera</>}
+              </ProgressStatusChip>
+                </ProgressHeader>
+
+                <ProgressBarContainer>
+                  <ProgressBarFill
+                      $percent={displayPercent}
+                      $isLoading={ordersState.loading}
+                  />
+                </ProgressBarContainer>
+
+                <ProgressStatsRow>
+                  <ProgressStat>
+                    Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
+                  </ProgressStat>
+                  <ProgressStat>
+                    Productos: <ProgressValue>{totalProducts}</ProgressValue>
+                  </ProgressStat>
+                  <ProgressStat>
+                    Registros totales:{' '}
+                    <ProgressValue>{loadedItems.toLocaleString('es-PE')}</ProgressValue>
+                  </ProgressStat>
+                  <ProgressStat>
+                    Avance:{' '}
+                    <ProgressValue>{fillPercent}%</ProgressValue>
+                  </ProgressStat>
+                </ProgressStatsRow>
+              </ProgressSection>
+        )}
+        
         <FormSection>
           <FormGroup>
             <Label htmlFor="simulation-date">Fecha y Hora de Inicio de la Simulación</Label>
@@ -829,36 +936,7 @@ export function PlanificacionPage() {
           </InfoBox>
         </FormSection>
 
-        {(ordersState.loading || ordersState.result) && (
-          <ProgressSection>
-            <ProgressHeader>
-              <ProgressTitle>Llenado de datos en la base</ProgressTitle>
-              <ProgressSubtitle>
-                Objetivo estimado: {capacityTarget.toLocaleString('es-PE')} registros
-                (pedidos + productos)
-              </ProgressSubtitle>
-            </ProgressHeader>
-
-            <ProgressBarContainer>
-              <ProgressBarFill
-                $percent={ordersState.loading ? Math.max(fillPercent, 20) : fillPercent}
-                $isLoading={ordersState.loading}
-              />
-            </ProgressBarContainer>
-
-            <ProgressStatsRow>
-              <ProgressStat>
-                Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
-              </ProgressStat>
-              <ProgressStat>
-                Productos: <ProgressValue>{totalProducts}</ProgressValue>
-              </ProgressStat>
-              <ProgressStat>
-                Porcentaje: <ProgressValue>{fillPercent}%</ProgressValue>
-              </ProgressStat>
-            </ProgressStatsRow>
-          </ProgressSection>
-        )}
+        
 
         <ButtonGroup>
           <Button
@@ -872,7 +950,7 @@ export function PlanificacionPage() {
 
           <Button
             $variant="secondary"
-            onClick={handleResetData}
+            onClick={() => setShowResetModal(true)}
             disabled={isLoadingConfig}
           >
             Resetear datos
@@ -887,16 +965,7 @@ export function PlanificacionPage() {
           </Button>
         </ButtonGroup>
 
-        {ordersState.result && (
-          <InfoBox $variant={ordersState.result.success ? 'success' : 'error'}>
-            <strong>{ordersState.result.success ? '✓ Carga de pedidos:' : '✗ Error en la carga:'}</strong>{' '}
-            {ordersState.result.message}{' '}
-            {ordersState.result.orders !== undefined &&
-              `(${ordersState.result.orders} pedidos)`}{' '}
-            {ordersState.result.products !== undefined &&
-              `(${ordersState.result.products} productos)`}
-          </InfoBox>
-        )}
+      
 
         {!hasValidConfig() && (
           <InfoBox $variant="warning">
@@ -905,6 +974,24 @@ export function PlanificacionPage() {
           </InfoBox>
         )}
       </ContentPanel>
+
+      <ModalOverlay $isOpen={showResetModal} onClick={() => setShowResetModal(false)}>
+        <ModalContent onClick={e => e.stopPropagation()}>
+          <ModalTitle>Resetear planificación</ModalTitle>
+          <p style={{ fontSize: 14, color: '#4b5563', marginBottom: 20 }}>
+            Esto solo limpiará los campos de la pantalla y el progreso visual,
+            pero no borrará los pedidos ni la configuración guardada en la base de datos.
+          </p>
+          <ModalButtonGroup>
+            <ModalButton $variant="secondary" onClick={() => setShowResetModal(false)}>
+              Cancelar
+            </ModalButton>
+            <ModalButton onClick={doResetData} disabled={isLoadingReset}>
+              {isLoadingReset ? 'Reseteando…' : 'Sí, resetear'}
+            </ModalButton>
+          </ModalButtonGroup>
+        </ModalContent>
+      </ModalOverlay>
 
       <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
         <ModalContent onClick={(e) => e.stopPropagation()}>
@@ -975,6 +1062,8 @@ export function PlanificacionPage() {
               placeholder="MM"
             />
           </TimeInputContainer>
+          
+          
 
           <ModalButtonGroup>
             <ModalButton $variant="secondary" onClick={() => setShowDatePicker(false)}>
