@@ -239,3 +239,71 @@ export const GuideTags = styled.div`
     letter-spacing: 0.4px;
   }
 `
+
+
+export const TransitionOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.97));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+`
+
+export const TransitionContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+`
+
+export const TransitionCircle = styled.div`
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 20%, #34d399, #059669 70%);
+  box-shadow:
+    0 0 0 8px rgba(16, 185, 129, 0.1),
+    0 18px 35px rgba(15, 23, 42, 0.45);
+  color: #ecfdf5;
+  font-size: 40px;
+`;
+
+export const TransitionRing = styled.div`
+  position: absolute;
+  inset: -10px;
+  border-radius: 999px;
+  border: 3px solid rgba(16, 185, 129, 0.18);
+  border-top-color: #22c55e;
+  border-right-color: #0ea5e9;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
+  animation: spinRing 1.1s linear infinite;
+
+  @keyframes spinRing {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+export const TransitionLabel = styled.div`
+  font-size: 18px;
+  font-weight: 700;
+  color: #e5e7eb;
+`
+
+export const TransitionSub = styled.div`
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9ca3af;
+`
