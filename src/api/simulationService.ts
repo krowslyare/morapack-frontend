@@ -154,7 +154,10 @@ export const simulationService = {
    * Update product states based on current simulation time
    */
   updateStates: async (request: UpdateStatesRequest): Promise<UpdateStatesResponse> => {
-    const { data } = await api.post<UpdateStatesResponse>('/simulation/update-states', request)
+    const { data } = await apiLongRunning.post<UpdateStatesResponse>(
+      '/simulation/update-states',
+      request
+    )
     return data
   },
 
