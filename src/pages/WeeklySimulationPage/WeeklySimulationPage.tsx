@@ -525,7 +525,7 @@ export function WeeklySimulationPage() {
     const lastAlgorithmDayRef = useRef(-1)
     const lastUpdateSimTimeRef = useRef<Date | null>(null)
     const isUpdatingStatesRef = useRef(false)
-    const UPDATE_STEP_HOURS = 4
+    const UPDATE_STEP_HOURS = 1
 
     const [kpi, setKpi] = useState(INITIAL_KPI)
 
@@ -721,7 +721,7 @@ export function WeeklySimulationPage() {
         intervalRef.current = setInterval(() => {
           setCurrentTime(prev => {
             if (!prev) return prev
-
+            
             const next = new Date(prev.getTime() + speedRef.current * 1000)
 
             const elapsedMs = next.getTime() - startTime.getTime()
