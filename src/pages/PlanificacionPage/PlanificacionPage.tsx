@@ -62,18 +62,26 @@ const ModalOverlay = styled.div<{ $isOpen: boolean }>`
 
 const ModalContent = styled.div`
   background: white;
-  border-radius: 12px;
-  padding: 32px;
+  border-radius: 16px;
+  padding: 28px 32px 32px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 420px;
-  width: 90%;
-`
+  max-width: 480px;      /* antes 420px */
+  width: 95%;
+`;
 
 const ModalTitle = styled.h3`
   margin: 0 0 24px 0;
   font-size: 18px;
   color: #111827;
   font-weight: 700;
+`
+
+const CalendarShell = styled.div`
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: radial-gradient(circle at top left, #f0f9ff 0, #f9fafb 40%, #ffffff 100%);
+  padding: 14px 14px 10px;
+  margin-bottom: 16px;
 `
 
 const DatePickerContainer = styled.div`
@@ -83,33 +91,52 @@ const DatePickerContainer = styled.div`
   margin-bottom: 24px;
 `
 
-const DayButton = styled.button<{ $isSelected?: boolean; $isToday?: boolean; $isOtherMonth?: boolean }>`
+const DayButton = styled.button<{
+  $isSelected?: boolean
+  $isToday?: boolean
+  $isOtherMonth?: boolean
+}>`
   aspect-ratio: 1;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 999px;
+  border: 1px solid
+    ${(p) => {
+      if (p.$isSelected) return '#14b8a6'
+      if (p.$isToday) return '#38bdf8'
+      if (p.$isOtherMonth) return 'transparent'
+      return '#e5e7eb'
+    }};
   background: ${(p) => {
-    if (p.$isSelected) return '#14b8a6';
-    if (p.$isToday) return '#e0f2fe';
-    if (p.$isOtherMonth) return '#f9fafb';
-    return 'white';
+    if (p.$isSelected) return 'linear-gradient(135deg, #14b8a6, #0ea5e9)'
+    if (p.$isToday) return '#e0f2fe'
+    if (p.$isOtherMonth) return 'transparent'
+    return '#ffffff'
   }};
   color: ${(p) => {
-    if (p.$isSelected) return 'white';
-    if (p.$isOtherMonth) return '#d1d5db';
-    return '#111827';
+    if (p.$isSelected) return '#ffffff'
+    if (p.$isOtherMonth) return '#d1d5db'
+    return '#111827'
   }};
-  font-weight: ${(p) => (p.$isToday ? 700 : 500)};
-  cursor: ${(p) => (p.$isOtherMonth ? 'not-allowed' : 'pointer')};
+  font-weight: ${(p) => (p.$isSelected || p.$isToday ? 700 : 500)};
+  cursor: ${(p) => (p.$isOtherMonth ? 'default' : 'pointer')};
   font-size: 13px;
-  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.16s ease-out;
 
-  &:hover:not(:disabled) {
-    border-color: #14b8a6;
-    background: ${(p) => (p.$isOtherMonth ? '#f9fafb' : '#f0fdfa')};
+  &:hover {
+    ${(p) =>
+      !p.$isOtherMonth &&
+      `
+      border-color: #14b8a6;
+      box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.25);
+      transform: translateY(-1px);
+    `}
   }
 
-  &:disabled {
-    cursor: not-allowed;
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.7);
   }
 `
 
@@ -137,31 +164,54 @@ const TimeInput = styled.input`
 
 const MonthNavigation = styled.div`
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-`
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+`;
 
 const MonthButton = styled.button`
-  background: #f3f4f6;
-  border: none;
-  border-radius: 6px;
+  flex: 0 0 auto;
+  min-width: 120px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
   padding: 6px 10px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #374151;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 
   &:hover {
-    background: #e5e7eb;
+    background: #f3f4f6;
+    border-color: #14b8a6;
   }
-`
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
 
 const MonthTitle = styled.div`
+  flex: 1;
+  text-align: center;
   font-weight: 700;
   font-size: 14px;
   color: #111827;
-  text-align: center;
-`
+  text-transform: capitalize;
+`;
 
 const WeekdayLabels = styled.div`
   display: grid;
@@ -675,10 +725,8 @@ export function PlanificacionPage() {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const isToday = isCurrentMonth && day === today.getDate()
-      const isSelected =
-        pickerDate.getFullYear() === new Date(selectedDateTime || Date.now()).getFullYear() &&
-        pickerDate.getMonth() === new Date(selectedDateTime || Date.now()).getMonth() &&
-        day === new Date(selectedDateTime || Date.now()).getDate()
+      // ahora la selección depende de pickerDate (lo que vas tocando)
+      const isSelected = day === pickerDate.getDate()
 
       days.push(
         <DayButton
@@ -996,26 +1044,29 @@ export function PlanificacionPage() {
       <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
         <ModalContent onClick={(e) => e.stopPropagation()}>
           <ModalTitle>Selecciona una fecha y hora</ModalTitle>
+          
+          <CalendarShell>
+            <MonthNavigation>
+              <MonthButton onClick={() => handleMonthChange(-1)}>← Mes anterior</MonthButton>
+              <MonthTitle>
+                {pickerDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+              </MonthTitle>
+              <MonthButton onClick={() => handleMonthChange(1)}>Mes siguiente →</MonthButton>
+            </MonthNavigation>
 
-          <MonthNavigation>
-            <MonthButton onClick={() => handleMonthChange(-1)}>← Mes anterior</MonthButton>
-            <MonthTitle>
-              {pickerDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-            </MonthTitle>
-            <MonthButton onClick={() => handleMonthChange(1)}>Mes siguiente →</MonthButton>
-          </MonthNavigation>
+            <WeekdayLabels>
+              <WeekdayLabel>Do</WeekdayLabel>
+              <WeekdayLabel>Lu</WeekdayLabel>
+              <WeekdayLabel>Ma</WeekdayLabel>
+              <WeekdayLabel>Mi</WeekdayLabel>
+              <WeekdayLabel>Ju</WeekdayLabel>
+              <WeekdayLabel>Vi</WeekdayLabel>
+              <WeekdayLabel>Sa</WeekdayLabel>
+            </WeekdayLabels>
 
-          <WeekdayLabels>
-            <WeekdayLabel>Do</WeekdayLabel>
-            <WeekdayLabel>Lu</WeekdayLabel>
-            <WeekdayLabel>Ma</WeekdayLabel>
-            <WeekdayLabel>Mi</WeekdayLabel>
-            <WeekdayLabel>Ju</WeekdayLabel>
-            <WeekdayLabel>Vi</WeekdayLabel>
-            <WeekdayLabel>Sa</WeekdayLabel>
-          </WeekdayLabels>
+            <DatePickerContainer>{renderDatePickerDays()}</DatePickerContainer>
+          </CalendarShell>
 
-          <DatePickerContainer>{renderDatePickerDays()}</DatePickerContainer>
 
           <div style={{ marginBottom: '16px', fontSize: '13px', color: '#6b7280' }}>
             Fecha seleccionada:{' '}
