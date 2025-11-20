@@ -469,14 +469,14 @@ const INITIAL_KPI = {
 export function WeeklySimulationPage() {
 
     const TOTAL_DAYS = 7
-    const SPEED_SLOW = 1800   // 30 min simulados por segundo real
-    const SPEED_FAST = 3600   // 1 hora simulada por segundo real
+    const SPEED_SLOW = 600   // 30 min simulados por segundo real
+    const SPEED_FAST = 1800   // 1 hora simulada por segundo real
 
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
     const startTime = simulationStartDate ?? new Date()
 
-    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST) // 1 hora simulada por segundo
-    const speedRef = useRef(SPEED_FAST)
+    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW) // 1 hora simulada por segundo
+    const speedRef = useRef(SPEED_SLOW)
 
     const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
 
@@ -520,6 +520,12 @@ export function WeeklySimulationPage() {
     const [isPaused, setIsPaused] = useState(false)
 
     const intervalRef = useRef<any>(null)
+
+    //para el algoritmo pe
+    const lastAlgorithmDayRef = useRef(-1)
+    const lastUpdateSimTimeRef = useRef<Date | null>(null)
+    const isUpdatingStatesRef = useRef(false)
+    const UPDATE_STEP_HOURS = 4
 
     const [kpi, setKpi] = useState(INITIAL_KPI)
 
@@ -620,28 +626,132 @@ export function WeeklySimulationPage() {
         }
     }, [airports, startTime])
 
+    //algoritmo
+    const runDailyAlgorithm = useCallback(
+      async (simTime: Date) => {
+        if (!simulationStartDate) return
+
+        // día relativo dentro de la semana (0..6)
+        const dayNumber = Math.floor(
+          (simTime.getTime() - startTime.getTime()) / (24 * 60 * 60 * 1000)
+        )
+
+        console.group(
+          `%c📊 Weekly Algorithm - Day ${dayNumber + 1}`,
+          'color:#14b8a6;font-weight:bold;'
+        )
+        console.log('Simulation time:', simTime.toISOString())
+        console.log('Request:', {
+          simulationStartTime: simTime.toISOString(),
+          simulationDurationHours: 24,
+          useDatabase: true,
+        })
+
+        try {
+          const response = await simulationService.executeDaily({
+            simulationStartTime: simTime.toISOString(),
+            simulationDurationHours: 24,
+            useDatabase: true,
+            // opcional: si quieres pasar velocidad
+            simulationSpeed: playbackSpeed,
+          })
+
+          if (!response) {
+            toast.error('Error: respuesta del algoritmo inválida')
+            console.groupEnd()
+            return
+          }
+
+          console.log('Response:', {
+            totalOrders: response.totalOrders,
+            assignedOrders: response.assignedOrders,
+            totalProducts: response.totalProducts,
+            assignedProducts: response.assignedProducts,
+            score: response.score,
+          })
+          console.groupEnd()
+
+          toast.success(
+            `Semana · Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`
+          )
+
+          // Después de correr el algoritmo, recargas los vuelos+KPI de toda la semana
+          await loadWeeklyFlights()
+        } catch (error) {
+          console.error('Error ejecutando algoritmo semanal:', error)
+          console.groupEnd()
+          toast.error('Error al ejecutar el algoritmo diario dentro de la semana')
+        }
+      },
+      [simulationStartDate, startTime, playbackSpeed, loadWeeklyFlights]
+    )
+
+    const runUpdateStates = useCallback(async (simTime: Date) => {
+
+      if (isUpdatingStatesRef.current) {
+        // ya hay un update corriendo, no lances otro
+        return
+      }
+
+      isUpdatingStatesRef.current = true
+
+      try {
+        const response = await simulationService.updateStates({
+          currentTime: simTime.toISOString(),
+        })
+
+        console.group('%c🔁 update-states', 'color:#0ea5e9;font-weight:bold;')
+        console.log('currentTime:', simTime.toISOString())
+        console.log('Transitions:', response?.transitions)
+        console.groupEnd()
+
+        // aquí podrías actualizar algún KPI de movimientos si quieres
+      } catch (error) {
+        console.error('Error en /simulation/update-states:', error)
+        toast.error('Error al actualizar estados de simulación')
+      } finally {
+        isUpdatingStatesRef.current = false
+      }
+    }, [])
+
+
     const setupInterval = () => {
-        if (intervalRef.current) clearInterval(intervalRef.current)
+      if (intervalRef.current) clearInterval(intervalRef.current)
 
         intervalRef.current = setInterval(() => {
-            setCurrentTime(prev => {
+          setCurrentTime(prev => {
             if (!prev) return prev
 
             const next = new Date(prev.getTime() + speedRef.current * 1000)
 
-            const d = Math.floor(
-                (next.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
-            )
+            const elapsedMs = next.getTime() - startTime.getTime()
+            const d = Math.floor(elapsedMs / (24 * 3600 * 1000))
 
             if (d >= TOTAL_DAYS) {
-                // terminó la semana → solo detiene, NO resetea contador ni KPIs
-                stop(false)
-                return prev
+              // terminó la semana
+              stop(false)
+              return prev
             }
 
             setDayIndex(d)
+
+            // 1) Algoritmo diario una sola vez por día
+            if (d > lastAlgorithmDayRef.current) {
+              lastAlgorithmDayRef.current = d
+              void runDailyAlgorithm(next)
+            }
+
+            // 2) update-states cada N horas simuladas
+            const UPDATE_STEP_MS = UPDATE_STEP_HOURS * 60 * 60 * 1000
+            const last = lastUpdateSimTimeRef.current
+
+            if (!last || next.getTime() - last.getTime() >= UPDATE_STEP_MS) {
+              lastUpdateSimTimeRef.current = next
+              void runUpdateStates(next)
+            }
+
             return next
-            })
+          })
         }, 1000)
     }
 
@@ -657,28 +767,47 @@ export function WeeklySimulationPage() {
           setDayIndex(0)
           setFlightInstances([])
           setKpi(INITIAL_KPI)   // KPI “en blanco” solo cuando reset = true
+          lastAlgorithmDayRef.current = -1
+          lastUpdateSimTimeRef.current = null   // ← aquí
+          isUpdatingStatesRef.current = false
          }
     }
 
-    const start = () => {
+    const start = async () => {
+      if (!hasValidConfig() || !simulationStartDate) {
+        toast.error("Debes configurar la fecha en Planificación primero")
+        return
+      }
 
-        if (!hasValidConfig() || !simulationStartDate) {
-            toast.error("Debes configurar la fecha en Planificación primero")
-            return
-        }
+      if (!airports || airports.length === 0) {
+        toast.error("Cargar aeropuertos primero")
+        return
+      }
 
-        if (!airports) return toast.error("Cargar aeropuertos primero")
+      // limpiar estado anterior
+      stop()
+      setDayIndex(0)
+      setCurrentTime(startTime)
+      lastAlgorithmDayRef.current = -1
+      lastUpdateSimTimeRef.current = null
 
-        // limpiar cualquier intervalo viejo y estado de semana
-        stop()
-        setDayIndex(0)
-        setCurrentTime(startTime)
+      try {
+        // Día 1: algoritmo con la fecha de inicio de simulación
+        await runDailyAlgorithm(startTime)
+        // marcamos que el día 0 ya fue procesado
+        lastAlgorithmDayRef.current = 0
+
+        // Primera actualización de estados
+        await runUpdateStates(startTime)
+        lastUpdateSimTimeRef.current = startTime
 
         setIsRunning(true)
         setIsPaused(false)
-
         setupInterval()
-        loadWeeklyFlights()
+      } catch (error) {
+        console.error('Error al iniciar simulación semanal:', error)
+        toast.error('Error al iniciar la simulación semanal')
+      }
     }
 
     const togglePause = () => {
@@ -817,21 +946,21 @@ export function WeeklySimulationPage() {
                         onClick={() => setPlaybackSpeed(SPEED_SLOW)}
                         disabled={!isRunning}
                         >
-                        30 min / seg
+                        10 min / seg
                         </SpeedButton>
                         <SpeedButton
                         $active={playbackSpeed === SPEED_FAST}
                         onClick={() => setPlaybackSpeed(SPEED_FAST)}
                         disabled={!isRunning}
                         >
-                        1h / seg
+                        30 min / seg
                         </SpeedButton>
                     </SpeedButtonGroup>
                     <SpeedHint>
                         {playbackSpeed === SPEED_SLOW &&
-                        '30 minutos simulados = 1 segundo real'}
+                        '10 minutos simulados = 1 segundo real'}
                         {playbackSpeed === SPEED_FAST &&
-                        '1 hora simulada = 1 segundo real'}
+                        '30 minutos simulados = 1 segundo real'}
                     </SpeedHint>
                 </SpeedControlContainer>
             </SimulationControls>

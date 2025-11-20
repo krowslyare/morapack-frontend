@@ -743,7 +743,7 @@ export function DailySimulationPage() {
   // Run algorithm using CURRENT simulation time
   const runDailyAlgorithm = useCallback(async (simTime: Date) => {
     if (!simulationStartDate) return
-
+    
     setAlgorithmRunning(true)
     const algorithmStartTime = performance.now()
     
