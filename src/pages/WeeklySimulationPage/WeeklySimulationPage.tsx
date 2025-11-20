@@ -554,7 +554,7 @@ export function WeeklySimulationPage() {
               )
               // usa el mismo campo que expone el backend
               const assigned = f.assignedProducts ?? 0   // o f.usedCapacity ?? 0
-              hasProductsMap[f.id] = assigned > 0
+              hasProductsMap[f.flightId] = assigned > 0
             })
             setFlightHasProducts(hasProductsMap)
 
