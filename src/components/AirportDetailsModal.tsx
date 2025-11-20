@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import type { SimAirport } from '../hooks/useFlightSimulation'
 import { AirportState } from '../types/AirportState'
 import { useFlightsByOrigin } from '../hooks/api/useFlights'
+import { useWarehouseByAirport } from '../hooks/api/useWarehouses'
 import { FlightsListModal } from './FlightsListModal'
 import { FlightPackagesModal } from './FlightPackagesModal'
 
@@ -338,11 +339,25 @@ export function AirportDetailsModal({
     !!airport?.id,
   )
 
+  // Fetch warehouse data for real-time capacity updates
+  const { data: warehouses } = useWarehouseByAirport(
+    airport?.id || 0,
+    {
+      enabled: !!airport?.id,
+      refetchInterval: 1000 // Update every second
+    }
+  )
+
+  // Use the first warehouse found (assuming one per airport) or fallback to airport prop data
+  const warehouse = warehouses?.[0]
+
   if (!airport) return null
 
   const airportWithData = airport as any
-  const maxCapacity = airportWithData.maxCapacity || 1000
-  const usedCapacity = airportWithData.currentUsedCapacity || 0
+
+  // Prioritize warehouse data from API, fallback to airport prop
+  const maxCapacity = warehouse?.maxCapacity ?? airportWithData.maxCapacity ?? 1000
+  const usedCapacity = warehouse?.usedCapacity ?? airportWithData.currentUsedCapacity ?? 0
 
   const availableCapacity = maxCapacity - usedCapacity
   const availablePercentage = maxCapacity > 0 ? (availableCapacity / maxCapacity) * 100 : 100
