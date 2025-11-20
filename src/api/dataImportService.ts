@@ -85,6 +85,6 @@ export async function uploadOrdersByDateRange(
  * Clear all orders and products from database
  */
 export async function clearOrders(): Promise<ImportResultData> {
-  const response = await api.delete<ImportResultData>('/data/clear-orders')
+  const response = await api.delete('/orders/all') // <- nuevo endpoint
   return response.data
 }

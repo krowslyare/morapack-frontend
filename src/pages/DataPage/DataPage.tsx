@@ -145,6 +145,68 @@ const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
     }};
 `
 
+const ModalOverlay = styled.div<{ $isOpen: boolean }>`
+  display: ${(p) => (p.$isOpen ? 'flex' : 'none')};
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+`
+
+const ModalContent = styled.div`
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 24px 24px 18px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+`
+
+const ModalTitle = styled.h3`
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+`
+
+const ModalText = styled.p`
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.5;
+`
+
+const ModalButtons = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+`
+
+const ModalButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: ${(p) => (p.$variant === 'secondary' ? '#f3f4f6' : '#dc2626')};
+  color: ${(p) => (p.$variant === 'secondary' ? '#111827' : 'white')};
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+`
+
 interface UploadState {
   loading: boolean
   result: ImportResultData | null
@@ -162,6 +224,8 @@ export function DataPage() {
   const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
   const [clearState, setClearState] = useState<UploadState>({ loading: false, result: null })
   const [stats, setStats] = useState<DataStats>({ airports: 0, flights: 0, orders: 0, loading: true })
+
+  const [showClearModal, setShowClearModal] = useState(false)
 
   // Load initial data statistics
   useEffect(() => {
@@ -248,34 +312,39 @@ export function DataPage() {
     }
   }
 
+  const handleClearClick = () => {
+    setShowClearModal(true)
+  }
+
   // === Clear Data ===
   const handleClearData = async () => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar todos los pedidos y productos? Esta acción no se puede deshacer.')) {
-      return
-    }
 
     setClearState({ loading: true, result: null })
-    try {
-      const result = await clearOrders()
-      setClearState({ loading: false, result })
 
-      if (result.success) {
-        toast.success('Base de datos limpiada correctamente')
-        await loadStats()
-      } else {
-        toast.error(result.message || 'Error al limpiar datos')
-      }
+    try {
+      // si la promesa se resuelve sin lanzar error, consideramos que fue OK
+      const result = await clearOrders()
+
+      setClearState({
+        loading: false,
+        result: result ?? { success: true, message: 'Base de datos limpiada correctamente' },
+      })
+
+      toast.success(result?.message || 'Base de datos limpiada correctamente')
+      await loadStats()
     } catch (e: any) {
-      const message = e.response?.data?.message || 'Error al limpiar datos'
+      const message = e?.response?.data?.message || 'Error al limpiar datos'
       setClearState({
         loading: false,
         result: {
           success: false,
           message,
-          error: e.message,
+          error: e?.message,
         },
       })
       toast.error(message)
+    } finally {
+      setShowClearModal(false)
     }
   }
 
@@ -346,7 +415,7 @@ export function DataPage() {
             <UploadButton
               $variant="secondary"
               style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}
-              onClick={handleClearData}
+              onClick={handleClearClick}
               disabled={clearState.loading}
             >
               {clearState.loading ? 'Limpiando...' : 'Eliminar Pedidos y Productos'}
@@ -358,6 +427,36 @@ export function DataPage() {
             </Message>
           )}
         </UploadSection>
+
+        <ModalOverlay
+          $isOpen={showClearModal}
+          onClick={() => (!clearState.loading ? setShowClearModal(false) : undefined)}
+        >
+          <ModalContent onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Eliminar pedidos y productos</ModalTitle>
+            <ModalText>
+              ¿Estás seguro de que deseas eliminar todos los pedidos y productos? 
+              Esta acción no se puede deshacer.
+            </ModalText>
+
+            <ModalButtons>
+              <ModalButton
+                $variant="secondary"
+                onClick={() => setShowClearModal(false)}
+                disabled={clearState.loading}
+              >
+                Cancelar
+              </ModalButton>
+              <ModalButton
+                onClick={handleClearData}
+                disabled={clearState.loading}
+              >
+                {clearState.loading ? 'Eliminando…' : 'Sí, eliminar todo'}
+              </ModalButton>
+            </ModalButtons>
+          </ModalContent>
+        </ModalOverlay>
+
       </ContentPanel>
     </Wrapper>
   )
