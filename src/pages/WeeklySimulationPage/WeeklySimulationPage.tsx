@@ -443,14 +443,7 @@ const INITIAL_KPI = {
 }
 
 function toBackendDateTime(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  const year = d.getFullYear()
-  const month = pad(d.getMonth() + 1)
-  const day = pad(d.getDate())
-  const hours = pad(d.getHours())
-  const minutes = pad(d.getMinutes())
-  const seconds = pad(d.getSeconds())
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+  return d.toISOString().split('.')[0];
 }
 
 // ===============================
@@ -467,7 +460,9 @@ export function WeeklySimulationPage() {
     const TOTAL_HOURS = 24 * TOTAL_DAYS  // 168 horas
 
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
-    const startTime = simulationStartDate ?? new Date()
+
+    const raw = simulationStartDate ?? new Date()
+    const startTime = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate(), 0, 0, 0, 0)
 
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
     const speedRef = useRef(SPEED_FAST)
@@ -609,14 +604,13 @@ export function WeeklySimulationPage() {
           `%c🐍 PYTHON REPLICA - Day ${dayNumber + 1}`,
           'color:#14b8a6;font-weight:bold;'
         )
-        console.log('📅 Day Start:', dayStart.toISOString())
+        console.log('📅 Day Start (local):', dayStart.toLocaleString('es-PE', { hour12: false }))
 
         try {
           const response = await simulationService.executeDaily({
             simulationStartTime: toBackendDateTime(dayStart),
             simulationDurationHours: 24,
             useDatabase: true,
-            simulationSpeed: playbackSpeed,
           })
 
           if (!response) {
@@ -638,14 +632,13 @@ export function WeeklySimulationPage() {
             `Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`
           )
 
-          await loadWeeklyFlights()
         } catch (error) {
           console.error('❌ Error ejecutando algoritmo:', error)
           console.groupEnd()
           toast.error('Error al ejecutar el algoritmo diario')
         }
       },
-      [simulationStartDate, playbackSpeed, loadWeeklyFlights]
+      []
     )
 
     // 🐍 PYTHON REPLICA: Update states
@@ -724,7 +717,7 @@ export function WeeklySimulationPage() {
         `%c🐍 STEP ${stepHours}h (Day ${dayNumber + 1})`,
         'color:#8b5cf6;font-weight:bold;'
       )
-      console.log('⏰ Simulation Time:', currentTime.toISOString())
+      console.log('⏰ Simulation Time:', currentTime.toLocaleString('es-PE', { hour12: false }))
 
       // 1️⃣ Ejecutar algoritmo UNA VEZ por día (al inicio del día)
       if (dayNumber > lastAlgorithmDayRef.current) {
@@ -803,7 +796,7 @@ export function WeeklySimulationPage() {
       }
 
       console.group('%c🐍 INICIANDO SIMULACIÓN (PYTHON REPLICA)', 'color:#10b981;font-weight:bold;font-size:14px;')
-      console.log('📅 Start Time:', startTime.toISOString())
+      console.log('📅 Start Time local:', startTime.toString())
       console.log('⚡ Playback Speed:', playbackSpeed)
       console.log('📊 Steps:', `0 → ${TOTAL_HOURS}h en incrementos de ${STEP_HOURS}h`)
       
@@ -817,6 +810,8 @@ export function WeeklySimulationPage() {
         // 🐍 PYTHON REPLICA: Ejecutar paso 0 (algoritmo del día 1, sin update-states)
         console.log('🔄 Ejecutando STEP 0 (Day 1 algorithm)...')
         await executeStep(0)
+
+        await loadWeeklyFlights();
         
         console.log('✅ Step 0 completado')
         console.groupEnd()
@@ -836,7 +831,6 @@ export function WeeklySimulationPage() {
       simulationStartDate,
       airports,
       startTime,
-      playbackSpeed,
       stop,
       executeStep,
       startSimulationLoop
