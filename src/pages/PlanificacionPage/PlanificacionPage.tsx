@@ -812,9 +812,9 @@ export function PlanificacionPage() {
 
       if (result.success) {
         toast.success(
-          `Fecha configurada y pedidos cargados (${result.orders ?? 0} pedidos, ${
-            result.products ?? 0
-          } productos)`,
+          `Fecha configurada y pedidos cargados (${result.statistics?.ordersLoaded ?? 0} pedidos, ${
+            result.statistics?.ordersFiltered ?? 0
+          } productos)`
         )
       } else {
         toast.error(result.message || 'Error al cargar pedidos')

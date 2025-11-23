@@ -443,15 +443,15 @@ const INITIAL_KPI = {
 }
 
 function toBackendDateTime(d: Date): string {
-  // Forzar interpretación como UTC, no como hora local
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  const seconds = String(d.getSeconds()).padStart(2, '0')
+  // Forzar interpretación como UTC
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hours = String(d.getUTCHours()).padStart(2, '0');
+  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(d.getUTCSeconds()).padStart(2, '0');
   
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }
 
 // ===============================
@@ -470,16 +470,15 @@ export function WeeklySimulationPage() {
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
 
     const startTime = useMemo(() => {
-      const raw = simulationStartDate ?? new Date()
-      
-      // ✅ OPCIÓN 1: Si simulationStartDate ya es una fecha válida, usar sus componentes UTC
+      const raw = simulationStartDate ?? new Date();
+      // Usar la hora en UTC
       return new Date(Date.UTC(
-        raw.getUTCFullYear(),    // ⚠️ Usar getUTC* en lugar de get*
+        raw.getUTCFullYear(),
         raw.getUTCMonth(),
         raw.getUTCDate(),
         0, 0, 0, 0
-      ))
-    }, [simulationStartDate])
+      ));
+    }, [simulationStartDate]);
     
 
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
@@ -514,6 +513,7 @@ export function WeeklySimulationPage() {
 
     const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
+
     const [dayIndex, setDayIndex] = useState(0)
     const [isRunning, setIsRunning] = useState(false)
     const [isPaused, setIsPaused] = useState(false)
@@ -744,90 +744,91 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Paso discreto (ejecuta un tick del script Python)
     const executeStep = useCallback(async (stepHours: number) => {
-      const currentTime = new Date(startTime.getTime() + stepHours * 60 * 60 * 1000)
-      const dayNumber = Math.floor(stepHours / 24)
 
-      // Verificar fin de semana
+      currentStepHoursRef.current = stepHours  // ✅ Actualizar
+
+      const currentTime = new Date(startTime.getTime() + stepHours * 60 * 60 * 1000);
+      const dayNumber = Math.floor(stepHours / 24);  // Cálculo del día de simulación
+
       if (dayNumber >= TOTAL_DAYS) {
-        stop(false)
-        toast.info('✅ Simulación semanal completada')
-        return
+        stop(false);
+        toast.info('✅ Simulación semanal completada');
+        return;
       }
 
-      setCurrentTime(currentTime)
-      setDayIndex(dayNumber)
+      setCurrentTime(currentTime); // Establece la hora actual de la simulación
+      setDayIndex(dayNumber);  // Actualiza el índice del día
 
       console.group(
         `%c🐍 STEP ${stepHours}h (Day ${dayNumber + 1})`,
         'color:#8b5cf6;font-weight:bold;'
-      )
-      console.log('⏰ Simulation Time (UTC):', currentTime.toISOString())
-      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }))
+      );
+      console.log('⏰ Simulation Time (UTC):', currentTime.toISOString());
+      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }));
 
-      // 1️⃣ Ejecutar algoritmo UNA VEZ por día (al inicio del día)
+      // Ejecutar el algoritmo al inicio de un nuevo día
       if (dayNumber > lastAlgorithmDayRef.current) {
-        console.log('🔔 Nuevo día detectado - ejecutando algoritmo')
-        lastAlgorithmDayRef.current = dayNumber
+        console.log('🔔 Nuevo día detectado - ejecutando algoritmo');
+        lastAlgorithmDayRef.current = dayNumber;
 
-        const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000)
-        await runDailyAlgorithm(dayStart, dayNumber)
+        const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000);
+        await runDailyAlgorithm(dayStart, dayNumber);
 
-        // 🐍 PYTHON REPLICA: En step=0 (00:00 del primer día), NO llamar update-states
+        // En el paso 0, no ejecutamos update-states
         if (stepHours === 0) {
-          console.log('⏭️ Step 0: Saltando update-states (igual que Python)')
-          console.groupEnd()
-          return
+          console.log('⏭️ Step 0: Saltando update-states (igual que Python)');
+          console.groupEnd();
+          return;
         }
       }
 
-      // 2️⃣ Update-states en todos los demás pasos (excepto step=0)
-      console.log('🔄 Ejecutando update-states...')
-      await runUpdateStates(currentTime)
+      // Ejecutar update-states en todos los pasos después del 0
+      console.log('🔄 Ejecutando update-states...');
+      await runUpdateStates(currentTime);
 
-      console.groupEnd()
-    }, [startTime, runDailyAlgorithm, runUpdateStates, stop])
+      console.groupEnd();
+    }, [startTime, runDailyAlgorithm, runUpdateStates, stop]);
 
     // 🐍 PYTHON REPLICA: Loop secuencial (espera a que termine cada paso)
     const runSimulationLoop = useCallback(async () => {
-      const msPerStep = (STEP_HOURS * 3600 * 1000) / speedRef.current
+      const msPerStep = (STEP_HOURS * 3600 * 1000) / speedRef.current;
 
       for (let stepHours = STEP_HOURS; stepHours <= TOTAL_HOURS; stepHours += STEP_HOURS) {
-        // Verificar si debemos detener
-        if (!intervalRef.current) {
-          console.log('🛑 Loop interrumpido')
-          break
+
+        // ✅ Esperar mientras esté pausado
+        while (pausedRef.current && intervalRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
 
-        // Esperar el tiempo correspondiente
-        await new Promise(resolve => setTimeout(resolve, msPerStep))
 
-        // Verificar nuevamente después del timeout
         if (!intervalRef.current) {
-          console.log('🛑 Loop interrumpido después de timeout')
-          break
+          console.log('🛑 Loop interrumpido');
+          break;
         }
 
-        currentStepHoursRef.current = stepHours
+        await new Promise(resolve => setTimeout(resolve, msPerStep));
 
-        // 🔥 CRÍTICO: Ejecutar el paso y ESPERAR a que termine
+        if (!intervalRef.current) {
+          console.log('🛑 Loop interrumpido después de timeout');
+          break;
+        }
+
         try {
-          await executeStep(stepHours)
+          await executeStep(stepHours);
         } catch (err) {
-          console.error('Error en executeStep:', err)
+          console.error('Error en executeStep:', err);
         }
       }
 
-      // Fin de la simulación
-      stop(false)
-      toast.info('✅ Simulación semanal completada')
-    }, [executeStep, stop])
+      stop(false);
+      toast.info('✅ Simulación semanal completada');
+    }, [executeStep, stop]);
 
-    // Función para iniciar el loop (mantiene referencia para poder detenerlo)
+    // Lógica para iniciar la simulación
     const startSimulationLoop = useCallback(() => {
-      // Usar una marca en intervalRef para poder interrumpir
-      intervalRef.current = true
-      runSimulationLoop()
-    }, [runSimulationLoop])
+      intervalRef.current = true;
+      runSimulationLoop();
+    }, [runSimulationLoop]);
 
     
 
@@ -856,14 +857,8 @@ export function WeeklySimulationPage() {
 
       try {
 
-        
-
-
-
         // 🐍 PYTHON REPLICA: Ejecutar paso 0 (algoritmo del día 1, sin update-states)
         console.log('🔄 Ejecutando STEP 0 (Day 1 algorithm)...')
-        
-        await loadWeeklyFlights();
         
         await executeStep(0)
 
@@ -893,11 +888,19 @@ export function WeeklySimulationPage() {
       startSimulationLoop
     ])
 
+    const pausedRef = useRef(false)
+
     const togglePause = useCallback(() => {
-        if (!isRunning) return
-        
-        // TODO: Implementar pausa para el loop secuencial si es necesario
-        toast.info('⚠️ La pausa no está implementada en el modo secuencial')
+      if (!isRunning) return
+      
+      pausedRef.current = !pausedRef.current
+      setIsPaused(pausedRef.current)
+      
+      if (pausedRef.current) {
+        toast.info('⏸️ Simulación pausada')
+      } else {
+        toast.info('▶️ Simulación reanudada')
+      }
     }, [isRunning])
 
     useEffect(() => {
@@ -985,14 +988,25 @@ export function WeeklySimulationPage() {
                   <div>
                     <ClockLabel>Tiempo de simulación 🐍</ClockLabel>
                     <Clock>
-                        {currentTime
-                          ? currentTime.toLocaleDateString('es-ES')
-                          : '--/--/----'}
+                      {currentTime
+                        ? currentTime.toLocaleDateString('es-ES', {
+                            timeZone: 'UTC',  // ✅ Forzar UTC
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })
+                        : '--/--/----'}
                     </Clock>
                     <Clock style={{ marginTop: '8px', fontSize: '20px' }}>
-                        {currentTime
-                          ? currentTime.toLocaleTimeString('es-ES', { hour12: false })
-                          : '--:--:--'}
+                      {currentTime
+                        ? currentTime.toLocaleTimeString('es-ES', {
+                            timeZone: 'UTC',  // ✅ Forzar UTC
+                            hour12: false,
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })
+                        : '--:--:--'}
                     </Clock>
                   </div>
 
