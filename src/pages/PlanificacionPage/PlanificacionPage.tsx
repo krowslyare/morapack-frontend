@@ -625,9 +625,9 @@ export function PlanificacionPage() {
   const [pickerHour, setPickerHour] = useState<string>('00')
   const [pickerMinute, setPickerMinute] = useState<string>('00')
 
-  const totalOrders = ordersState.result?.orders ?? 0
-  const totalProducts = ordersState.result?.products ?? 0
-  const loadedItems = totalOrders + totalProducts
+  const totalOrders = ordersState.result?.statistics?.ordersLoaded ?? 0; 
+  const totalProducts = ordersState.result?.statistics?.ordersFiltered ?? 0; 
+  const loadedItems = totalOrders + totalProducts;
   
   const [showResetModal, setShowResetModal] = useState(false)
   // Ajusta este valor según tu realidad de negocio:
@@ -764,23 +764,49 @@ export function PlanificacionPage() {
       // 1) Guardar fecha en el store para la simulación
       setSimulationStartDate(parsedDate)
 
-      // 2) Calcular rango de fechas para pedidos (start → start + semanas*7 - 1 días)
-      const startDate = new Date(
+      // ✅ 2) Calcular rango de fechas en UTC (igual que Python)
+      const startDate = new Date(Date.UTC(
         parsedDate.getFullYear(),
         parsedDate.getMonth(),
         parsedDate.getDate(),
-      )
-      const endDate = new Date(startDate)
-      endDate.setDate(endDate.getDate() + weeks * 7 - 1)
+        0, 0, 0, 0
+      ))
 
-      const startStr = formatToYYYYMMDD(startDate)
-      const endStr = formatToYYYYMMDD(endDate)
+
+      const endDate = new Date(
+        startDate.getTime() + (weeks * 7 - 1) * 24 * 60 * 60 * 1000
+      )
+
+      // poner fin de día en UTC
+      endDate.setUTCHours(23, 59, 59, 0)
+
+      // ✅ 3) Formatear en ISO como Python: YYYY-MM-DDTHH:MM:SS
+      const formatISO = (date: Date) => {
+        const y = date.getUTCFullYear()
+        const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+        const d = String(date.getUTCDate()).padStart(2, '0')
+        const h = String(date.getUTCHours()).padStart(2, '0')
+        const min = String(date.getUTCMinutes()).padStart(2, '0')
+        const s = String(date.getUTCSeconds()).padStart(2, '0')
+        return `${y}-${m}-${d}T${h}:${min}:${s}`
+      }
+
+      const startStr = formatISO(startDate)  // "2025-01-02T00:00:00"
+      const endStr = formatISO(endDate)      // "2025-01-09T00:00:00"
+
+      console.group('📦 Cargando órdenes')
+      console.log('Start:', startStr)
+      console.log('End:', endStr)
+      console.log('Weeks:', weeks)
 
       // 3) Llamar backend para cargar pedidos en ese rango
       const result = await uploadOrdersByDateRange(startStr, endStr)
+      console.log('Resultado de la API:', result);
       setOrdersState({ loading: false, result })
 
-      // NUEVO: usamos el total real como "100 %"
+      console.log('✅ Result:', result)
+      console.groupEnd()
+
       const expectedItems =
         (result.orders ?? 0) + (result.products ?? 0)
 

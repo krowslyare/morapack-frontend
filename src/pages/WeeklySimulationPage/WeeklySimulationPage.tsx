@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import styled from "styled-components"
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane, Polyline } from "react-leaflet"
 import L, { DivIcon, Marker, type LatLngTuple } from "leaflet"
@@ -443,7 +443,15 @@ const INITIAL_KPI = {
 }
 
 function toBackendDateTime(d: Date): string {
-  return d.toISOString().split('.')[0];
+  // Forzar interpretación como UTC, no como hora local
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  const seconds = String(d.getSeconds()).padStart(2, '0')
+  
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
 }
 
 // ===============================
@@ -461,8 +469,18 @@ export function WeeklySimulationPage() {
 
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
 
-    const raw = simulationStartDate ?? new Date()
-    const startTime = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate(), 0, 0, 0, 0)
+    const startTime = useMemo(() => {
+      const raw = simulationStartDate ?? new Date()
+      
+      // ✅ OPCIÓN 1: Si simulationStartDate ya es una fecha válida, usar sus componentes UTC
+      return new Date(Date.UTC(
+        raw.getUTCFullYear(),    // ⚠️ Usar getUTC* en lugar de get*
+        raw.getUTCMonth(),
+        raw.getUTCDate(),
+        0, 0, 0, 0
+      ))
+    }, [simulationStartDate])
+    
 
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
     const speedRef = useRef(SPEED_FAST)
@@ -499,6 +517,8 @@ export function WeeklySimulationPage() {
     const [dayIndex, setDayIndex] = useState(0)
     const [isRunning, setIsRunning] = useState(false)
     const [isPaused, setIsPaused] = useState(false)
+
+    
 
     const intervalRef = useRef<any>(null)
 
@@ -600,18 +620,27 @@ export function WeeklySimulationPage() {
       async (dayStart: Date, dayNumber: number) => {
         if (!simulationStartDate) return
 
-        console.group(
-          `%c🐍 PYTHON REPLICA - Day ${dayNumber + 1}`,
-          'color:#14b8a6;font-weight:bold;'
-        )
+        console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
+
+        console.log('📅 Day Start (UTC):', dayStart.toISOString())
         console.log('📅 Day Start (local):', dayStart.toLocaleString('es-PE', { hour12: false }))
+        
+        // ✅ Formatear como Python: solo fecha + T00:00:00
+        const year = dayStart.getUTCFullYear()
+        const month = String(dayStart.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(dayStart.getUTCDate()).padStart(2, '0')
+        const dateTimeStr = `${year}-${month}-${day}T00:00:00`
+
+        console.log('📅 Sending to backend:', dateTimeStr)
 
         try {
+
           const response = await simulationService.executeDaily({
-            simulationStartTime: toBackendDateTime(dayStart),
+            simulationStartTime: dateTimeStr,
             simulationDurationHours: 24,
             useDatabase: true,
           })
+          
 
           if (!response) {
             toast.error('Error: respuesta del algoritmo inválida')
@@ -626,6 +655,10 @@ export function WeeklySimulationPage() {
             assignedProducts: response.assignedProducts,
             score: response.score,
           })
+
+
+
+          
           console.groupEnd()
 
           toast.success(
@@ -653,10 +686,21 @@ export function WeeklySimulationPage() {
 
       try {
         console.group('%c🐍 update-states', 'color:#0ea5e9;font-weight:bold;')
-        console.log('⏰ Current Time:', simTime.toISOString())
+        console.log('⏰ Current Time (UTC):', simTime.toISOString())
+
+        // ✅ También formatear correctamente
+        const year = simTime.getUTCFullYear()
+        const month = String(simTime.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(simTime.getUTCDate()).padStart(2, '0')
+        const hours = String(simTime.getUTCHours()).padStart(2, '0')
+        const minutes = String(simTime.getUTCMinutes()).padStart(2, '0')
+        const seconds = String(simTime.getUTCSeconds()).padStart(2, '0')
+        const dateTimeStr = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+
+        console.log('⏰ Current Time (sending):', dateTimeStr)
         
         const response = await simulationService.updateStates({
-          currentTime: toBackendDateTime(simTime),
+          currentTime: dateTimeStr,
         })
 
         const transitions = response?.transitions ?? 0
@@ -717,7 +761,8 @@ export function WeeklySimulationPage() {
         `%c🐍 STEP ${stepHours}h (Day ${dayNumber + 1})`,
         'color:#8b5cf6;font-weight:bold;'
       )
-      console.log('⏰ Simulation Time:', currentTime.toLocaleString('es-PE', { hour12: false }))
+      console.log('⏰ Simulation Time (UTC):', currentTime.toISOString())
+      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }))
 
       // 1️⃣ Ejecutar algoritmo UNA VEZ por día (al inicio del día)
       if (dayNumber > lastAlgorithmDayRef.current) {
@@ -784,6 +829,8 @@ export function WeeklySimulationPage() {
       runSimulationLoop()
     }, [runSimulationLoop])
 
+    
+
     const start = useCallback(async () => {
       if (!hasValidConfig() || !simulationStartDate) {
         toast.error("Debes configurar la fecha en Planificación primero")
@@ -796,7 +843,8 @@ export function WeeklySimulationPage() {
       }
 
       console.group('%c🐍 INICIANDO SIMULACIÓN (PYTHON REPLICA)', 'color:#10b981;font-weight:bold;font-size:14px;')
-      console.log('📅 Start Time local:', startTime.toString())
+      console.log('📅 Start Time (UTC):', startTime.toISOString()) // ✅ Mostrar en UTC
+      console.log('📅 Start Time (local):', startTime.toString())  // Para referencia
       console.log('⚡ Playback Speed:', playbackSpeed)
       console.log('📊 Steps:', `0 → ${TOTAL_HOURS}h en incrementos de ${STEP_HOURS}h`)
       
@@ -807,11 +855,20 @@ export function WeeklySimulationPage() {
       pendingUpdateRef.current = false
 
       try {
+
+        
+
+
+
         // 🐍 PYTHON REPLICA: Ejecutar paso 0 (algoritmo del día 1, sin update-states)
         console.log('🔄 Ejecutando STEP 0 (Day 1 algorithm)...')
+        
+        await loadWeeklyFlights();
+        
         await executeStep(0)
 
-        await loadWeeklyFlights();
+        // ✅ 3. RECARGAR vuelos para ver los productos asignados
+        await loadWeeklyFlights()
         
         console.log('✅ Step 0 completado')
         console.groupEnd()

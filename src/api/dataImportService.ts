@@ -8,6 +8,15 @@ export interface ImportResultData {
   products?: number
   cities?: number
   error?: string
+  statistics?: {
+    ordersLoaded: number;
+    ordersCreated: number;
+    ordersFiltered: number;
+    customersCreated: number;
+    durationSeconds: number;
+    fileErrors: number;
+    parseErrors: number;
+  }
 }
 
 /**
@@ -68,16 +77,21 @@ export async function getDataStatus(): Promise<{
 }
 
 export async function uploadOrdersByDateRange(
-  startDate: string,
-  endDate: string
+  startTime: string,
+  endTime: string    
 ): Promise<ImportResultData> {
+  // ✅ Usar el mismo endpoint que Python
   const result = await api.post(
-  '/data-import/orders-by-date',
-  null,
-  { params: { startDate: startDate.replaceAll('-', ''), endDate: endDate.replaceAll('-', '') },
-    timeout: 10 * 60 * 1000 // 10 min
-  }
-)
+    '/data/load-orders',
+    null,
+    { 
+      params: { 
+        startTime,
+        endTime 
+      },
+      timeout: 10 * 60 * 1000
+    }
+  )
   return result.data
 }
 
