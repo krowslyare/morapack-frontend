@@ -135,6 +135,111 @@ export interface LoadOrdersResponse {
   ordersLoaded: number
 }
 
+export interface SimulationReportRequest {
+  startTime?: string // ISO 8601 format (optional)
+  endTime?: string // ISO 8601 format (optional)
+}
+
+export interface CollapseScenarioRequest {
+  airportId: number
+  collapseStartTime: string // ISO 8601 format
+  collapseDurationHours: number
+}
+
+export interface SimulationReportResponse {
+  reportGeneratedAt: string
+  analysisTimeRange: {
+    start: string | 'All time'
+    end: string | 'All time'
+  }
+  unassignedOrders: {
+    totalProducts: number
+    unassignedProducts: number
+    unassignedOrders: number
+    unassignedPercentage: number
+  }
+  warehouseSaturation: {
+    totalWarehouses: number
+    saturatedWarehouses: number
+    details: Array<{
+      warehouseId: number
+      city: string
+      currentCapacity: number
+      maxCapacity: number
+      utilizationPercent: number
+    }>
+  }
+  flightUtilization: {
+    totalFlights: number
+    underutilized: number
+    wellUtilized: number
+    overUtilized: number
+    averageUtilization: number
+  }
+  delayedProducts: {
+    arrivedNotDelivered: number
+    inTransit: number
+    delivered: number
+  }
+  systemHealth: {
+    overallScore: number
+    unassignedScore: number
+    warehouseScore: number
+    flightUtilizationScore: number
+    deliveryScore: number
+    criticalIssues: number
+  }
+  recommendations: string[]
+}
+
+export interface BottlenecksReportResponse {
+  bottlenecksFound: number
+  bottlenecks: Array<{
+    type: string
+    severity: string
+    location?: string
+    description: string
+    [key: string]: any
+  }>
+}
+
+export interface FailuresReportResponse {
+  failuresFound: number
+  failures: Array<{
+    type: string
+    severity: string
+    description: string
+    [key: string]: any
+  }>
+}
+
+export interface CollapseScenarioResponse {
+  collapsedHub: {
+    airportId: number
+    cityName: string
+    collapseStart: string
+    collapseEnd: string
+  }
+  affectedFlights: {
+    count: number
+    flightCodes: string[]
+  }
+  affectedProducts: number
+  affectedOrders: number
+  estimatedImpact: {
+    currency: string
+    amount: number
+    description: string
+  }
+  alternativeHubs: Array<{
+    airportId: number
+    cityName: string
+    availableCapacity: number
+  }>
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+  recommendation: string
+}
+
 // ===== Service =====
 
 export const simulationService = {
@@ -343,5 +448,53 @@ export const simulationService = {
 
     // Return combined instances
     return [...cleanedInstances, ...newInstances]
+  },
+
+  /**
+   * Get comprehensive system analysis report
+   * Includes: unassigned orders, warehouse saturation, flight utilization, delayed products
+   */
+  getSystemReport: async (
+    request?: SimulationReportRequest
+  ): Promise<SimulationReportResponse> => {
+    const params = new URLSearchParams()
+    if (request?.startTime) params.append('startTime', request.startTime)
+    if (request?.endTime) params.append('endTime', request.endTime)
+
+    const { data } = await api.get<SimulationReportResponse>(
+      `/simulation/report/analysis${params.toString() ? '?' + params.toString() : ''}`
+    )
+    return data
+  },
+
+  /**
+   * Get system bottlenecks report
+   */
+  getBottlenecksReport: async (): Promise<BottlenecksReportResponse> => {
+    const { data } = await api.get<BottlenecksReportResponse>(
+      '/simulation/report/bottlenecks'
+    )
+    return data
+  },
+
+  /**
+   * Get system failures report
+   */
+  getFailuresReport: async (): Promise<FailuresReportResponse> => {
+    const { data } = await api.get<FailuresReportResponse>('/simulation/report/failures')
+    return data
+  },
+
+  /**
+   * Simulate hub collapse scenario and analyze impact
+   */
+  simulateHubCollapse: async (
+    request: CollapseScenarioRequest
+  ): Promise<CollapseScenarioResponse> => {
+    const { data } = await api.post<CollapseScenarioResponse>(
+      '/simulation/report/collapse-scenario',
+      request
+    )
+    return data
   },
 }

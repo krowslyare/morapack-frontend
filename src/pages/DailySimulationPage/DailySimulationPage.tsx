@@ -10,6 +10,9 @@ import { useAirports } from '../../hooks/api/useAirports'
 import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
+import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import type { SimAirport } from '../../hooks/useFlightSimulation'
+import type { Continent } from '../../types/Continent'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -298,17 +301,6 @@ const AlgorithmBadge = styled.div`
   color: #c2410c;
   font-size: 12px;
   font-weight: 600;
-  margin-top: 8px;
-  
-  &::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border: 2px solid #c2410c;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
 `
 
 const KPIPanel = styled.div`
@@ -343,7 +335,22 @@ const KPIContainer = styled.div`
   gap: 8px;
 `
 
-// Helper to compute curved flight path
+function mapAirportToSimAirport(a: any): SimAirport {
+  return {
+    id: a.id,
+    city: a.cityName ?? a.city ?? '',
+    country: a.countryName ?? a.country ?? '',
+    continent: (a.continent as Continent) ?? 'America',
+    latitude: Number(a.latitude ?? 0),
+    longitude: Number(a.longitude ?? 0),
+    capacityPercent: Number(a.capacityPercent ?? 0),
+  }
+}
+
+// =============================================================
+//                 AnimatedFlights
+// =============================================================
+
 function computeControlPoint(a: LatLngTuple, b: LatLngTuple, curvature = 0.25): LatLngTuple {
   const lat1 = a[0]
   const lng1 = a[1]
@@ -432,7 +439,7 @@ function AnimatedFlights({
   >({})
 
   // Limit to prevent performance issues
-  const MAX_CONCURRENT_ANIMATIONS = 220 // Limit active animations, not total processed
+  const MAX_CONCURRENT_ANIMATIONS = 300 // Limit active animations, not total processed
 
   // Initialize timeline once
   useEffect(() => {
@@ -667,6 +674,7 @@ export function DailySimulationPage() {
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
   const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
+  const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
 
   // Loading states
   const [isLoadingData, setIsLoadingData] = useState(false)
@@ -1164,25 +1172,25 @@ export function DailySimulationPage() {
                 60x (1 min)
               </SpeedButton>
               <SpeedButton
+                $active={playbackSpeed === 300}
+                onClick={() => setPlaybackSpeed(300)}
+                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
+              >
+                300x (5 min)
+              </SpeedButton>
+              <SpeedButton
                 $active={playbackSpeed === 600}
                 onClick={() => setPlaybackSpeed(600)}
                 disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
               >
                 600x (10 min)
               </SpeedButton>
-              <SpeedButton
-                $active={playbackSpeed === 1800}
-                onClick={() => setPlaybackSpeed(1800)}
-                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-              >
-                1800x (30 min)
-              </SpeedButton>
             </SpeedButtonGroup>
             <SpeedHint>
               {playbackSpeed === 1 && '1 seg simulado = 1 seg real'}
               {playbackSpeed === 60 && '1 min simulado = 1 seg real'}
+              {playbackSpeed === 300 && '5 min simulados = 1 seg real'}
               {playbackSpeed === 600 && '10 min simulados = 1 seg real'}
-              {playbackSpeed === 1800 && '30 min simulados = 1 seg real'}
             </SpeedHint>
           </SpeedControlContainer>
 
@@ -1255,6 +1263,9 @@ export function DailySimulationPage() {
                   fillOpacity={0.2}
                   weight={0}
                   pane="main-hubs"
+                  eventHandlers={{
+                    click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                  }}
                 />
 
                 <CircleMarker
@@ -1265,6 +1276,9 @@ export function DailySimulationPage() {
                   fillOpacity={0.95}
                   weight={2.5}
                   pane="main-hubs"
+                  eventHandlers={{
+                    click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                  }}
                 >
                   <Tooltip direction="top" offset={[0, -10]} opacity={1}>
                     <div style={{ textAlign: 'center' }}>
@@ -1290,6 +1304,9 @@ export function DailySimulationPage() {
               fillOpacity={0.8}
               weight={2}
               pane="airports"
+              eventHandlers={{
+                click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+              }}
             >
               <Tooltip direction="top" offset={[0, -8]} opacity={1}>
                 <div>
@@ -1368,6 +1385,14 @@ export function DailySimulationPage() {
           flightId={selectedFlight.id}
           flightCode={selectedFlight.code}
           onClose={() => setSelectedFlight(null)}
+        />
+      )}
+
+      {/* Airport Details Modal */}
+      {selectedAirport && (
+        <AirportDetailsModal
+          airport={selectedAirport}
+          onClose={() => setSelectedAirport(null)}
         />
       )}
     </Wrapper>
