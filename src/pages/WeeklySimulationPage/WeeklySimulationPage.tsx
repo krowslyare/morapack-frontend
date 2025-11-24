@@ -460,8 +460,8 @@ function toBackendDateTime(d: Date): string {
 export function WeeklySimulationPage() {
 
     const TOTAL_DAYS = 7
-    const SPEED_SLOW = 600   // 10 min simulados por segundo real
-    const SPEED_FAST = 3600  // 1 hora simulada por segundo real
+    const SPEED_SLOW = 60      // 10 min simulados por segundo real
+    const SPEED_FAST = 600    // 1 hora simulada por segundo real
     
     // 🐍 PYTHON REPLICA: Pasos discretos de 4 horas
     const STEP_HOURS = 4
@@ -657,13 +657,14 @@ export function WeeklySimulationPage() {
           })
 
 
-
+          const products = response.assignedProducts || 0
           
           console.groupEnd()
 
-          toast.success(
-            `Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`
-          )
+          // ✅ Solo toast si hay productos asignados
+          if (products > 0) {
+            toast.success(`Día ${dayNumber + 1}: ${products} productos asignados`)
+          }
 
         } catch (error) {
           console.error('❌ Error ejecutando algoritmo:', error)
@@ -676,6 +677,7 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Update states
     const runUpdateStates = useCallback(async (simTime: Date) => {
+      /*
       if (isUpdatingStatesRef.current || pendingUpdateRef.current) {
         console.log('⏭️ update-states ya en ejecución, saltando...')
         return
@@ -683,7 +685,7 @@ export function WeeklySimulationPage() {
 
       pendingUpdateRef.current = true
       isUpdatingStatesRef.current = true
-
+      */
       try {
         console.group('%c🐍 update-states', 'color:#0ea5e9;font-weight:bold;')
         console.log('⏰ Current Time (UTC):', simTime.toISOString())
@@ -713,10 +715,9 @@ export function WeeklySimulationPage() {
       } catch (error) {
         console.error('❌ Error en update-states:', error)
         console.groupEnd()
-        toast.error('Error al actualizar estados')
       } finally {
-        isUpdatingStatesRef.current = false
-        pendingUpdateRef.current = false
+        //isUpdatingStatesRef.current = false
+        //pendingUpdateRef.current = false
       }
     }, [])
 
@@ -1093,18 +1094,19 @@ export function WeeklySimulationPage() {
                             onClick={() => setPlaybackSpeed(SPEED_SLOW)}
                             disabled={!isRunning}
                           >
-                            Lento
+                            {SPEED_SLOW / 60} min/seg
                           </SpeedButton>
                           <SpeedButton
                             $active={playbackSpeed === SPEED_FAST}
                             onClick={() => setPlaybackSpeed(SPEED_FAST)}
                             disabled={!isRunning}
                           >
-                            Rápido
+                            {SPEED_FAST / 60} min/seg
                           </SpeedButton>
                       </SpeedButtonGroup>
                       <SpeedHint>
-                          Pasos de {STEP_HOURS} horas simuladas
+                          {playbackSpeed === SPEED_SLOW && `${SPEED_SLOW / 60} minuto simulado = 1 segundo real`}
+                          {playbackSpeed === SPEED_FAST && `${SPEED_FAST / 60} minutos simulados = 1 segundo real`}
                       </SpeedHint>
                   </SpeedControlContainer>
               </SimulationControls>
