@@ -1,15 +1,20 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
+type SimulationMode = 'weekly' | 'daily'
+
 interface SimulationStore {
   // Simulation configuration
   simulationStartDate: Date | null
   isSimulationConfigured: boolean
+  simulationMode: SimulationMode
 
   // Actions
   setSimulationStartDate: (date: Date) => void
+  setSimulationMode: (mode: SimulationMode) => void
   clearSimulationConfig: () => void
   hasValidConfig: () => boolean
+  isDailyMode: () => boolean
 }
 
 export const useSimulationStore = create<SimulationStore>()(
@@ -17,6 +22,7 @@ export const useSimulationStore = create<SimulationStore>()(
     (set, get) => ({
       simulationStartDate: null,
       isSimulationConfigured: false,
+      simulationMode: 'weekly',
 
       setSimulationStartDate: (date: Date) => {
         set({
@@ -25,16 +31,25 @@ export const useSimulationStore = create<SimulationStore>()(
         })
       },
 
+      setSimulationMode: (mode: SimulationMode) => {
+        set({ simulationMode: mode })
+      },
+
       clearSimulationConfig: () => {
         set({
           simulationStartDate: null,
           isSimulationConfigured: false,
+          simulationMode: 'weekly',
         })
       },
 
       hasValidConfig: () => {
         const state = get()
         return state.isSimulationConfigured && state.simulationStartDate !== null
+      },
+
+      isDailyMode: () => {
+        return get().simulationMode === 'daily'
       },
     }),
     {
@@ -44,6 +59,10 @@ export const useSimulationStore = create<SimulationStore>()(
         if (state && state.simulationStartDate) {
           // Convert string back to Date object
           state.simulationStartDate = new Date(state.simulationStartDate)
+        }
+
+        if (state && !state.simulationMode) {
+          state.simulationMode = 'weekly'
         }
       },
     },

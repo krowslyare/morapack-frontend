@@ -7,16 +7,16 @@ export function ProtectedLayout() {
   const location = useLocation()
 
   // Si no hay sesión, redirigir a login
-  
+
   //if (!session) {
-    //return <Navigate to="/login" replace />
+  //return <Navigate to="/login" replace />
   //}
 
   // Si es la ruta raíz (/), no mostrar sidebar, solo el contenido
-  
+
   //if (location.pathname === '/') {
-    // El contenido será el Outlet que renderiza LandingPage
-    //return undefined
+  // El contenido será el Outlet que renderiza LandingPage
+  //return undefined
   //}
 
   // Para otras rutas protegidas, mostrar el Sidebar

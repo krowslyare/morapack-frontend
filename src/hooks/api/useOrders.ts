@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ordersService, type GetOrdersParams } from '../../api/ordersService'
+import { NEW_ORDER_CREATED_EVENT } from '../../constants/events'
 import type { OrderSchema, PackageStatus } from '../../types'
 
 // Query keys
@@ -66,8 +67,12 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: (order: Omit<OrderSchema, 'id'>) => ordersService.create(order),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: orderKeys.all })
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(NEW_ORDER_CREATED_EVENT, { detail: data }))
+      }
     },
   })
 }

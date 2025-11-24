@@ -19,6 +19,28 @@ const Wrapper = styled.div`
   background: #f9fafb;
 `
 
+const ModeToggle = styled.div`
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+`
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 2px solid ${(p) => (p.$active ? '#14b8a6' : '#e5e7eb')};
+  background: ${(p) => (p.$active ? '#d1fae5' : 'white')};
+  color: ${(p) => (p.$active ? '#065f46' : '#4b5563')};
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #10b981;
+  }
+`
+
 const DatePickerButton = styled.button`
   background: #14b8a6;
   color: white;
@@ -608,8 +630,15 @@ interface OrdersImportState {
 
 export function PlanificacionPage() {
   const navigate = useNavigate()
-  const { simulationStartDate, setSimulationStartDate, hasValidConfig, clearSimulationConfig } =
-    useSimulationStore()
+  const {
+    simulationStartDate,
+    setSimulationStartDate,
+    hasValidConfig,
+    clearSimulationConfig,
+    simulationMode,
+    setSimulationMode,
+    isDailyMode,
+  } = useSimulationStore()
 
   const [selectedDateTime, setSelectedDateTime] = useState<string>('')
   const [weeks, setWeeks] = useState<number>(1)
@@ -763,6 +792,14 @@ export function PlanificacionPage() {
 
       // 1) Guardar fecha en el store para la simulación
       setSimulationStartDate(parsedDate)
+      setSimulationMode(simulationMode)
+
+      if (isDailyMode()) {
+        setOrdersState({ loading: false, result: null })
+        toast.success('Fecha configurada para simulación diaria. Dirigiéndote a la vista en tiempo real.')
+        navigate('/simulacion/diaria')
+        return
+      }
 
       // ✅ 2) Calcular rango de fechas en UTC (igual que Python)
       const startDate = new Date(Date.UTC(
@@ -884,8 +921,24 @@ export function PlanificacionPage() {
         <div>
           <Title>Planificación de Simulación</Title>
           <Subtitle>
-            Configura la fecha inicial y el rango de semanas que se usará para cargar los pedidos
+            Configura la fecha inicial y prepara los datos para la simulación semanal o diaria.
           </Subtitle>
+          <ModeToggle>
+            <ModeButton
+              type="button"
+              $active={simulationMode === 'weekly'}
+              onClick={() => setSimulationMode('weekly')}
+            >
+              Planificación Semanal
+            </ModeButton>
+            <ModeButton
+              type="button"
+              $active={simulationMode === 'daily'}
+              onClick={() => setSimulationMode('daily')}
+            >
+              Simulación Diaria
+            </ModeButton>
+          </ModeToggle>
         </div>
 
         {error && (
@@ -894,7 +947,7 @@ export function PlanificacionPage() {
           </InfoBox>
         )}
 
-        {(ordersState.loading || ordersState.result) && (
+        {simulationMode === 'weekly' && (ordersState.loading || ordersState.result) && (
           <ProgressSection>
             <ProgressHeader>
               <div>
@@ -983,38 +1036,55 @@ export function PlanificacionPage() {
             </span>
           </FormGroup>
 
-          <FormGroup>
-            <Label htmlFor="weeks-select">Semanas</Label>
-            <Select
-              id="weeks-select"
-              value={weeks}
-              onChange={(e) => setWeeks(Number(e.target.value))}
-              disabled={isLoadingReset || isLoadingConfig}
-            >
-              <option value={1}>1 semana</option>
-              <option value={2}>2 semanas</option>
-            </Select>
-            <span style={{ fontSize: '13px', color: '#6b7280' }}>
-              Se cargarán pedidos desde la fecha de inicio hasta la fecha de inicio + (semanas × 7
-              días - 1).
-            </span>
-          </FormGroup>
+          {simulationMode === 'weekly' && (
+            <>
+              <FormGroup>
+                <Label htmlFor="weeks-select">Semanas</Label>
+                <Select
+                  id="weeks-select"
+                  value={weeks}
+                  onChange={(e) => setWeeks(Number(e.target.value))}
+                  disabled={isLoadingReset || isLoadingConfig}
+                >
+                  <option value={1}>1 semana</option>
+                  <option value={2}>2 semanas</option>
+                </Select>
+                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                  Se cargarán pedidos desde la fecha de inicio hasta la fecha de inicio + (semanas × 7
+                  días - 1).
+                </span>
+              </FormGroup>
 
-          <InfoBox $variant="info">
-            <strong>ℹ️ Instrucciones:</strong>
-            <br />
-            1. Selecciona la fecha y hora inicial para tu simulación
-            <br />
-            2. Elige cuántas semanas de datos quieres cargar (1 o 2)
-            <br />
-            3. Haz clic en &quot;Confirmar Fecha&quot; para guardar la configuración y cargar los
-            pedidos en ese rango
-            <br />
-            4. Si lo necesitas, usa &quot;Resetear datos&quot; para dejar la pantalla en blanco
-            nuevamente
-            <br />
-            5. Ve a &quot;Simulación Diaria&quot; o &quot;Simulación Semanal&quot; para iniciar la simulación
-          </InfoBox>
+              <InfoBox $variant="info">
+                <strong>ℹ️ Instrucciones:</strong>
+                <br />
+                1. Selecciona la fecha y hora inicial para tu simulación
+                <br />
+                2. Elige cuántas semanas de datos quieres cargar (1 o 2)
+                <br />
+                3. Haz clic en &quot;Confirmar Fecha&quot; para guardar la configuración y cargar los
+                pedidos en ese rango
+                <br />
+                4. Si lo necesitas, usa &quot;Resetear datos&quot; para dejar la pantalla en blanco
+                nuevamente
+                <br />
+                5. Ve a &quot;Simulación Diaria&quot; o &quot;Simulación Semanal&quot; para iniciar la simulación
+              </InfoBox>
+            </>
+          )}
+
+          {simulationMode === 'daily' && (
+            <InfoBox $variant="info">
+              <strong>⚡ Modo diario:</strong>
+              <br />
+              1. Selecciona la fecha y hora inicial de la operación.
+              <br />
+              2. Presiona &quot;Confirmar&quot;; iremos directo a la Simulación Diaria.
+              <br />
+              3. Las ordenes se asignarán en ventanas cortas (5-30 min) y se recalcularán cuando se
+              registren nuevos pedidos.
+            </InfoBox>
+          )}
         </FormSection>
 
 

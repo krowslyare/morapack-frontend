@@ -23,7 +23,7 @@ const SidebarContainer = styled.aside<{ $collapsed: boolean }>`
   transition: width 0.3s ease;
 `
 
-const BrandLink = styled(NavLink)<{ $collapsed: boolean }>`
+const BrandLink = styled(NavLink) <{ $collapsed: boolean }>`
   text-decoration: none;
   padding: 0 20px;
   margin-bottom: 32px;
@@ -53,7 +53,7 @@ const Nav = styled.nav`
   padding: 0 12px;
 `
 
-const NavItem = styled(NavLink)<{ $collapsed?: boolean }>`
+const NavItem = styled(NavLink) <{ $collapsed?: boolean }>`
   display: flex;
   align-items: center;
   gap: 12px;
@@ -181,14 +181,14 @@ const SIDEBAR_ITEMS: Array<{
   icon: string
   label: string
 }> = [
-  { route: 'envios', path: '/envios', icon: 'box', label: 'Envíos' },
-  { route: 'planificacion', path: '/planificacion', icon: 'psychology', label: 'Planificación' },
-  { route: 'simulacion-tiempo-real', path: '/simulacion/tiempo-real', icon: 'schedule', label: 'Tiempo Real' },
-  { route: 'simulacion-semanal', path: '/simulacion/semanal', icon: 'calendar_month', label: 'Simulación Semanal' },
-  { route: 'simulacion-colapso', path: '/simulacion/colapso', icon: 'warning', label: 'Simulación Colapso' },
-  { route: 'datos', path: '/datos', icon: 'database', label: 'Datos' },
-  { route: 'reportes', path: '/reportes', icon: 'description', label: 'Reportes' },
-]
+    { route: 'envios', path: '/envios', icon: 'box', label: 'Envíos' },
+    { route: 'planificacion', path: '/planificacion', icon: 'psychology', label: 'Planificación' },
+    { route: 'simulacion-tiempo-real', path: '/simulacion/tiempo-real', icon: 'schedule', label: 'Tiempo Real' },
+    { route: 'simulacion-semanal', path: '/simulacion/semanal', icon: 'calendar_month', label: 'Simulación Semanal' },
+    { route: 'simulacion-colapso', path: '/simulacion/colapso', icon: 'warning', label: 'Simulación Colapso' },
+    { route: 'datos', path: '/datos', icon: 'database', label: 'Datos' },
+    { route: 'reportes', path: '/reportes', icon: 'description', label: 'Reportes' },
+  ]
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(true)
@@ -197,10 +197,10 @@ export function Sidebar() {
   const session = useAuthStore((s) => s.session)
   const logoutMutation = useLogout()
   const { hasRouteAccess } = usePermissions()
-  
+
   // Obtener el nombre del usuario de la sesión con múltiples fallbacks
   const userName = session?.userName || session?.name || session?.email || 'Usuario'
-  
+
   // Filtrar ítems del sidebar según permisos del usuario
   const visibleItems = SIDEBAR_ITEMS.filter((item) => hasRouteAccess(item.route))
 
@@ -266,7 +266,7 @@ export function Sidebar() {
             <span className="material-symbols-outlined">warning</span>
             <span>Simulación Colapso</span>
           </NavItem>
-          
+
           <NavItem to="/reportes" $collapsed={collapsed}>
             <span className="material-symbols-outlined">description</span>
             <span>Reportes</span>

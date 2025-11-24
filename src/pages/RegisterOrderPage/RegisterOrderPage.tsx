@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as S from './RegisterOrderPage.styles'
 import { useCreateOrder } from '../../hooks/api/useOrders'
-import { PackageStatus } from '../../types/PackageStatus' 
+import { PackageStatus } from '../../types/PackageStatus'
 
 // RegisterOrderPage.tsx
 const STATUS_OPTS: PackageStatus[] = ['PENDING', 'IN_TRANSIT', 'DELIVERED', 'DELAYED']
@@ -36,11 +36,11 @@ export default function RegisterOrderPage() {
     form.deliveryDate
 
   const toLocalDateTime = (v: string | Date | null | undefined) => {
-        if (!v) return null
-        const d = typeof v === 'string' ? new Date(v) : v
-        const pad = (n:number)=>String(n).padStart(2,'0')
-        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-    }
+    if (!v) return null
+    const d = typeof v === 'string' ? new Date(v) : v
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,7 +60,7 @@ export default function RegisterOrderPage() {
       status: form.status as PackageStatus,
       pickupTimeHours: form.pickupTimeHours ? Number(form.pickupTimeHours) : 0,
       creationDate: toLocalDateTime(new Date()),
-      updatedAt:   toLocalDateTime(new Date()),
+      updatedAt: toLocalDateTime(new Date()),
       customerId: form.customerId ? Number(form.customerId) : null,
 
       // Campos legacy opcionales: los dejamos null para que el backend los ignore si no aplica
@@ -93,8 +93,8 @@ export default function RegisterOrderPage() {
           <S.Button type="button" variant="ghost" onClick={() => navigate('/envios')}>
             ← Volver
           </S.Button>
-          <S.Button type="submit" form="order-form" variant="primary" disabled={createOrder.isPending   || !isValid}>
-            {createOrder.isPending   ? 'Guardando…' : 'Guardar'}
+          <S.Button type="submit" form="order-form" variant="primary" disabled={createOrder.isPending || !isValid}>
+            {createOrder.isPending ? 'Guardando…' : 'Guardar'}
           </S.Button>
         </S.HeaderActions>
       </S.Header>
@@ -111,9 +111,9 @@ export default function RegisterOrderPage() {
           <S.Field>
             <S.Label>Estado *</S.Label>
             <S.Select name="status" value={form.status} onChange={onChange}>
-                {STATUS_OPTS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                ))}
+              {STATUS_OPTS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
             </S.Select>
           </S.Field>
         </S.Grid>
@@ -162,8 +162,8 @@ export default function RegisterOrderPage() {
           <S.Muted>Los campos marcados con * son obligatorios.</S.Muted>
           <div>
             <S.Button type="button" variant="ghost" onClick={() => navigate('/envios')}>Cancelar</S.Button>
-            <S.Button type="submit" variant="primary" disabled={createOrder.isPending   || !isValid}>
-              {createOrder.isPending   ? 'Guardando…' : 'Guardar pedido'}
+            <S.Button type="submit" variant="primary" disabled={createOrder.isPending || !isValid}>
+              {createOrder.isPending ? 'Guardando…' : 'Guardar pedido'}
             </S.Button>
           </div>
         </S.Footer>
