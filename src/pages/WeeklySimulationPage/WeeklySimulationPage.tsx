@@ -484,12 +484,12 @@ export function WeeklySimulationPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
     const speedRef = useRef(SPEED_FAST)
 
-    const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
-
     useEffect(() => {
         speedRef.current = playbackSpeed
     }, [playbackSpeed])
 
+    
+    const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
     const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
@@ -502,9 +502,7 @@ export function WeeklySimulationPage() {
     }
 
     const { data: airports } = useAirports()
-
     const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
-
     const mainWarehouses =
         airports?.filter(
           (a: any) =>
@@ -513,19 +511,21 @@ export function WeeklySimulationPage() {
 
     const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
-
     const [dayIndex, setDayIndex] = useState(0)
     const [isRunning, setIsRunning] = useState(false)
     const [isPaused, setIsPaused] = useState(false)
 
-    
+    // ✅ Refs para control
+    const visualClockIntervalRef = useRef<any>(null)  // Reloj visual (1 seg)
+    const lastAlgorithmDayRef = useRef(-1)
+    const lastUpdateHoursRef = useRef(0)  // Última vez que ejecutamos update-states
+    const isUpdatingStatesRef = useRef(false)
+    const pausedRef = useRef(false)
 
     const intervalRef = useRef<any>(null)
 
     // 🐍 PYTHON REPLICA: Control de pasos discretos
     const currentStepHoursRef = useRef(0)  // step actual en horas (0, 4, 8, 12, ...)
-    const lastAlgorithmDayRef = useRef(-1)
-    const isUpdatingStatesRef = useRef(false)
     const pendingUpdateRef = useRef(false)
 
     const [kpi, setKpi] = useState(INITIAL_KPI)
@@ -720,26 +720,149 @@ export function WeeklySimulationPage() {
       }
     }, [])
 
+    
+
     // 🐍 DECLARAR STOP PRIMERO (para evitar error de orden)
     const stop = useCallback((reset: boolean = true) => {
-        console.log(`🛑 Deteniendo simulación (reset: ${reset})`)
+      console.log(`🛑 Deteniendo simulación (reset: ${reset})`)
+      
+      setIsRunning(false)
+      setIsPaused(false)
+      
+      if (visualClockIntervalRef.current) {
+        clearInterval(visualClockIntervalRef.current)
+        visualClockIntervalRef.current = null
+      }
+      
+      if (reset) {
+        setCurrentTime(null)
+        setDayIndex(0)
+        setFlightInstances([])
+        setKpi(INITIAL_KPI)
+        lastAlgorithmDayRef.current = -1
+        lastUpdateHoursRef.current = 0
+        isUpdatingStatesRef.current = false
+        pausedRef.current = false
+      }
+    }, [])
+
+    // ✅ AHORA SÍ PODEMOS USAR stop EN setupVisualClock
+    const setupVisualClock = useCallback(() => {
+      if (visualClockIntervalRef.current) {
+        clearInterval(visualClockIntervalRef.current)
+      }
+
+      visualClockIntervalRef.current = setInterval(() => {
+        if (pausedRef.current) return
+
+        setCurrentTime(prev => {
+          if (!prev) return prev
+
+          const next = new Date(prev.getTime() + speedRef.current * 1000)
+          const elapsedMs = next.getTime() - startTime.getTime()
+          const elapsedHours = elapsedMs / (60 * 60 * 1000)
+          const dayNumber = Math.floor(elapsedHours / 24)
+
+          if (dayNumber >= TOTAL_DAYS) {
+            stop(false)  // ✅ Ahora stop ya está declarado
+            toast.info('✅ Simulación semanal completada')
+            return prev
+          }
+
+          setDayIndex(dayNumber)
+
+          // Algoritmo diario
+          if (dayNumber > lastAlgorithmDayRef.current) {
+            lastAlgorithmDayRef.current = dayNumber
+            const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000)
+            console.log(`🔔 Nuevo día ${dayNumber + 1} detectado`)
+            void runDailyAlgorithm(dayStart, dayNumber)
+          }
+
+          // Update-states cada 4h
+          const currentStepHours = Math.floor(elapsedHours / STEP_HOURS) * STEP_HOURS
+          
+          if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
+            lastUpdateHoursRef.current = currentStepHours
+            console.log(`🔄 Update-states en hora ${currentStepHours}`)
+            void runUpdateStates(next)
+          }
+
+          return next
+        })
+      }, 1000)
+    }, [startTime, runDailyAlgorithm, runUpdateStates, stop])  // ✅ stop en dependencies
+
+
+    const start = useCallback(async () => {
+      if (!hasValidConfig() || !simulationStartDate) {
+        toast.error("Debes configurar la fecha en Planificación primero")
+        return
+      }
+
+      if (!airports || airports.length === 0) {
+        toast.error("Cargar aeropuertos primero")
+        return
+      }
+
+      console.group('%c🐍 INICIANDO SIMULACIÓN', 'color:#10b981;font-weight:bold;')
+      console.log('📅 Start Time (UTC):', startTime.toISOString())
+      
+      stop(false)
+      lastAlgorithmDayRef.current = -1
+      lastUpdateHoursRef.current = 0
+      pausedRef.current = false
+
+      try {
+        console.log('🔄 Ejecutando algoritmo día 1...')
+        await runDailyAlgorithm(startTime, 0)
+        lastAlgorithmDayRef.current = 0
+
+        await loadWeeklyFlights()
         
-        setIsRunning(false)
+        console.log('✅ Setup completado')
+        console.groupEnd()
+
+        setCurrentTime(startTime)
+        setIsRunning(true)
         setIsPaused(false)
+        setupVisualClock()
         
-        // Detener el loop marcando intervalRef como null
-        intervalRef.current = null
-        
-        if (reset) {
-          setCurrentTime(null)
-          setDayIndex(0)
-          setFlightInstances([])
-          setKpi(INITIAL_KPI)
-          currentStepHoursRef.current = 0
-          lastAlgorithmDayRef.current = -1
-          isUpdatingStatesRef.current = false
-          pendingUpdateRef.current = false
+      } catch (error) {
+        console.error('❌ Error al iniciar simulación:', error)
+        console.groupEnd()
+        toast.error('Error al iniciar la simulación semanal')
+      }
+    }, [
+      hasValidConfig,
+      simulationStartDate,
+      airports,
+      startTime,
+      stop,
+      runDailyAlgorithm,
+      loadWeeklyFlights,
+      setupVisualClock
+    ])
+
+    const togglePause = useCallback(() => {
+      if (!isRunning) return
+      
+      pausedRef.current = !pausedRef.current
+      setIsPaused(pausedRef.current)
+      
+      if (pausedRef.current) {
+        toast.info('⏸️ Simulación pausada')
+      } else {
+        toast.info('▶️ Simulación reanudada')
+      }
+    }, [isRunning])
+
+    useEffect(() => {
+      return () => {
+        if (visualClockIntervalRef.current) {
+          clearInterval(visualClockIntervalRef.current)
         }
+      }
     }, [])
 
     // 🐍 PYTHON REPLICA: Paso discreto (ejecuta un tick del script Python)
@@ -832,76 +955,9 @@ export function WeeklySimulationPage() {
 
     
 
-    const start = useCallback(async () => {
-      if (!hasValidConfig() || !simulationStartDate) {
-        toast.error("Debes configurar la fecha en Planificación primero")
-        return
-      }
+    
 
-      if (!airports || airports.length === 0) {
-        toast.error("Cargar aeropuertos primero")
-        return
-      }
-
-      console.group('%c🐍 INICIANDO SIMULACIÓN (PYTHON REPLICA)', 'color:#10b981;font-weight:bold;font-size:14px;')
-      console.log('📅 Start Time (UTC):', startTime.toISOString()) // ✅ Mostrar en UTC
-      console.log('📅 Start Time (local):', startTime.toString())  // Para referencia
-      console.log('⚡ Playback Speed:', playbackSpeed)
-      console.log('📊 Steps:', `0 → ${TOTAL_HOURS}h en incrementos de ${STEP_HOURS}h`)
-      
-      // Limpiar estado
-      stop(false)
-      currentStepHoursRef.current = 0
-      lastAlgorithmDayRef.current = -1
-      pendingUpdateRef.current = false
-
-      try {
-
-        // 🐍 PYTHON REPLICA: Ejecutar paso 0 (algoritmo del día 1, sin update-states)
-        console.log('🔄 Ejecutando STEP 0 (Day 1 algorithm)...')
-        
-        await executeStep(0)
-
-        // ✅ 3. RECARGAR vuelos para ver los productos asignados
-        await loadWeeklyFlights()
-        
-        console.log('✅ Step 0 completado')
-        console.groupEnd()
-
-        // Iniciar el loop secuencial
-        setIsRunning(true)
-        setIsPaused(false)
-        startSimulationLoop()
-        
-      } catch (error) {
-        console.error('❌ Error al iniciar simulación:', error)
-        console.groupEnd()
-        toast.error('Error al iniciar la simulación semanal')
-      }
-    }, [
-      hasValidConfig,
-      simulationStartDate,
-      airports,
-      startTime,
-      stop,
-      executeStep,
-      startSimulationLoop
-    ])
-
-    const pausedRef = useRef(false)
-
-    const togglePause = useCallback(() => {
-      if (!isRunning) return
-      
-      pausedRef.current = !pausedRef.current
-      setIsPaused(pausedRef.current)
-      
-      if (pausedRef.current) {
-        toast.info('⏸️ Simulación pausada')
-      } else {
-        toast.info('▶️ Simulación reanudada')
-      }
-    }, [isRunning])
+    
 
     useEffect(() => {
       return () => {
