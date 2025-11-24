@@ -100,11 +100,11 @@ const DayButton = styled.button<{
   border-radius: 999px;
   border: 1px solid
     ${(p) => {
-      if (p.$isSelected) return '#14b8a6'
-      if (p.$isToday) return '#38bdf8'
-      if (p.$isOtherMonth) return 'transparent'
-      return '#e5e7eb'
-    }};
+    if (p.$isSelected) return '#14b8a6'
+    if (p.$isToday) return '#38bdf8'
+    if (p.$isOtherMonth) return 'transparent'
+    return '#e5e7eb'
+  }};
   background: ${(p) => {
     if (p.$isSelected) return 'linear-gradient(135deg, #14b8a6, #0ea5e9)'
     if (p.$isToday) return '#e0f2fe'
@@ -126,8 +126,8 @@ const DayButton = styled.button<{
 
   &:hover {
     ${(p) =>
-      !p.$isOtherMonth &&
-      `
+    !p.$isOtherMonth &&
+    `
       border-color: #14b8a6;
       box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.25);
       transform: translateY(-1px);
@@ -625,10 +625,10 @@ export function PlanificacionPage() {
   const [pickerHour, setPickerHour] = useState<string>('00')
   const [pickerMinute, setPickerMinute] = useState<string>('00')
 
-  const totalOrders = ordersState.result?.orders ?? 0
-  const totalProducts = ordersState.result?.products ?? 0
-  const loadedItems = totalOrders + totalProducts
-  
+  const totalOrders = ordersState.result?.statistics?.ordersLoaded ?? 0;
+  const totalProducts = ordersState.result?.statistics?.ordersFiltered ?? 0;
+  const loadedItems = totalOrders + totalProducts;
+
   const [showResetModal, setShowResetModal] = useState(false)
   // Ajusta este valor según tu realidad de negocio:
   // cuántos registros (pedidos + productos) consideras como "base llena" por semana.
@@ -764,31 +764,56 @@ export function PlanificacionPage() {
       // 1) Guardar fecha en el store para la simulación
       setSimulationStartDate(parsedDate)
 
-      // 2) Calcular rango de fechas para pedidos (start → start + semanas*7 - 1 días)
-      const startDate = new Date(
+      // ✅ 2) Calcular rango de fechas en UTC (igual que Python)
+      const startDate = new Date(Date.UTC(
         parsedDate.getFullYear(),
         parsedDate.getMonth(),
         parsedDate.getDate(),
-      )
-      const endDate = new Date(startDate)
-      endDate.setDate(endDate.getDate() + weeks * 7 - 1)
+        0, 0, 0, 0
+      ))
 
-      const startStr = formatToYYYYMMDD(startDate)
-      const endStr = formatToYYYYMMDD(endDate)
+
+      const endDate = new Date(
+        startDate.getTime() + (weeks * 7 - 1) * 24 * 60 * 60 * 1000
+      )
+
+      // poner fin de día en UTC
+      endDate.setUTCHours(23, 59, 59, 0)
+
+      // ✅ 3) Formatear en ISO como Python: YYYY-MM-DDTHH:MM:SS
+      const formatISO = (date: Date) => {
+        const y = date.getUTCFullYear()
+        const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+        const d = String(date.getUTCDate()).padStart(2, '0')
+        const h = String(date.getUTCHours()).padStart(2, '0')
+        const min = String(date.getUTCMinutes()).padStart(2, '0')
+        const s = String(date.getUTCSeconds()).padStart(2, '0')
+        return `${y}-${m}-${d}T${h}:${min}:${s}`
+      }
+
+      const startStr = formatISO(startDate)  // "2025-01-02T00:00:00"
+      const endStr = formatISO(endDate)      // "2025-01-09T00:00:00"
+
+      console.group('📦 Cargando órdenes')
+      console.log('Start:', startStr)
+      console.log('End:', endStr)
+      console.log('Weeks:', weeks)
 
       // 3) Llamar backend para cargar pedidos en ese rango
       const result = await uploadOrdersByDateRange(startStr, endStr)
+      console.log('Resultado de la API:', result);
       setOrdersState({ loading: false, result })
 
-      // NUEVO: usamos el total real como "100 %"
+      console.log('✅ Result:', result)
+      console.groupEnd()
+
       const expectedItems =
         (result.orders ?? 0) + (result.products ?? 0)
 
       if (result.success) {
         toast.success(
-          `Fecha configurada y pedidos cargados (${result.orders ?? 0} pedidos, ${
-            result.products ?? 0
-          } productos)`,
+          `Fecha configurada y pedidos cargados (${result.statistics?.ordersLoaded ?? 0} pedidos, ${result.statistics?.ordersFiltered ?? 0
+          } productos)`
         )
       } else {
         toast.error(result.message || 'Error al cargar pedidos')
@@ -831,6 +856,14 @@ export function PlanificacionPage() {
       return
     }
     navigate('/simulacion/diaria')
+  }
+
+  const handleGoToWeeklySimulation = () => {
+    if (!hasValidConfig()) {
+      toast.error('Debes configurar una fecha primero')
+      return
+    }
+    navigate('/simulacion/semanal')
   }
 
   const formatDate = (date: Date | null) => {
@@ -877,42 +910,42 @@ export function PlanificacionPage() {
                   ordersState.loading
                     ? 'loading'
                     : ordersState.result
-                    ? 'done'
-                    : 'idle'
+                      ? 'done'
+                      : 'idle'
                 }
               >
                 {ordersState.loading && <>● Cargando…</>}
                 {!ordersState.loading && ordersState.result && <>✓ Completado</>}
                 {!ordersState.loading && !ordersState.result && <>– En espera</>}
               </ProgressStatusChip>
-                </ProgressHeader>
+            </ProgressHeader>
 
-                <ProgressBarContainer>
-                  <ProgressBarFill
-                      $percent={displayPercent}
-                      $isLoading={ordersState.loading}
-                  />
-                </ProgressBarContainer>
+            <ProgressBarContainer>
+              <ProgressBarFill
+                $percent={displayPercent}
+                $isLoading={ordersState.loading}
+              />
+            </ProgressBarContainer>
 
-                <ProgressStatsRow>
-                  <ProgressStat>
-                    Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Productos: <ProgressValue>{totalProducts}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Registros totales:{' '}
-                    <ProgressValue>{loadedItems.toLocaleString('es-PE')}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Avance:{' '}
-                    <ProgressValue>{fillPercent}%</ProgressValue>
-                  </ProgressStat>
-                </ProgressStatsRow>
-              </ProgressSection>
+            <ProgressStatsRow>
+              <ProgressStat>
+                Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Productos: <ProgressValue>{totalProducts}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Registros totales:{' '}
+                <ProgressValue>{loadedItems.toLocaleString('es-PE')}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Avance:{' '}
+                <ProgressValue>{fillPercent}%</ProgressValue>
+              </ProgressStat>
+            </ProgressStatsRow>
+          </ProgressSection>
         )}
-        
+
         <FormSection>
           <FormGroup>
             <Label htmlFor="simulation-date">Fecha y Hora de Inicio de la Simulación</Label>
@@ -980,11 +1013,11 @@ export function PlanificacionPage() {
             4. Si lo necesitas, usa &quot;Resetear datos&quot; para dejar la pantalla en blanco
             nuevamente
             <br />
-            5. Ve a &quot;Simulación Diaria&quot; para iniciar la simulación
+            5. Ve a &quot;Simulación Diaria&quot; o &quot;Simulación Semanal&quot; para iniciar la simulación
           </InfoBox>
         </FormSection>
 
-        
+
 
         <ButtonGroup>
           <Button
@@ -993,7 +1026,7 @@ export function PlanificacionPage() {
             $isLoading={isLoadingConfig}
           >
             {isLoadingConfig && <LoadingSpinner />}
-            {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar Fecha'}
+            {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar'}
           </Button>
 
           <Button
@@ -1009,11 +1042,19 @@ export function PlanificacionPage() {
             onClick={handleGoToSimulation}
             disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
           >
-            Ir a Simulación Diaria →
+            Sim.Diaria →
+          </Button>
+
+          <Button
+            $variant="success"
+            onClick={handleGoToWeeklySimulation}
+            disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
+          >
+            Sim.Semanal →
           </Button>
         </ButtonGroup>
 
-      
+
 
         {!hasValidConfig() && (
           <InfoBox $variant="warning">
@@ -1044,7 +1085,7 @@ export function PlanificacionPage() {
       <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
         <ModalContent onClick={(e) => e.stopPropagation()}>
           <ModalTitle>Selecciona una fecha y hora</ModalTitle>
-          
+
           <CalendarShell>
             <MonthNavigation>
               <MonthButton onClick={() => handleMonthChange(-1)}>← Mes anterior</MonthButton>
@@ -1113,8 +1154,8 @@ export function PlanificacionPage() {
               placeholder="MM"
             />
           </TimeInputContainer>
-          
-          
+
+
 
           <ModalButtonGroup>
             <ModalButton $variant="secondary" onClick={() => setShowDatePicker(false)}>

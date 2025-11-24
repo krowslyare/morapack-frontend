@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import styled from 'styled-components'
 import type { FlightSchema } from '../types'
+import { FlightPackagesModal } from './FlightPackagesModal'
 
 const Overlay = styled.div`
   position: fixed;
@@ -159,49 +161,32 @@ const FlightCode = styled.div`
 const FlightRoute = styled.div`
   font-size: 13px;
   color: #4b5563;
+  display: flex;
+  align-items: center;
 `
 
-const FlightDetails = styled.div`
+const FlightActions = styled.div`
+  display: flex;
+  gap: 8px;
+`
+
+const SmallButton = styled.button`
+  padding: 6px 14px;
+  border-radius: 8px;
   font-size: 12px;
-  color: #9ca3af;
-`
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  transition: all 0.15s;
 
-const FlightStatus = styled.span<{ $status: string }>`
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-  background: ${(props) => {
-    switch (props.$status) {
-      case 'PROGRAMADO':
-        return '#dbeafe'
-      case 'EN_VUELO':
-        return '#d1fae5'
-      case 'COMPLETADO':
-        return '#e5e7eb'
-      case 'CANCELADO':
-        return '#fee2e2'
-      default:
-        return '#f3f4f6'
-    }
-  }};
-  color: ${(props) => {
-    switch (props.$status) {
-      case 'PROGRAMADO':
-        return '#1e40af'
-      case 'EN_VUELO':
-        return '#047857'
-      case 'COMPLETADO':
-        return '#374151'
-      case 'CANCELADO':
-        return '#b91c1c'
-      default:
-        return '#6b7280'
-    }
-  }};
+  &:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
 `
 
 const EmptyState = styled.div`
@@ -245,61 +230,85 @@ interface FlightsListModalProps {
 export function FlightsListModal({ airportName, flights, onClose }: FlightsListModalProps) {
   const scheduledCount = flights.length
   const activeCount = flights.filter((f) => f.status === 'EN_VUELO').length
+  const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
 
   return (
-    <Overlay onClick={onClose}>
-      <Modal onClick={(e) => e.stopPropagation()}>
-        <Header>
-          <TitleBlock>
-            <Title>Vuelos programados</Title>
-            <Subtitle>
-              {airportName} • {scheduledCount} vuelo{scheduledCount !== 1 ? 's' : ''}
-            </Subtitle>
-          </TitleBlock>
-          <CloseButton onClick={onClose}>✕</CloseButton>
-        </Header>
+    <>
+      <Overlay onClick={onClose}>
+        <Modal onClick={(e) => e.stopPropagation()}>
+          <Header>
+            <TitleBlock>
+              <Title>Vuelos programados</Title>
+              <Subtitle>
+                {airportName} • {scheduledCount} vuelo{scheduledCount !== 1 ? 's' : ''}
+              </Subtitle>
+            </TitleBlock>
+            <CloseButton onClick={onClose}>✕</CloseButton>
+          </Header>
 
-        <Content>
-          <SummaryRow>
-            <SummaryChip>
-              Total: <SummaryStrong>{scheduledCount}</SummaryStrong>
-            </SummaryChip>
-            <SummaryChip>
-              En vuelo: <SummaryStrong>{activeCount}</SummaryStrong>
-            </SummaryChip>
-          </SummaryRow>
+          <Content>
+            <SummaryRow>
+              <SummaryChip>
+                Total: <SummaryStrong>{scheduledCount}</SummaryStrong>
+              </SummaryChip>
+              <SummaryChip>
+                En vuelo: <SummaryStrong>{activeCount}</SummaryStrong>
+              </SummaryChip>
+            </SummaryRow>
 
-          {flights.length === 0 ? (
-            <EmptyState>No hay vuelos programados para este aeropuerto.</EmptyState>
-          ) : (
-            <FlightsList>
-              {flights.map((flight) => (
-                <FlightItem key={flight.id}>
-                  <FlightInfo>
-                    <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
-                    <FlightRoute>
-                      {flight.originAirportCode} → {flight.destinationAirportCode}
-                    </FlightRoute>
-                    <FlightDetails>
-                      Capacidad: {flight.usedCapacity || 0}/{flight.maxCapacity} • Tiempo de
-                      transporte: {flight.transportTimeDays}d • Frecuencia:{' '}
-                      {flight.dailyFrequency}x/día
-                    </FlightDetails>
-                  </FlightInfo>
+            {flights.length === 0 ? (
+              <EmptyState>No hay vuelos programados para este aeropuerto.</EmptyState>
+            ) : (
+              <FlightsList>
+                {flights.map((flight) => (
+                  <FlightItem key={flight.id}>
+                    <FlightInfo>
+                      <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
+                      <FlightRoute>
+                        {flight.originAirportCode} → {flight.destinationAirportCode}
+                        {flight.assignedProducts !== undefined && (
+                          <span style={{ 
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            background: flight.assignedProducts > 0 ? '#d1fae5' : '#f3f4f6',
+                            color: flight.assignedProducts > 0 ? '#065f46' : '#6b7280',
+                            borderRadius: '999px',
+                            fontSize: '11px',
+                            fontWeight: 600
+                          }}>
+                            {flight.assignedProducts} {flight.assignedProducts === 1 ? 'producto' : 'productos'}
+                          </span>
+                        )}
+                      </FlightRoute>
+                    </FlightInfo>
+                    <FlightActions>
+                      <SmallButton
+                        onClick={() =>
+                          setSelectedFlight({ id: flight.id ?? 0, code: flight.code ?? '' })
+                        }
+                      >
+                        Ver
+                      </SmallButton>
+                    </FlightActions>
+                  </FlightItem>
+                ))}
+              </FlightsList>
+            )}
+          </Content>
 
-                  <FlightStatus $status={flight.status || 'PROGRAMADO'}>
-                    {flight.status || 'PROGRAMADO'}
-                  </FlightStatus>
-                </FlightItem>
-              ))}
-            </FlightsList>
-          )}
-        </Content>
+          <Footer>
+            <Button onClick={onClose}>Cerrar</Button>
+          </Footer>
+        </Modal>
+      </Overlay>
 
-        <Footer>
-          <Button onClick={onClose}>Cerrar</Button>
-        </Footer>
-      </Modal>
-    </Overlay>
+      {selectedFlight && (
+        <FlightPackagesModal
+          flightId={selectedFlight.id}
+          flightCode={selectedFlight.code}
+          onClose={() => setSelectedFlight(null)}
+        />
+      )}
+    </>
   )
 }
