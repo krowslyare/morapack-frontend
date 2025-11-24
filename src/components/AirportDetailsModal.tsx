@@ -470,6 +470,19 @@ export function AirportDetailsModal({
                           <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
                           <FlightRoute>
                             {flight.originAirportCode} → {flight.destinationAirportCode}
+                            {flight.assignedProducts !== undefined && (
+                              <span style={{ 
+                                marginLeft: '8px',
+                                padding: '2px 6px',
+                                background: flight.assignedProducts > 0 ? '#d1fae5' : '#f3f4f6',
+                                color: flight.assignedProducts > 0 ? '#065f46' : '#6b7280',
+                                borderRadius: '999px',
+                                fontSize: '11px',
+                                fontWeight: 600
+                              }}>
+                                {flight.assignedProducts} {flight.assignedProducts === 1 ? 'producto' : 'productos'}
+                              </span>
+                            )}
                           </FlightRoute>
                         </FlightInfo>
                         <FlightActions>

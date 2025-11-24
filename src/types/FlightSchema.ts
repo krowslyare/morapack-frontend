@@ -15,6 +15,9 @@ export interface FlightSchema {
   destinationAirportId: number
   destinationAirportCode: string
 
+  // ✅ Agregar esta propiedad
+  assignedProducts?: number
+
   // Legacy fields for algorithm compatibility
   frequencyPerDay?: number
   originAirportSchema?: AirportSchema
