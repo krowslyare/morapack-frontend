@@ -153,8 +153,8 @@ const ClockLabel = styled.div`
   letter-spacing: 1px;
   opacity: 0.9;
   margin-bottom: 4px;
+  color: #111827; // o #000000
 `
-
 const StatsRow = styled.div`
   font-size: 12px;
   color: #6b7280;
@@ -997,9 +997,9 @@ export function WeeklySimulationPage() {
         <Wrapper>
             <Header>
               <TitleBlock>
-                  <Title>Simulación semanal 🐍</Title>
+                  <Title>Simulación semanal</Title>
                   <Subtitle>
-                    Replica del script Python — pasos discretos de 4 horas
+                    Simulación semanal de la red aérea con actualización de estados cada 4 horas
                   </Subtitle>
               </TitleBlock>
 
@@ -1051,7 +1051,7 @@ export function WeeklySimulationPage() {
             <MapWrapper>
               <SimulationControls>
                   <div>
-                    <ClockLabel>Tiempo de simulación 🐍</ClockLabel>
+                    <ClockLabel>Tiempo de simulación</ClockLabel>
                     <Clock>
                       {currentTime
                         ? currentTime.toLocaleDateString('es-ES', {
@@ -1076,10 +1076,7 @@ export function WeeklySimulationPage() {
                   </div>
 
                   <StatsRow>
-                    <StatLine>
-                        <span>Paso actual:</span>
-                        <strong>{currentStepHoursRef.current}h / {TOTAL_HOURS}h</strong>
-                    </StatLine>
+                    
                     <StatLine>
                         <span>Día de la semana:</span>
                         <strong>{Math.min(dayIndex + 1, 7)} / 7</strong>
