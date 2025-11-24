@@ -155,6 +155,7 @@ const ClockLabel = styled.div`
   margin-bottom: 4px;
   color: #111827; // o #000000
 `
+
 const StatsRow = styled.div`
   font-size: 12px;
   color: #6b7280;
@@ -1076,7 +1077,6 @@ export function WeeklySimulationPage() {
                   </div>
 
                   <StatsRow>
-                    
                     <StatLine>
                         <span>Día de la semana:</span>
                         <strong>{Math.min(dayIndex + 1, 7)} / 7</strong>
