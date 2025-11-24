@@ -955,17 +955,25 @@ export function WeeklySimulationPage() {
     }, [runSimulationLoop]);
 
     
-
-    
-
-    
-
     useEffect(() => {
       return () => {
         // Limpiar el loop al desmontar
         intervalRef.current = null
       }
     }, [])
+
+    useEffect(() => {
+      if (hoveredFlight && currentTime) {
+        const dep = new Date(hoveredFlight.departureTime).getTime()
+        const arr = new Date(hoveredFlight.arrivalTime).getTime()
+        const now = currentTime.getTime()
+        
+        // Limpiar si el vuelo ya terminó o aún no ha salido
+        if (now < dep - 60000 || now > arr + 60000) {  // 1 min de margen
+          setHoveredFlight(null)
+        }
+      }
+    }, [currentTime, hoveredFlight])
 
     const flightsOfDay = flightInstances.filter(f => {
         const dep = new Date(f.departureTime)
