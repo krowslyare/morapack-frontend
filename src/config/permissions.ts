@@ -12,7 +12,6 @@ export type RouteKey =
   | 'simulacion-semanal'
   | 'simulacion-colapso'
   | 'datos'
-  | 'reportes'
 
 // Módulos visibles en la landing page
 export type ModuleKey = 
@@ -22,7 +21,6 @@ export type ModuleKey =
   | 'simulacion-diaria' 
   | 'simulacion-semanal' 
   | 'simulacion-colapso' 
-  | 'reportes'
 
 // Configuración de permisos por tipo de usuario
 export const PERMISSIONS: Record<UserType, {
@@ -42,9 +40,8 @@ export const PERMISSIONS: Record<UserType, {
       'simulacion-semanal',
       'simulacion-colapso',
       'datos',
-      'reportes',
     ],
-    modules: ['envios', 'datos', 'planificacion', 'simulacion-diaria', 'simulacion-semanal', 'simulacion-colapso', 'reportes'],
+    modules: ['envios', 'datos', 'planificacion', 'simulacion-diaria', 'simulacion-semanal', 'simulacion-colapso'],
     canEdit: true,
     canDelete: true,
     canExport: true,
@@ -55,9 +52,8 @@ export const PERMISSIONS: Record<UserType, {
     routes: [
       'landing',
       'envios',
-      'reportes',
     ],
-    modules: ['envios', 'reportes'],
+    modules: ['envios'],
     canEdit: false,
     canDelete: false,
     canExport: false,
@@ -75,7 +71,6 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'simulacion-semanal': '/simulacion/semanal',
   'simulacion-colapso': '/simulacion/colapso',
   'datos': '/datos',
-  'reportes': '/reportes',
 }
 
 // Información de cada módulo para la landing page
@@ -113,11 +108,6 @@ export const MODULE_INFO: Record<ModuleKey, {
     icon: 'warning',
     label: 'SIMULACION COLAPSO',
     path: '/simulacion/colapso',
-  },
-  reportes: {
-    icon: 'description',
-    label: 'REPORTES',
-    path: '/reportes',
   },
 }
 

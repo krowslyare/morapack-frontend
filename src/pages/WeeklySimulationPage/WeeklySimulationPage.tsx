@@ -439,26 +439,19 @@ function mapAirportToSimAirport(a: any): SimAirport {
 const INITIAL_KPI = {
   totalFlights: 0,
   avgCapacityUsage: 0,
-  busiestAirport: "-",
-  busiestDay: "-",
+  deliveredOrders: 0,
+  deliveredProducts: 0,
 }
 
-function toBackendDateTime(d: Date): string {
-  // Forzar interpretación como UTC
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const hours = String(d.getUTCHours()).padStart(2, '0');
-  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
-  const seconds = String(d.getUTCSeconds()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-}
+
+
 
 // ===============================
-//  🔥 REPLICANDO SCRIPT PYTHON 🔥
+//  REPLICANDO SCRIPT PYTHON 
 // ===============================
 export function WeeklySimulationPage() {
+
+    const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
 
     const TOTAL_DAYS = 7
     const SPEED_SLOW = 60      // 10 min simulados por segundo real
@@ -603,12 +596,11 @@ export function WeeklySimulationPage() {
               }
             }
 
-            setKpi({
+            setKpi(prev => ({
+              ...prev,
               totalFlights: inst.length,
               avgCapacityUsage: response.statistics?.averageUtilization ?? 0,
-              busiestAirport,
-              busiestDay,
-            })
+            }))
 
         } catch (error) {
             console.error('Error cargando vuelos semanales:', error)
@@ -657,8 +649,19 @@ export function WeeklySimulationPage() {
             score: response.score,
           })
 
+          const orders = Number(response.assignedOrders ?? 0)
+          const products = Number(response.assignedProducts ?? 0)
 
-          const products = response.assignedProducts || 0
+          setKpi(prev => {
+            const prevOrders = Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0
+            const prevProducts = Number.isFinite(prev.deliveredProducts) ? prev.deliveredProducts : 0
+
+            return {
+              ...prev,
+              deliveredOrders: prevOrders + orders,
+              deliveredProducts: prevProducts + products,
+            }
+          })
           
           console.groupEnd()
 
@@ -678,15 +681,9 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Update states
     const runUpdateStates = useCallback(async (simTime: Date) => {
-      /*
-      if (isUpdatingStatesRef.current || pendingUpdateRef.current) {
-        console.log('⏭️ update-states ya en ejecución, saltando...')
-        return
-      }
+      
+      setIsBackgroundProcessing(true)
 
-      pendingUpdateRef.current = true
-      isUpdatingStatesRef.current = true
-      */
       try {
         console.group('%c🐍 update-states', 'color:#0ea5e9;font-weight:bold;')
         console.log('⏰ Current Time (UTC):', simTime.toISOString())
@@ -709,7 +706,17 @@ export function WeeklySimulationPage() {
         const transitions = response?.transitions ?? 0
         console.log('✅ Transitions:', transitions)
         
-        
+        // 👉 Lo que se entregó en este paso (productos / pedidos, según tu modelo)
+        const deliveredThisStep = Number(transitions?.arrivedToDelivered ?? 0)
+
+        if (deliveredThisStep > 0) {
+          setKpi(prev => ({
+            ...prev,
+            deliveredOrders:
+              (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0)
+              + deliveredThisStep,
+          }))
+        }
         
         console.groupEnd()
         
@@ -717,8 +724,7 @@ export function WeeklySimulationPage() {
         console.error('❌ Error en update-states:', error)
         console.groupEnd()
       } finally {
-        //isUpdatingStatesRef.current = false
-        //pendingUpdateRef.current = false
+        setIsBackgroundProcessing(false)
       }
     }, [])
 
@@ -996,7 +1002,36 @@ export function WeeklySimulationPage() {
 
     return (
         <Wrapper>
+
+            {isBackgroundProcessing && (
+              <div
+                style={{
+                  background: "#fef3c7",
+                  color: "#92400e",
+                  padding: "10px 16px",
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }}
+              >
+                <span style={{
+                  width: 14,
+                  height: 14,
+                  border: "2px solid #92400e",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite"
+                }} />
+                Procesando información… El sistema sigue ejecutando actualizaciones internas.
+              </div>
+            )}
+
             <Header>
+
               <TitleBlock>
                   <Title>Simulación semanal</Title>
                   <Subtitle>
@@ -1044,8 +1079,8 @@ export function WeeklySimulationPage() {
               <KPIContainer>
                   <WeeklyKPICard label="Total de vuelos" value={kpi.totalFlights} />
                   <WeeklyKPICard label="Capacidad Promedio" value={kpi.avgCapacityUsage + "%"} />
-                  <WeeklyKPICard label="Aeropuerto más activo" value={kpi.busiestAirport} />
-                  <WeeklyKPICard label="Día más activo" value={kpi.busiestDay} />
+                  <WeeklyKPICard label="Unidades entregadas" value={kpi.deliveredOrders} />
+                  <WeeklyKPICard label="Productos entregados" value={kpi.deliveredProducts} />
               </KPIContainer>
             </KPIPanel>
 

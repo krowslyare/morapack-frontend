@@ -747,7 +747,7 @@ export function PlanificacionPage() {
     setError(null)
 
     if (!selectedDateTime) {
-      setError('Por favor selecciona una fecha y hora')
+      setError('Por favor selecciona una fecha')
       return
     }
 
@@ -941,7 +941,7 @@ export function PlanificacionPage() {
         
         <FormSection>
           <FormGroup>
-            <Label htmlFor="simulation-date">Fecha y Hora de Inicio de la Simulación</Label>
+            <Label htmlFor="simulation-date">Fecha de Inicio de la Simulación</Label>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
               <div style={{ flex: 1 }}>
                 <DateTimeInput
@@ -996,7 +996,7 @@ export function PlanificacionPage() {
           <InfoBox $variant="info">
             <strong>ℹ️ Instrucciones:</strong>
             <br />
-            1. Selecciona la fecha y hora inicial para tu simulación
+            1. Selecciona la fecha inicial para tu simulación
             <br />
             2. Elige cuántas semanas de datos quieres cargar (1 o 2)
             <br />
@@ -1069,7 +1069,7 @@ export function PlanificacionPage() {
 
       <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
         <ModalContent onClick={(e) => e.stopPropagation()}>
-          <ModalTitle>Selecciona una fecha y hora</ModalTitle>
+          <ModalTitle>Selecciona una fecha </ModalTitle>
           
           <CalendarShell>
             <MonthNavigation>
@@ -1106,39 +1106,7 @@ export function PlanificacionPage() {
             </strong>
           </div>
 
-          <Label style={{ marginBottom: '8px' }}>Hora y Minuto</Label>
-          <TimeInputContainer>
-            <TimeInput
-              type="number"
-              min="0"
-              max="23"
-              value={pickerHour}
-              onChange={(e) =>
-                setPickerHour(
-                  String(Math.min(23, Math.max(0, parseInt(e.target.value) || 0))).padStart(
-                    2,
-                    '0',
-                  ),
-                )
-              }
-              placeholder="HH"
-            />
-            <TimeInput
-              type="number"
-              min="0"
-              max="59"
-              value={pickerMinute}
-              onChange={(e) =>
-                setPickerMinute(
-                  String(Math.min(59, Math.max(0, parseInt(e.target.value) || 0))).padStart(
-                    2,
-                    '0',
-                  ),
-                )
-              }
-              placeholder="MM"
-            />
-          </TimeInputContainer>
+          
           
           
 

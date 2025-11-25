@@ -51,8 +51,6 @@ const router = createBrowserRouter([
     errorElement: <ErrorBoundary />,
     children: [
       { index: true, element: <TrackingPage /> },
-      { path: 'registrar', element: <RegisterOrderPage /> },
-      // { path: ':id/editar', element: <EditOrderPage /> },
     ],
   },
   {
@@ -90,12 +88,6 @@ const router = createBrowserRouter([
     element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
     children: [{ index: true, element: <DataPage /> }],
-  },
-  {
-    path: '/reportes',
-    element: <ProtectedLayout />,
-    errorElement: <ErrorBoundary />,
-    children: [{ index: true, element: <ReportPage /> }],
   },
   {
     path: '*',
