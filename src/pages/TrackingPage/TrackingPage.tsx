@@ -58,21 +58,6 @@ export function TrackingPage() {
           />
         </S.Search>
 
-        <S.Actions>
-          <S.Button variant="secondary">
-            <span className="material-symbols-outlined">view_column</span>
-            Columnas
-          </S.Button>
-
-          <S.Button
-            type="button"
-            variant="primary"
-            onClick={() => navigate('/envios/registrar')}
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            Registrar Pedido
-          </S.Button>
-        </S.Actions>
       </S.ActionBar>
 
       <S.ContentPanel>
@@ -113,18 +98,7 @@ export function TrackingPage() {
                         {order.status ?? 'Sin estado'}
                       </S.Status>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <S.IconButton title="Editar">
-                        <span className="material-symbols-outlined">edit</span>
-                      </S.IconButton>
-                      <S.IconButton
-                        title="Eliminar"
-                        danger
-                        onClick={() => handleDelete(order.id!)}
-                      >
-                        <span className="material-symbols-outlined">delete</span>
-                      </S.IconButton>
-                    </td>
+                    
                   </tr>
                 ))}
 

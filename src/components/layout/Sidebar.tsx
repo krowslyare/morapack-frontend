@@ -187,7 +187,6 @@ const SIDEBAR_ITEMS: Array<{
   { route: 'simulacion-semanal', path: '/simulacion/semanal', icon: 'calendar_month', label: 'Simulación Semanal' },
   { route: 'simulacion-colapso', path: '/simulacion/colapso', icon: 'warning', label: 'Simulación Colapso' },
   { route: 'datos', path: '/datos', icon: 'database', label: 'Datos' },
-  { route: 'reportes', path: '/reportes', icon: 'description', label: 'Reportes' },
 ]
 
 export function Sidebar() {
@@ -267,10 +266,6 @@ export function Sidebar() {
             <span>Simulación Colapso</span>
           </NavItem>
           
-          <NavItem to="/reportes" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">description</span>
-            <span>Reportes</span>
-          </NavItem>
         </Nav>
 
         <UserSectionContainer ref={userSectionRef}>
