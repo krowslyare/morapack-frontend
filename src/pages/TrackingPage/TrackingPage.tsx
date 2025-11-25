@@ -38,6 +38,10 @@ export function TrackingPage() {
     }
   }
 
+  const handleEdit = (id: number) => {
+    navigate(`/envios/registrar?id=${id}`)
+  }
+
   const handlePrevPage = () => {
     setPage((p) => Math.max(1, p - 1))
   }
@@ -114,7 +118,11 @@ export function TrackingPage() {
                       </S.Status>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <S.IconButton title="Editar">
+                      <S.IconButton
+                        type="button"
+                        title="Editar"
+                        onClick={() => handleEdit(order.id!)}
+                      >
                         <span className="material-symbols-outlined">edit</span>
                       </S.IconButton>
                       <S.IconButton

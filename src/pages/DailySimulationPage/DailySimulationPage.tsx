@@ -5,17 +5,16 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane 
 import L, { type LatLngTuple, DivIcon, Marker } from 'leaflet'
 import gsap from 'gsap'
 import { useSimulationStore } from '../../store/useSimulationStore'
-import { simulationService, type FlightStatus, type FlightInstance } from '../../api/simulationService'
+import { type FlightInstance } from '../../api/simulationService'
 import { useAirports } from '../../hooks/api/useAirports'
 import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
-import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import type { Continent } from '../../types/Continent'
 import { NEW_ORDER_CREATED_EVENT } from '../../constants/events'
-
-const WINDOW_MINUTES_OPTIONS = [5, 15, 30]
+import { useRealtimeSimulationEngine } from '../../store/useRealtimeSimulationEngine'
+import type { OrderSchema } from '../../types'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -57,17 +56,21 @@ const MapWrapper = styled.div`
 
 const SimulationControls = styled.div`
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 16px;
+  right: 16px;
   z-index: 1000;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 16px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.98);
+  padding: 18px 20px;
+  border-radius: 12px;
+  box-shadow:
+    0 4px 20px rgba(15, 23, 42, 0.1),
+    0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.8);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 280px;
+  gap: 16px;
+  width: 240px;
+  backdrop-filter: blur(6px);
 `
 
 const Clock = styled.div`
@@ -136,6 +139,12 @@ const StatLine = styled.div`
   align-items: center;
 `
 
+const HintText = styled.div`
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
+`
+
 const Modal = styled.div<{ $show: boolean }>`
   position: fixed;
   top: 0;
@@ -151,9 +160,10 @@ const Modal = styled.div<{ $show: boolean }>`
 
 const ModalContent = styled.div`
   background: white;
-  padding: 32px;
-  border-radius: 16px;
-  max-width: 500px;
+  padding: 20px;
+  border-radius: 14px;
+  max-width: 280px;
+  width: calc(100% - 32px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   text-align: center;
 `
@@ -210,55 +220,6 @@ const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'paused' }>`
   }};
 `
 
-const SpeedControlContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`
-
-const SpeedLabel = styled.div`
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #6b7280;
-`
-
-const SpeedButtonGroup = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-`
-
-const SpeedButton = styled.button<{ $active: boolean }>`
-  padding: 8px 12px;
-  border: 2px solid ${(p) => (p.$active ? '#14b8a6' : '#e5e7eb')};
-  background: ${(p) => (p.$active ? '#d1fae5' : 'white')};
-  color: ${(p) => (p.$active ? '#065f46' : '#6b7280')};
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover:not(:disabled) {
-    border-color: #14b8a6;
-    background: #d1fae5;
-    color: #065f46;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`
-
-const SpeedHint = styled.div`
-  font-size: 10px;
-  color: #9ca3af;
-  text-align: center;
-  margin-top: 4px;
-`
 
 const LoadingOverlay = styled.div`
   position: absolute;
@@ -306,37 +267,6 @@ const AlgorithmBadge = styled.div`
   font-weight: 600;
 `
 
-const KPIPanel = styled.div`
-  margin: 4px 0 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`
-
-const KPIPanelHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-`
-
-const KPIPanelTitle = styled.span`
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #6b7280;
-`
-
-const KPIPanelSubtitle = styled.span`
-  font-size: 10px;
-  color: #9ca3af;
-`
-
-const KPIContainer = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-`
 
 function mapAirportToSimAirport(a: any): SimAirport {
   return {
@@ -408,7 +338,6 @@ interface AnimatedFlightsProps {
   simulationStartTime: Date
   currentSimTime: Date
   isPlaying: boolean
-  playbackSpeed: number
   onFlightClick: (flight: FlightInstance) => void
   onFlightHover: (flight: FlightInstance | null) => void
 }
@@ -418,7 +347,6 @@ function AnimatedFlights({
   simulationStartTime,
   currentSimTime,
   isPlaying,
-  playbackSpeed,
   onFlightClick,
   onFlightHover,
   processedIdsRef,
@@ -450,6 +378,7 @@ function AnimatedFlights({
 
     if (!timelineRef.current) {
       const timeline = gsap.timeline({ paused: true })
+      timeline.timeScale(1)
       timelineRef.current = timeline
     }
 
@@ -651,59 +580,34 @@ function AnimatedFlights({
     }
   }, [currentSimTime, simulationStartTime, isPlaying])
 
-  // Adjust timeline speed when playbackSpeed changes
-  useEffect(() => {
-    if (!timelineRef.current) return
-
-    // Set the timeScale: at playbackSpeed 1, timeScale is 1
-    // At playbackSpeed 60, timeScale should be 60 (timeline runs 60x faster)
-    timelineRef.current.timeScale(playbackSpeed)
-  }, [playbackSpeed])
-
   return null
 }
 
 export function DailySimulationPage() {
   const navigate = useNavigate()
   const { hasValidConfig, simulationStartDate } = useSimulationStore()
-
-  // Simulation state
-  const [isRunning, setIsRunning] = useState(false)
-  const [currentSimTime, setCurrentSimTime] = useState<Date | null>(simulationStartDate)
-  const [dayCount, setDayCount] = useState(0)
-  const [playbackSpeed, setPlaybackSpeed] = useState(1) // 1 = 1 sec sim per real sec, 60 = 1 min per sec, etc.
-  const [windowMinutes, setWindowMinutes] = useState(5)
+  const {
+    isRunning,
+    isInitializing,
+    isLoadingData,
+    algorithmRunning,
+    currentSimTime,
+    dayCount,
+    windowMinutes,
+    flightInstances,
+    start,
+    pause,
+    stop,
+    enqueueImmediateRun,
+    setAirports,
+  } = useRealtimeSimulationEngine()
 
   // Data
-  const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
   const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
 
-  // Loading states
-  const [isLoadingData, setIsLoadingData] = useState(false)
-  const [algorithmRunning, setAlgorithmRunning] = useState(false)
-  const [isInitializing, setIsInitializing] = useState(false)
-
-  const [kpi, setKpi] = useState({
-    totalOrders: 0,
-    assignedOrders: 0,
-    totalProducts: 0,
-    assignedProducts: 0,
-  })
-
   // Refs
-  const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
-  const lastStateUpdateDayRef = useRef(-1)
-  const lastRealtimeRunRef = useRef<Date | null>(null)
-  const pendingRunRef = useRef<Date | null>(null)
-  const lastGeneratedDayRef = useRef(-1)
-  const algorithmRunningRef = useRef(false)
-const queuedRealtimeRunRef = useRef<Date | null>(null)
-
-useEffect(() => {
-  algorithmRunningRef.current = algorithmRunning
-}, [algorithmRunning])
   // Lifted refs for cleanup access
   const processedIdsRef = useRef<Set<string>>(new Set())
   const markersRef = useRef<Record<string, Marker>>({})
@@ -712,275 +616,30 @@ useEffect(() => {
   const { data: airportsData } = useAirports()
   const airports = Array.isArray(airportsData) ? airportsData : []
 
-  // Store flight statuses for rolling window
-  const flightStatusesRef = useRef<FlightStatus[]>([])
-
-  // Load initial flight statuses and generate instances for 3 days
-  const loadFlightData = useCallback(async () => {
-    if (!simulationStartDate) return
-
-    try {
-      setIsLoadingData(true)
-      console.log('Loading flight statuses from backend...')
-      const response = await simulationService.getFlightStatuses()
-
-      // Validate response structure
-      if (!response) {
-        console.error('getFlightStatuses returned null/undefined')
-        toast.error('Error: respuesta del backend inválida')
-        return
-      }
-
-      if (!response.flights || !Array.isArray(response.flights)) {
-        console.error('getFlightStatuses returned invalid flights:', response)
-        toast.error('Error: datos de vuelos inválidos')
-        flightStatusesRef.current = []
-        return
-      }
-
-      console.log(`Received ${response.flights.length} flight statuses from backend`)
-      flightStatusesRef.current = response.flights
-
-      // Validate airports
-      if (!airports || airports.length === 0) {
-        console.warn('No airports loaded yet, cannot generate instances')
-        toast.warning('Esperando datos de aeropuertos...')
-        return
-      }
-
-      // Generate flight instances for next 3 days (72 hours)
-      // This ensures we have enough instances for midnight-crossing flights
-      const instances = simulationService.generateFlightInstances(
-        response.flights,
-        simulationStartDate,
-        72, // 72 hours = 3 days
-        airports
-      )
-
-      console.log(`Generated ${instances.length} flight instances for 3 days`)
-      setFlightInstances(instances)
-
-      if (instances.length === 0) {
-        toast.warning('No se generaron instancias de vuelo. Verifica los datos del backend.')
-      }
-    } catch (error) {
-      console.error('Error loading flight data:', error)
-      toast.error('Error al cargar vuelos')
-      // Ensure ref is never undefined
-      flightStatusesRef.current = []
-    } finally {
-      setIsLoadingData(false)
+  useEffect(() => {
+    if (airports && airports.length > 0) {
+      setAirports(airports)
     }
-  }, [airports, simulationStartDate])
+  }, [airports, setAirports])
 
-  // Add instances for next day (rolling window)
-  const addNextDayInstances = useCallback((targetDay?: number) => {
-    if (!simulationStartDate) {
-      console.warn('Cannot add instances: no simulation start date')
-      return
+  useEffect(() => {
+    return () => {
+      const { isRunning: running } = useRealtimeSimulationEngine.getState()
+      if (running) {
+        toast.info('Simulación tiempo real corriendo en segundo plano...')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleNewOrder = (event: Event) => {
+      const detail = (event as CustomEvent<OrderSchema | undefined>).detail
+      enqueueImmediateRun(detail?.creationDate)
     }
 
-    if (!flightStatusesRef.current || !Array.isArray(flightStatusesRef.current) || flightStatusesRef.current.length === 0) {
-      console.warn('Cannot add instances: no flight statuses available')
-      return
-    }
-
-    if (!airports || airports.length === 0) {
-      console.warn('Cannot add instances: no airports available')
-      return
-    }
-
-    setFlightInstances((current) => {
-      const updated = simulationService.addNextDayInstances(
-        flightStatusesRef.current,
-        current,
-        simulationStartDate,
-        // Use targetDay if provided, otherwise fallback to current dayCount
-        // ensuring we generate for the correct upcoming day
-        targetDay ?? dayCount,
-        airports
-      )
-
-      console.log(
-        `Added instances for day ${(targetDay ?? dayCount) + 1}. Total: ${updated.length} instances`
-      )
-      return updated
-    })
-  }, [airports, simulationStartDate, dayCount])
-
-  // Run algorithm for the current realtime window
-  const runDailyAlgorithm = useCallback(
-    async (windowStart: Date, options?: { force?: boolean }) => {
-      if (!simulationStartDate) return
-
-      const windowStartMs = windowStart.getTime()
-      const durationHours = windowMinutes / 60
-
-      if (!options?.force) {
-        const reference = pendingRunRef.current ?? lastRealtimeRunRef.current
-        if (reference && reference.getTime() === windowStartMs) {
-          return
-        }
-      }
-
-      pendingRunRef.current = windowStart
-      setAlgorithmRunning(true)
-      const algorithmStartTime = performance.now()
-
-      const dayNumber = Math.floor(
-        (windowStartMs - simulationStartDate.getTime()) / (24 * 60 * 60 * 1000)
-      )
-
-      const windowEnd = new Date(windowStartMs + windowMinutes * 60 * 1000)
-
-      try {
-        console.group(
-          `%c📊 Ventana Tiempo Real – Día ${dayNumber + 1}`,
-          'color: #14b8a6; font-weight: bold; font-size: 14px'
-        )
-        console.log('Ventana:', windowStart.toISOString(), '→', windowEnd.toISOString())
-        console.log('Playback speed:', `${playbackSpeed}x`)
-        console.log('Request:', {
-          simulationStartTime: windowStart.toISOString(),
-          simulationDurationHours: durationHours,
-          useDatabase: true,
-          simulationSpeed: playbackSpeed,
-        })
-
-        const response = await simulationService.executeDaily({
-          simulationStartTime: windowStart.toISOString(),
-          simulationDurationHours: durationHours,
-          useDatabase: true,
-          simulationSpeed: playbackSpeed,
-        })
-
-        const algorithmDuration = (performance.now() - algorithmStartTime) / 1000
-
-        if (!response) {
-          console.error('executeDaily returned null/undefined')
-          console.groupEnd()
-          toast.error('Error: respuesta del algoritmo inválida')
-          return
-        }
-
-        console.log('Response received:', {
-          success: response.success,
-          executionTimeSeconds: response.executionTimeSeconds,
-          totalOrders: response.totalOrders,
-          assignedOrders: response.assignedOrders,
-          unassignedOrders: response.unassignedOrders,
-          totalProducts: response.totalProducts,
-          assignedProducts: response.assignedProducts,
-          unassignedProducts: response.unassignedProducts,
-          score: response.score,
-        })
-
-        console.log('Frontend received response in:', `${algorithmDuration.toFixed(2)}s`)
-        console.log('Message:', response.message)
-        console.groupEnd()
-
-        lastRealtimeRunRef.current = windowStart
-        pendingRunRef.current = null
-
-        toast.success(
-          `Ventana ${windowMinutes}min · ${response.assignedOrders || 0} órdenes coordinadas`
-        )
-
-        setKpi({
-          totalOrders: response.totalOrders || 0,
-          assignedOrders: response.assignedOrders || 0,
-          totalProducts: response.totalProducts || 0,
-          assignedProducts: response.assignedProducts || 0,
-        })
-
-        if (processedIdsRef.current.size > 1000) {
-          processedIdsRef.current.clear()
-          Object.keys(markersRef.current).forEach((id) => processedIdsRef.current.add(id))
-        }
-
-        console.log('📍 Reloading flight statuses from database...')
-        const updatedResponse = await simulationService.getFlightStatuses()
-
-        if (!updatedResponse || !updatedResponse.flights || !Array.isArray(updatedResponse.flights)) {
-          console.error('Failed to reload flight statuses:', updatedResponse)
-          toast.warning('Advertencia: no se pudieron recargar los vuelos')
-          return
-        }
-
-        console.log(`✈️ Loaded ${updatedResponse.flights.length} active flights`)
-        console.log('Flight statistics:', updatedResponse.statistics)
-
-        flightStatusesRef.current = updatedResponse.flights
-
-        if (dayNumber > lastGeneratedDayRef.current) {
-          addNextDayInstances(dayNumber)
-          lastGeneratedDayRef.current = dayNumber
-        }
-      } catch (error) {
-        const errorDuration = (performance.now() - algorithmStartTime) / 1000
-        console.error(`❌ Algorithm error (after ${errorDuration.toFixed(2)}s):`, error)
-        toast.error('Error al ejecutar el algoritmo')
-      } finally {
-        setAlgorithmRunning(false)
-        if (pendingRunRef.current && pendingRunRef.current.getTime() === windowStartMs) {
-          pendingRunRef.current = null
-        }
-
-        const queuedRun = queuedRealtimeRunRef.current
-        if (queuedRun) {
-          queuedRealtimeRunRef.current = null
-          pendingRunRef.current = queuedRun
-          void runDailyAlgorithm(new Date(queuedRun), { force: true })
-        }
-      }
-    },
-    [simulationStartDate, addNextDayInstances, playbackSpeed, windowMinutes],
-  )
-
-  // Simulation clock - advances by playbackSpeed * 1000ms every real second
-  const startSimulationClock = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current)
-
-    intervalRef.current = setInterval(() => {
-      setCurrentSimTime((prev) => {
-        if (!prev || !simulationStartDate) return prev
-
-        const next = new Date(prev.getTime() + playbackSpeed * 1000)
-        const elapsedSimulationMs = next.getTime() - simulationStartDate.getTime()
-        const elapsedHours = elapsedSimulationMs / (1000 * 60 * 60)
-        const currentDay = Math.floor(elapsedHours / 24)
-        const hourOfDay = elapsedHours % 24
-
-        setDayCount(currentDay)
-
-        if (hourOfDay >= 23 && currentDay > lastStateUpdateDayRef.current) {
-          console.log(`🔄 Updating package states for Day ${currentDay + 1} at ${next.toLocaleTimeString()}`)
-          lastStateUpdateDayRef.current = currentDay
-          simulationService
-            .updateStates({
-              currentTime: next.toISOString(),
-            })
-            .then((response) => {
-              console.log('✅ States updated:', response.transitions)
-            })
-            .catch((err) => console.error('Failed to update states:', err))
-        }
-
-        const reference = pendingRunRef.current ?? lastRealtimeRunRef.current
-        const windowMs = windowMinutes * 60 * 1000
-        const shouldTriggerWindow =
-          !reference || next.getTime() - reference.getTime() >= windowMs
-
-        if (shouldTriggerWindow && !algorithmRunningRef.current) {
-          const windowStart = new Date(next)
-          pendingRunRef.current = windowStart
-          void runDailyAlgorithm(windowStart)
-        }
-
-        return next
-      })
-    }, 1000)
-  }, [simulationStartDate, runDailyAlgorithm, playbackSpeed, windowMinutes])
+    window.addEventListener(NEW_ORDER_CREATED_EVENT, handleNewOrder)
+    return () => window.removeEventListener(NEW_ORDER_CREATED_EVENT, handleNewOrder)
+  }, [enqueueImmediateRun])
 
   // Start simulation
   const handleStart = useCallback(async () => {
@@ -989,71 +648,33 @@ useEffect(() => {
       return
     }
 
-    // Clear previous state to ensure clean start
-    processedIdsRef.current.clear()
-    // Clear any existing markers in case they weren't cleaned up
-    Object.values(markersRef.current).forEach((m) => m.remove())
-    markersRef.current = {}
-
-    setIsInitializing(true)
-    setCurrentSimTime(simulationStartDate)
-    setDayCount(0)
-    lastRealtimeRunRef.current = null
-    pendingRunRef.current = null
-    lastGeneratedDayRef.current = -1
-    lastStateUpdateDayRef.current = -1
-
-    try {
-      // Load initial data
-      await loadFlightData()
-
-      // Run first algorithm with simulation start time
-      await runDailyAlgorithm(simulationStartDate)
-
-      // Only start running after everything is loaded
-      setIsRunning(true)
-
-      // Start the clock
-      startSimulationClock()
-    } catch (error) {
-      console.error('Error starting simulation:', error)
-      toast.error('Error al iniciar la simulación')
-    } finally {
-      setIsInitializing(false)
+    if (isRunning) {
+      toast.info('La simulación ya está en curso.')
+      return
     }
-  }, [hasValidConfig, simulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock])
 
-  // Pause simulation
-  const handlePause = () => {
-    setIsRunning(false)
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = undefined
+    if (!airports || airports.length === 0) {
+      toast.error('Debes cargar los aeropuertos antes de iniciar la simulación')
+      return
     }
-  }
 
-  // Stop simulation
-  const handleStop = () => {
-    handlePause()
-    setCurrentSimTime(simulationStartDate)
-    setDayCount(0)
-    setFlightInstances([])
-    lastRealtimeRunRef.current = null
-    pendingRunRef.current = null
-    lastGeneratedDayRef.current = -1
-    lastStateUpdateDayRef.current = -1
-    setKpi({
-      totalOrders: 0,
-      assignedOrders: 0,
-      totalProducts: 0,
-      assignedProducts: 0,
-    })
-
-    // Clean up refs
     processedIdsRef.current.clear()
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}
-  }
+
+    await start({ simulationStartDate, airports })
+  }, [airports, hasValidConfig, isRunning, simulationStartDate, start])
+
+  const handlePause = useCallback(() => {
+    pause()
+  }, [pause])
+
+  const handleStop = useCallback(() => {
+    stop(true)
+    processedIdsRef.current.clear()
+    Object.values(markersRef.current).forEach((m) => m.remove())
+    markersRef.current = {}
+  }, [stop])
 
   // Format time for display
   const formatSimTime = (date: Date | null) => {
@@ -1102,26 +723,6 @@ useEffect(() => {
     }).length
     : 0
 
-  useEffect(() => {
-    const handleNewOrder = () => {
-      if (!isRunning || !currentSimTime) return
-
-      if (algorithmRunningRef.current) {
-        console.log('🆕 Pedido registrado. Nueva ventana en cola cuando termine la ejecución actual.')
-        queuedRealtimeRunRef.current = new Date(currentSimTime)
-        return
-      }
-
-      console.log('🆕 Nuevo pedido detectado, recalculando ventana actual')
-      runDailyAlgorithm(new Date(currentSimTime), { force: true })
-    }
-
-    window.addEventListener(NEW_ORDER_CREATED_EVENT, handleNewOrder)
-    return () => {
-      window.removeEventListener(NEW_ORDER_CREATED_EVENT, handleNewOrder)
-    }
-  }, [isRunning, currentSimTime, runDailyAlgorithm, windowMinutes])
-
   return (
     <Wrapper>
       {/* Config check modal */}
@@ -1146,21 +747,6 @@ useEffect(() => {
           {isRunning ? '● Ejecutando' : '○ Detenido'}
         </StatusBadge>
       </Header>
-
-      <KPIPanel>
-        <KPIPanelHeader>
-          <KPIPanelTitle>Indicadores del día</KPIPanelTitle>
-          <KPIPanelSubtitle>
-            Día {dayCount + 1}
-          </KPIPanelSubtitle>
-        </KPIPanelHeader>
-
-        <KPIContainer>
-          <WeeklyKPICard label="Total Productos" value={kpi.totalProducts} />
-          <WeeklyKPICard label="Productos Asignados" value={kpi.assignedProducts} />
-          <WeeklyKPICard label="Vuelos Activos" value={activeFlightsCount} />
-        </KPIContainer>
-      </KPIPanel>
 
       <MapWrapper>
         {(isLoadingData || isInitializing) && (
@@ -1203,64 +789,10 @@ useEffect(() => {
             )}
           </StatsRow>
 
-          <SpeedControlContainer>
-            <SpeedLabel>Velocidad de Reproducción</SpeedLabel>
-            <SpeedButtonGroup>
-              <SpeedButton
-                $active={playbackSpeed === 1}
-                onClick={() => setPlaybackSpeed(1)}
-                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-              >
-                1x (1 seg)
-              </SpeedButton>
-              <SpeedButton
-                $active={playbackSpeed === 60}
-                onClick={() => setPlaybackSpeed(60)}
-                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-              >
-                60x (1 min)
-              </SpeedButton>
-              <SpeedButton
-                $active={playbackSpeed === 300}
-                onClick={() => setPlaybackSpeed(300)}
-                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-              >
-                300x (5 min)
-              </SpeedButton>
-              <SpeedButton
-                $active={playbackSpeed === 600}
-                onClick={() => setPlaybackSpeed(600)}
-                disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-              >
-                600x (10 min)
-              </SpeedButton>
-            </SpeedButtonGroup>
-            <SpeedHint>
-              {playbackSpeed === 1 && '1 seg simulado = 1 seg real'}
-              {playbackSpeed === 60 && '1 min simulado = 1 seg real'}
-              {playbackSpeed === 300 && '5 min simulados = 1 seg real'}
-              {playbackSpeed === 600 && '10 min simulados = 1 seg real'}
-            </SpeedHint>
-          </SpeedControlContainer>
-
-          <SpeedControlContainer>
-            <SpeedLabel>Ventana de planificación</SpeedLabel>
-            <SpeedButtonGroup>
-              {WINDOW_MINUTES_OPTIONS.map((minutes) => (
-                <SpeedButton
-                  key={minutes}
-                  $active={windowMinutes === minutes}
-                  onClick={() => setWindowMinutes(minutes)}
-                  disabled={isRunning || isLoadingData || algorithmRunning || isInitializing}
-                >
-                  {minutes} min
-                </SpeedButton>
-              ))}
-            </SpeedButtonGroup>
-            <SpeedHint>
-              Planificamos envíos para los próximos {windowMinutes} minutos en cada ejecución.
-            </SpeedHint>
-          </SpeedControlContainer>
+          <HintText>
+            Recalculamos automáticamente la ventana fija de {windowMinutes} min, 30 segundos antes de
+            agotarse y cada vez que se registra un pedido nuevo dentro de ese rango.
+          </HintText>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
             {!isRunning && !isInitializing ? (
@@ -1281,10 +813,10 @@ useEffect(() => {
                   ⏸ Pausar
                 </ControlButton>
                 <ControlButton
-                  onClick={() => currentSimTime && runDailyAlgorithm(new Date(currentSimTime), { force: true })}
-                  disabled={algorithmRunning || !currentSimTime}
+                  onClick={() => enqueueImmediateRun()}
+                  disabled={algorithmRunning}
                 >
-                  ⚡ Recalcular ventana
+                   Recalcular ventana
                 </ControlButton>
                 <ControlButton
                   $variant="danger"
@@ -1309,7 +841,7 @@ useEffect(() => {
           ])}
           maxBoundsViscosity={1.0}
           minZoom={3}
-          maxZoom={7}
+          maxZoom={8}
           zoomControl={true}
         >
           <Pane name="routes" style={{ zIndex: 400 }} />
@@ -1443,7 +975,6 @@ useEffect(() => {
               simulationStartTime={simulationStartDate}
               currentSimTime={currentSimTime}
               isPlaying={isRunning}
-              playbackSpeed={playbackSpeed}
               onFlightClick={handleFlightClick}
               onFlightHover={handleFlightHover}
               processedIdsRef={processedIdsRef}

@@ -240,6 +240,52 @@ export interface CollapseScenarioResponse {
   recommendation: string
 }
 
+// ===== Collapse Simulation Types =====
+
+export interface CollapseSimulationRequest {
+  simulationStartTime: string // ISO 8601 format
+  useDatabase: boolean
+}
+
+export interface CollapseSimulationProgress {
+  currentDay: number
+  totalDaysProcessed: number
+  totalOrders: number
+  assignedOrders: number
+  unassignedOrders: number
+  totalProducts: number
+  assignedProducts: number
+  unassignedProducts: number
+  hasCollapsed: boolean
+  collapseReason?: string
+}
+
+export interface CollapseSimulationResult {
+  success: boolean
+  hasCollapsed: boolean
+  collapseDay: number
+  collapseTime: string
+  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'NONE'
+  totalDaysSimulated: number
+  statistics: {
+    totalOrdersProcessed: number
+    totalProductsProcessed: number
+    assignedProducts: number
+    unassignedProducts: number
+    unassignedPercentage: number
+  }
+  collapseDetails?: {
+    affectedAirports: Array<{
+      airportId: number
+      cityName: string
+      saturationPercent: number
+    }>
+    unassignedOrderIds: number[]
+    lastSuccessfulFlights: string[]
+  }
+  executionTimeSeconds: number
+}
+
 // ===== Service =====
 
 export const simulationService = {
@@ -496,5 +542,129 @@ export const simulationService = {
       request
     )
     return data
+  },
+
+  /**
+   * Execute collapse simulation - runs the algorithm day by day until system collapses
+   * Returns progress updates via callback and final result
+   */
+  executeCollapseSimulation: async (
+    request: CollapseSimulationRequest,
+    onProgress?: (progress: CollapseSimulationProgress) => void
+  ): Promise<CollapseSimulationResult> => {
+    const startExecution = Date.now()
+    let currentDay = 0
+    let totalOrders = 0
+    let totalProducts = 0
+    let assignedProducts = 0
+    let unassignedProducts = 0
+    let hasCollapsed = false
+    let collapseReason: CollapseSimulationResult['collapseReason'] = 'NONE'
+    let collapseTime = ''
+
+    const MAX_DAYS = 365 // Maximum days to simulate before stopping
+    const startTime = new Date(request.simulationStartTime)
+
+    try {
+      // Run day by day until collapse or max days
+      while (!hasCollapsed && currentDay < MAX_DAYS) {
+        const dayStart = new Date(startTime.getTime() + currentDay * 24 * 60 * 60 * 1000)
+        const year = dayStart.getUTCFullYear()
+        const month = String(dayStart.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(dayStart.getUTCDate()).padStart(2, '0')
+        const dateTimeStr = `${year}-${month}-${day}T00:00:00`
+
+        // Execute daily algorithm
+        const response = await apiLongRunning.post<DailyAlgorithmResponse>(
+          '/algorithm/daily',
+          {
+            simulationStartTime: dateTimeStr,
+            simulationDurationHours: 24,
+            useDatabase: request.useDatabase,
+          }
+        )
+
+        const result = response.data
+
+        // Accumulate statistics
+        totalOrders += result.totalOrders || 0
+        totalProducts += result.totalProducts || 0
+        assignedProducts += result.assignedProducts || 0
+        unassignedProducts += result.unassignedProducts || 0
+
+        // Check for collapse conditions
+        if (result.unassignedProducts > 0 && result.totalProducts > 0) {
+          const unassignedPercentage = (result.unassignedProducts / result.totalProducts) * 100
+          
+          // Collapse if more than 10% unassigned or any unassigned after day 7
+          if (unassignedPercentage > 10 || (currentDay > 7 && result.unassignedProducts > 0)) {
+            hasCollapsed = true
+            collapseReason = 'UNASSIGNED_ORDERS'
+            collapseTime = dateTimeStr
+          }
+        }
+
+        currentDay++
+
+        // Report progress
+        if (onProgress) {
+          onProgress({
+            currentDay,
+            totalDaysProcessed: currentDay,
+            totalOrders,
+            assignedOrders: result.assignedOrders || 0,
+            unassignedOrders: result.unassignedOrders || 0,
+            totalProducts,
+            assignedProducts,
+            unassignedProducts,
+            hasCollapsed,
+            collapseReason: hasCollapsed ? collapseReason : undefined,
+          })
+        }
+
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
+      const endExecution = Date.now()
+      const executionTimeSeconds = (endExecution - startExecution) / 1000
+
+      return {
+        success: true,
+        hasCollapsed,
+        collapseDay: hasCollapsed ? currentDay : -1,
+        collapseTime: collapseTime || '',
+        collapseReason,
+        totalDaysSimulated: currentDay,
+        statistics: {
+          totalOrdersProcessed: totalOrders,
+          totalProductsProcessed: totalProducts,
+          assignedProducts,
+          unassignedProducts,
+          unassignedPercentage: totalProducts > 0 ? (unassignedProducts / totalProducts) * 100 : 0,
+        },
+        executionTimeSeconds,
+      }
+    } catch (error) {
+      const endExecution = Date.now()
+      console.error('Collapse simulation error:', error)
+      
+      return {
+        success: false,
+        hasCollapsed: true,
+        collapseDay: currentDay,
+        collapseTime: new Date().toISOString(),
+        collapseReason: 'UNASSIGNED_ORDERS',
+        totalDaysSimulated: currentDay,
+        statistics: {
+          totalOrdersProcessed: totalOrders,
+          totalProductsProcessed: totalProducts,
+          assignedProducts,
+          unassignedProducts,
+          unassignedPercentage: totalProducts > 0 ? (unassignedProducts / totalProducts) * 100 : 0,
+        },
+        executionTimeSeconds: (endExecution - startExecution) / 1000,
+      }
+    }
   },
 }

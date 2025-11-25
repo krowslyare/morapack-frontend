@@ -817,7 +817,6 @@ export function PlanificacionPage() {
       // poner fin de día en UTC
       endDate.setUTCHours(23, 59, 59, 0)
 
-      // ✅ 3) Formatear en ISO como Python: YYYY-MM-DDTHH:MM:SS
       const formatISO = (date: Date) => {
         const y = date.getUTCFullYear()
         const m = String(date.getUTCMonth() + 1).padStart(2, '0')
