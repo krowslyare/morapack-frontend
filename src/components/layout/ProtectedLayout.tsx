@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/useAuthStore'
 import { Sidebar } from './Sidebar'
+import { SimulationBackgroundIndicator } from '../SimulationBackgroundIndicator'
 
 export function ProtectedLayout() {
   const session = useAuthStore((s) => s.session)
@@ -20,5 +21,10 @@ export function ProtectedLayout() {
   //}
 
   // Para otras rutas protegidas, mostrar el Sidebar
-  return <Sidebar />
+  return (
+    <>
+      <Sidebar />
+      <SimulationBackgroundIndicator />
+    </>
+  )
 }

@@ -275,12 +275,12 @@ const ModalButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
 const ContentPanel = styled.div`
   background: white;
   border-radius: 12px;
-  padding: 40px;
+  padding: 24px 32px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 800px;
+  gap: 16px;
+  max-width: 700px;
   margin: 0 auto;
   width: 100%;
 `
@@ -288,7 +288,7 @@ const ContentPanel = styled.div`
 const Title = styled.h2`
   margin: 0;
   color: #111827;
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 700;
 `
 
@@ -301,7 +301,7 @@ const Subtitle = styled.p`
 const FormSection = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 `
 
 const FormGroup = styled.div`
@@ -363,8 +363,8 @@ const Select = styled.select`
 
 const ButtonGroup = styled.div`
   display: flex;
-  gap: 16px;
-  margin-top: 24px;
+  gap: 12px;
+  margin-top: 16px;
   flex-wrap: wrap;
 `
 
@@ -382,10 +382,10 @@ const Button = styled.button<{
   color: white;
   border: none;
   border-radius: 10px;
-  padding: 14px 28px;
+  padding: 10px 18px;
   cursor: ${(p) => (p.$isLoading || p.disabled ? 'not-allowed' : 'pointer')};
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   transition: all 0.3s;
   display: inline-flex;
   align-items: center;
@@ -1090,21 +1090,25 @@ export function PlanificacionPage() {
             Resetear datos
           </Button>
 
-          <Button
-            $variant="success"
-            onClick={handleGoToSimulation}
-            disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
-          >
-            Sim.Diaria →
-          </Button>
+          {simulationMode === 'daily' && (
+            <Button
+              $variant="success"
+              onClick={handleGoToSimulation}
+              disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
+            >
+              Simulación Diaria →
+            </Button>
+          )}
 
-          <Button
-            $variant="success"
-            onClick={handleGoToWeeklySimulation}
-            disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
-          >
-            Sim.Semanal →
-          </Button>
+          {simulationMode === 'weekly' && (
+            <Button
+              $variant="success"
+              onClick={handleGoToWeeklySimulation}
+              disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
+            >
+              Simulación Semanal →
+            </Button>
+          )}
         </ButtonGroup>
 
 

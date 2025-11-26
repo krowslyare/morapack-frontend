@@ -52,6 +52,7 @@ const router = createBrowserRouter([
     errorElement: <ErrorBoundary />,
     children: [
       { index: true, element: <TrackingPage /> },
+      { path: 'registrar', element: <RegisterOrderPage /> },
     ],
   },
   {

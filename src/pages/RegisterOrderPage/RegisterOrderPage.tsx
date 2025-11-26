@@ -19,7 +19,7 @@ export default function RegisterOrderPage() {
 
   const createOrder = useCreateOrder()
   const updateOrder = useUpdateOrder()
-  const { triggerRefreshIfNeeded } = useSimulationStore()
+  const { triggerRefreshIfNeeded, isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
   const {
     data: existingOrder,
     isLoading: isOrderLoading,
@@ -76,6 +76,14 @@ export default function RegisterOrderPage() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   }
 
+  // Get the current date: use simulated time if daily simulation is running, otherwise use real time
+  const getCurrentDate = () => {
+    if (isDailyRunning && dailyCurrentSimTime) {
+      return new Date(dailyCurrentSimTime)
+    }
+    return new Date()
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -93,6 +101,7 @@ export default function RegisterOrderPage() {
     }
 
     try {
+      const currentDate = getCurrentDate()
       const payload = {
         name: form.name.trim(),
         originCityId: parseId(form.originCityId, 'Ciudad origen (ID)'),
@@ -102,8 +111,8 @@ export default function RegisterOrderPage() {
         deliveryDate: toLocalDateTime(form.deliveryDate),
         status: form.status as PackageStatus,
         pickupTimeHours: form.pickupTimeHours ? Number(form.pickupTimeHours) : 0,
-        creationDate: existingOrder?.creationDate ?? toLocalDateTime(new Date()),
-        updatedAt: toLocalDateTime(new Date()),
+        creationDate: existingOrder?.creationDate ?? toLocalDateTime(currentDate),
+        updatedAt: toLocalDateTime(currentDate),
         customerId: parseId(form.customerId, 'ID cliente'),
 
         // Campos legacy opcionales: los dejamos null para que el backend los ignore si no aplica
