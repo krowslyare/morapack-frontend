@@ -62,21 +62,6 @@ export function TrackingPage() {
           />
         </S.Search>
 
-        <S.Actions>
-          <S.Button variant="secondary">
-            <span className="material-symbols-outlined">view_column</span>
-            Columnas
-          </S.Button>
-
-          <S.Button
-            type="button"
-            variant="primary"
-            onClick={() => navigate('/envios/registrar')}
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            Registrar Pedido
-          </S.Button>
-        </S.Actions>
       </S.ActionBar>
 
       <S.ContentPanel>

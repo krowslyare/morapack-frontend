@@ -181,14 +181,13 @@ const SIDEBAR_ITEMS: Array<{
   icon: string
   label: string
 }> = [
-    { route: 'envios', path: '/envios', icon: 'box', label: 'Envíos' },
-    { route: 'planificacion', path: '/planificacion', icon: 'psychology', label: 'Planificación' },
-    { route: 'simulacion-tiempo-real', path: '/simulacion/tiempo-real', icon: 'schedule', label: 'Tiempo Real' },
-    { route: 'simulacion-semanal', path: '/simulacion/semanal', icon: 'calendar_month', label: 'Simulación Semanal' },
-    { route: 'simulacion-colapso', path: '/simulacion/colapso', icon: 'warning', label: 'Simulación Colapso' },
-    { route: 'datos', path: '/datos', icon: 'database', label: 'Datos' },
-    { route: 'reportes', path: '/reportes', icon: 'description', label: 'Reportes' },
-  ]
+  { route: 'envios', path: '/envios', icon: 'box', label: 'Envíos' },
+  { route: 'planificacion', path: '/planificacion', icon: 'psychology', label: 'Planificación' },
+  { route: 'simulacion-tiempo-real', path: '/simulacion/tiempo-real', icon: 'schedule', label: 'Tiempo Real' },
+  { route: 'simulacion-semanal', path: '/simulacion/semanal', icon: 'calendar_month', label: 'Simulación Semanal' },
+  { route: 'simulacion-colapso', path: '/simulacion/colapso', icon: 'warning', label: 'Simulación Colapso' },
+  { route: 'datos', path: '/datos', icon: 'database', label: 'Datos' },
+]
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(true)
@@ -265,11 +264,6 @@ export function Sidebar() {
           <NavItem to="/simulacion/colapso" $collapsed={collapsed}>
             <span className="material-symbols-outlined">warning</span>
             <span>Simulación Colapso</span>
-          </NavItem>
-
-          <NavItem to="/reportes" $collapsed={collapsed}>
-            <span className="material-symbols-outlined">description</span>
-            <span>Reportes</span>
           </NavItem>
         </Nav>
 
