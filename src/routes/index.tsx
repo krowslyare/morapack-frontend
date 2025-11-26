@@ -19,6 +19,7 @@ import { DailySimulationPage } from '../pages/DailySimulationPage'
 import { NotFoundPage } from '../pages/NotFoundPage/NotFoundPage'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { WeeklySimulationPage } from '../pages/WeeklySimulationPage/'
+import { CollapseSimulationPage } from '../pages/CollapseSimulationPage'
 
 function AnimatedOutlet() {
   const location = useLocation()
@@ -81,7 +82,7 @@ const router = createBrowserRouter([
     path: '/simulacion/colapso',
     element: <ProtectedLayout />,
     errorElement: <ErrorBoundary />,
-    children: [{ index: true, element: <VisualizationPage simulationType="collapse" /> }],
+    children: [{ index: true, element: <CollapseSimulationPage /> }],
   },
   {
     path: '/datos',

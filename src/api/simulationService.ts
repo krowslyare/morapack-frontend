@@ -135,6 +135,147 @@ export interface LoadOrdersResponse {
   ordersLoaded: number
 }
 
+export interface SimulationReportRequest {
+  startTime?: string // ISO 8601 format (optional)
+  endTime?: string // ISO 8601 format (optional)
+}
+
+export interface CollapseScenarioRequest {
+  airportId: number
+  collapseStartTime: string // ISO 8601 format
+  collapseDurationHours: number
+}
+
+export interface SimulationReportResponse {
+  reportGeneratedAt: string
+  analysisTimeRange: {
+    start: string | 'All time'
+    end: string | 'All time'
+  }
+  unassignedOrders: {
+    totalProducts: number
+    unassignedProducts: number
+    unassignedOrders: number
+    unassignedPercentage: number
+  }
+  warehouseSaturation: {
+    totalWarehouses: number
+    saturatedWarehouses: number
+    details: Array<{
+      warehouseId: number
+      city: string
+      currentCapacity: number
+      maxCapacity: number
+      utilizationPercent: number
+    }>
+  }
+  flightUtilization: {
+    totalFlights: number
+    underutilized: number
+    wellUtilized: number
+    overUtilized: number
+    averageUtilization: number
+  }
+  delayedProducts: {
+    arrivedNotDelivered: number
+    inTransit: number
+    delivered: number
+  }
+  systemHealth: {
+    overallScore: number
+    unassignedScore: number
+    warehouseScore: number
+    flightUtilizationScore: number
+    deliveryScore: number
+    criticalIssues: number
+  }
+  recommendations: string[]
+}
+
+export interface BottlenecksReportResponse {
+  bottlenecksFound: number
+  bottlenecks: Array<{
+    type: string
+    severity: string
+    location?: string
+    description: string
+    [key: string]: any
+  }>
+}
+
+export interface FailuresReportResponse {
+  failuresFound: number
+  failures: Array<{
+    type: string
+    severity: string
+    description: string
+    [key: string]: any
+  }>
+}
+
+export interface CollapseScenarioResponse {
+  collapsedHub: {
+    airportId: number
+    cityName: string
+    collapseStart: string
+    collapseEnd: string
+  }
+  affectedFlights: {
+    count: number
+    flightCodes: string[]
+  }
+  affectedProducts: number
+  affectedOrders: number
+  estimatedImpact: {
+    currency: string
+    amount: number
+    description: string
+  }
+  alternativeHubs: Array<{
+    airportId: number
+    cityName: string
+    availableCapacity: number
+  }>
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+  recommendation: string
+}
+
+// ===== Collapse Simulation Types =====
+
+export interface CollapseSimulationRequest {
+  simulationStartTime: string // ISO 8601 format
+  useDatabase: boolean
+}
+
+export interface CollapseDayStatistics {
+  dayNumber: number
+  dayStart: string
+  ordersProcessed: number
+  productsAssigned: number
+  productsUnassigned: number
+  assignmentRate: number
+}
+
+export interface CollapseSimulationResult {
+  success: boolean
+  message: string
+  hasCollapsed: boolean
+  collapseDay: number
+  collapseTime: string | null
+  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE'
+  executionStartTime: string
+  executionEndTime: string
+  executionTimeSeconds: number
+  simulationStartTime: string
+  totalDaysSimulated: number
+  totalOrdersProcessed: number
+  totalProductsProcessed: number
+  assignedProducts: number
+  unassignedProducts: number
+  unassignedPercentage: number
+  dailyStatistics?: CollapseDayStatistics[]
+}
+
 // ===== Service =====
 
 export const simulationService = {
@@ -182,6 +323,34 @@ export const simulationService = {
    */
   loadOrders: async (request: LoadOrdersRequest): Promise<LoadOrdersResponse> => {
     const { data } = await api.post<LoadOrdersResponse>('/data/load-orders', request)
+    return data
+  },
+
+  /**
+   * Load orders for Daily Simulation with automatic cleanup and 10-minute timeframe
+   * This endpoint automatically clears old data and loads orders within the simulation window
+   */
+  loadForDailySimulation: async (startTime: string): Promise<{
+    success: boolean
+    message: string
+    statistics: {
+      ordersLoaded: number
+      ordersCreated: number
+      ordersFiltered: number
+      customersCreated: number
+      parseErrors: number
+      fileErrors: number
+      durationSeconds: number
+    }
+    timeWindow: {
+      startTime: string
+      endTime: string
+      durationMinutes: number
+    }
+  }> => {
+    const { data } = await api.post('/data/load-for-daily', null, {
+      params: { startTime },
+    })
     return data
   },
 
@@ -343,5 +512,68 @@ export const simulationService = {
 
     // Return combined instances
     return [...cleanedInstances, ...newInstances]
+  },
+
+  /**
+   * Get comprehensive system analysis report
+   * Includes: unassigned orders, warehouse saturation, flight utilization, delayed products
+   */
+  getSystemReport: async (
+    request?: SimulationReportRequest
+  ): Promise<SimulationReportResponse> => {
+    const params = new URLSearchParams()
+    if (request?.startTime) params.append('startTime', request.startTime)
+    if (request?.endTime) params.append('endTime', request.endTime)
+
+    const { data } = await api.get<SimulationReportResponse>(
+      `/simulation/report/analysis${params.toString() ? '?' + params.toString() : ''}`
+    )
+    return data
+  },
+
+  /**
+   * Get system bottlenecks report
+   */
+  getBottlenecksReport: async (): Promise<BottlenecksReportResponse> => {
+    const { data } = await api.get<BottlenecksReportResponse>(
+      '/simulation/report/bottlenecks'
+    )
+    return data
+  },
+
+  /**
+   * Get system failures report
+   */
+  getFailuresReport: async (): Promise<FailuresReportResponse> => {
+    const { data } = await api.get<FailuresReportResponse>('/simulation/report/failures')
+    return data
+  },
+
+  /**
+   * Simulate hub collapse scenario and analyze impact
+   */
+  simulateHubCollapse: async (
+    request: CollapseScenarioRequest
+  ): Promise<CollapseScenarioResponse> => {
+    const { data } = await api.post<CollapseScenarioResponse>(
+      '/simulation/report/collapse-scenario',
+      request
+    )
+    return data
+  },
+
+  /**
+   * Execute collapse simulation (backend endpoint)
+   */
+  runCollapseScenario: async (
+    request: CollapseSimulationRequest,
+    options?: { signal?: AbortSignal }
+  ): Promise<CollapseSimulationResult> => {
+    const { data } = await apiLongRunning.post<CollapseSimulationResult>(
+      '/algorithm/collapse',
+      request,
+      { signal: options?.signal }
+    )
+    return data
   },
 }

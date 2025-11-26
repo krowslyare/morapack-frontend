@@ -23,7 +23,7 @@ const SidebarContainer = styled.aside<{ $collapsed: boolean }>`
   transition: width 0.3s ease;
 `
 
-const BrandLink = styled(NavLink)<{ $collapsed: boolean }>`
+const BrandLink = styled(NavLink) <{ $collapsed: boolean }>`
   text-decoration: none;
   padding: 0 20px;
   margin-bottom: 32px;
@@ -53,7 +53,7 @@ const Nav = styled.nav`
   padding: 0 12px;
 `
 
-const NavItem = styled(NavLink)<{ $collapsed?: boolean }>`
+const NavItem = styled(NavLink) <{ $collapsed?: boolean }>`
   display: flex;
   align-items: center;
   gap: 12px;
@@ -196,10 +196,10 @@ export function Sidebar() {
   const session = useAuthStore((s) => s.session)
   const logoutMutation = useLogout()
   const { hasRouteAccess } = usePermissions()
-  
+
   // Obtener el nombre del usuario de la sesión con múltiples fallbacks
   const userName = session?.userName || session?.name || session?.email || 'Usuario'
-  
+
   // Filtrar ítems del sidebar según permisos del usuario
   const visibleItems = SIDEBAR_ITEMS.filter((item) => hasRouteAccess(item.route))
 
@@ -265,7 +265,6 @@ export function Sidebar() {
             <span className="material-symbols-outlined">warning</span>
             <span>Simulación Colapso</span>
           </NavItem>
-          
         </Nav>
 
         <UserSectionContainer ref={userSectionRef}>

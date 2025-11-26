@@ -35,6 +35,7 @@ New service that provides:
 
 Features:
 - **Date/Time Picker**: HTML5 datetime-local input for setting simulation start time
+- **Mode Selector**: Toggle between Semanal (loads 1-2 weeks) and Diario (realtime setup)
 - **Confirm Button**: Saves the selected date to Zustand store
 - **Reset Database Button**: Clears orders in the database (with confirmation dialog)
 - **Navigation**: Direct link to Daily Simulation page
@@ -42,9 +43,11 @@ Features:
 
 **Flow:**
 1. User selects date and time
-2. Clicks "Confirmar Fecha" → saves to store
+2. Chooses mode:
+   - **Semanal** → loads 1–2 weeks of orders via `/api/data/load-orders`
+   - **Diario** → simply stores the timestamp and auto-navigates to the Daily Simulation page (no bulk load)
 3. Optionally clicks "Resetear Base de Datos" → clears DB
-4. Clicks "Ir a Simulación Diaria" → navigates to daily simulation
+4. Clicks the simulation shortcut (if not redirected automatically) → navigates to the selected simulator
 
 #### Daily Simulation Page
 
@@ -55,17 +58,24 @@ Features:
 - **Simulation Clock**: Displays current simulation time (1 real second = 1 simulation minute)
 - **Map with Flights**: Shows airports and animated flights
 - **Start/Pause/Stop Controls**: Control simulation execution
-- **Automatic Algorithm Execution**: Runs daily algorithm every 24 simulation hours
+- **Realtime Rolling Window**: Runs `/api/algorithm/daily` every few simulated minutes (default 5) using a sliding window
 - **Flight Animation**: Animated planes moving on curved routes (limited to 150 for performance)
 - **Flight Details**: Click on flights to see orders/products
+
+Realtime specifics:
+- Window presets (5/15/30 min) determine `simulationDurationHours`.
+- Clock scheduler triggers a new run whenever the elapsed simulated time exceeds the window size.
+- Creating a new order dispatches `morapack:new-order-created`, forcing an immediate re-run (or queuing one if an execution is in progress).
+- Flights departing before the current realtime cursor are ignored on the backend to avoid loading packages into planes already airborne.
 
 **Flow:**
 1. Page checks if configuration exists → shows modal if not
 2. User clicks "Iniciar Simulación" → loads flights and airports
-3. Executes first algorithm run (Day 0)
+3. Executes first realtime window (default 5 min) starting at `simulationStartDate`
 4. Starts simulation clock (1 real second = 1 simulation minute)
-5. Every 24 simulation hours → triggers next algorithm run automatically
-6. User can pause/stop simulation at any time
+5. Every window interval → triggers the next `/api/algorithm/daily` call automatically
+6. Additional runs are queued whenever a new order is inserted from Envíos
+7. User can pause/stop simulation at any time
 
 **Performance Optimizations:**
 - Limited to 150 animated flights (from potentially 3000 total)

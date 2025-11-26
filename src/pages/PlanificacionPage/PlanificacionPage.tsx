@@ -19,6 +19,28 @@ const Wrapper = styled.div`
   background: #f9fafb;
 `
 
+const ModeToggle = styled.div`
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+`
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 2px solid ${(p) => (p.$active ? '#14b8a6' : '#e5e7eb')};
+  background: ${(p) => (p.$active ? '#d1fae5' : 'white')};
+  color: ${(p) => (p.$active ? '#065f46' : '#4b5563')};
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #10b981;
+  }
+`
+
 const DatePickerButton = styled.button`
   background: #14b8a6;
   color: white;
@@ -100,11 +122,11 @@ const DayButton = styled.button<{
   border-radius: 999px;
   border: 1px solid
     ${(p) => {
-      if (p.$isSelected) return '#14b8a6'
-      if (p.$isToday) return '#38bdf8'
-      if (p.$isOtherMonth) return 'transparent'
-      return '#e5e7eb'
-    }};
+    if (p.$isSelected) return '#14b8a6'
+    if (p.$isToday) return '#38bdf8'
+    if (p.$isOtherMonth) return 'transparent'
+    return '#e5e7eb'
+  }};
   background: ${(p) => {
     if (p.$isSelected) return 'linear-gradient(135deg, #14b8a6, #0ea5e9)'
     if (p.$isToday) return '#e0f2fe'
@@ -126,8 +148,8 @@ const DayButton = styled.button<{
 
   &:hover {
     ${(p) =>
-      !p.$isOtherMonth &&
-      `
+    !p.$isOtherMonth &&
+    `
       border-color: #14b8a6;
       box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.25);
       transform: translateY(-1px);
@@ -608,8 +630,15 @@ interface OrdersImportState {
 
 export function PlanificacionPage() {
   const navigate = useNavigate()
-  const { simulationStartDate, setSimulationStartDate, hasValidConfig, clearSimulationConfig } =
-    useSimulationStore()
+  const {
+    simulationStartDate,
+    setSimulationStartDate,
+    hasValidConfig,
+    clearSimulationConfig,
+    simulationMode,
+    setSimulationMode,
+    isDailyMode,
+  } = useSimulationStore()
 
   const [selectedDateTime, setSelectedDateTime] = useState<string>('')
   const [weeks, setWeeks] = useState<number>(1)
@@ -625,10 +654,10 @@ export function PlanificacionPage() {
   const [pickerHour, setPickerHour] = useState<string>('00')
   const [pickerMinute, setPickerMinute] = useState<string>('00')
 
-  const totalOrders = ordersState.result?.statistics?.ordersLoaded ?? 0; 
-  const totalProducts = ordersState.result?.statistics?.ordersFiltered ?? 0; 
+  const totalOrders = ordersState.result?.statistics?.ordersLoaded ?? 0;
+  const totalProducts = ordersState.result?.statistics?.ordersFiltered ?? 0;
   const loadedItems = totalOrders + totalProducts;
-  
+
   const [showResetModal, setShowResetModal] = useState(false)
   // Ajusta este valor según tu realidad de negocio:
   // cuántos registros (pedidos + productos) consideras como "base llena" por semana.
@@ -763,6 +792,14 @@ export function PlanificacionPage() {
 
       // 1) Guardar fecha en el store para la simulación
       setSimulationStartDate(parsedDate)
+      setSimulationMode(simulationMode)
+
+      if (isDailyMode()) {
+        setOrdersState({ loading: false, result: null })
+        toast.success('Fecha configurada para simulación diaria. Dirigiéndote a la vista en tiempo real.')
+        navigate('/simulacion/diaria')
+        return
+      }
 
       // ✅ 2) Calcular rango de fechas en UTC (igual que Python)
       const startDate = new Date(Date.UTC(
@@ -780,7 +817,6 @@ export function PlanificacionPage() {
       // poner fin de día en UTC
       endDate.setUTCHours(23, 59, 59, 0)
 
-      // ✅ 3) Formatear en ISO como Python: YYYY-MM-DDTHH:MM:SS
       const formatISO = (date: Date) => {
         const y = date.getUTCFullYear()
         const m = String(date.getUTCMonth() + 1).padStart(2, '0')
@@ -812,8 +848,7 @@ export function PlanificacionPage() {
 
       if (result.success) {
         toast.success(
-          `Fecha configurada y pedidos cargados (${result.statistics?.ordersLoaded ?? 0} pedidos, ${
-            result.statistics?.ordersFiltered ?? 0
+          `Fecha configurada y pedidos cargados (${result.statistics?.ordersLoaded ?? 0} pedidos, ${result.statistics?.ordersFiltered ?? 0
           } productos)`
         )
       } else {
@@ -859,6 +894,14 @@ export function PlanificacionPage() {
     navigate('/simulacion/diaria')
   }
 
+  const handleGoToWeeklySimulation = () => {
+    if (!hasValidConfig()) {
+      toast.error('Debes configurar una fecha primero')
+      return
+    }
+    navigate('/simulacion/semanal')
+  }
+
   const formatDate = (date: Date | null) => {
     if (!date) return 'No configurada'
     return new Intl.DateTimeFormat('es-ES', {
@@ -877,8 +920,24 @@ export function PlanificacionPage() {
         <div>
           <Title>Planificación de Simulación</Title>
           <Subtitle>
-            Configura la fecha inicial y el rango de semanas que se usará para cargar los pedidos
+            Configura la fecha inicial y prepara los datos para la simulación semanal o diaria.
           </Subtitle>
+          <ModeToggle>
+            <ModeButton
+              type="button"
+              $active={simulationMode === 'weekly'}
+              onClick={() => setSimulationMode('weekly')}
+            >
+              Planificación Semanal
+            </ModeButton>
+            <ModeButton
+              type="button"
+              $active={simulationMode === 'daily'}
+              onClick={() => setSimulationMode('daily')}
+            >
+              Simulación Diaria
+            </ModeButton>
+          </ModeToggle>
         </div>
 
         {error && (
@@ -887,7 +946,7 @@ export function PlanificacionPage() {
           </InfoBox>
         )}
 
-        {(ordersState.loading || ordersState.result) && (
+        {simulationMode === 'weekly' && (ordersState.loading || ordersState.result) && (
           <ProgressSection>
             <ProgressHeader>
               <div>
@@ -903,42 +962,42 @@ export function PlanificacionPage() {
                   ordersState.loading
                     ? 'loading'
                     : ordersState.result
-                    ? 'done'
-                    : 'idle'
+                      ? 'done'
+                      : 'idle'
                 }
               >
                 {ordersState.loading && <>● Cargando…</>}
                 {!ordersState.loading && ordersState.result && <>✓ Completado</>}
                 {!ordersState.loading && !ordersState.result && <>– En espera</>}
               </ProgressStatusChip>
-                </ProgressHeader>
+            </ProgressHeader>
 
-                <ProgressBarContainer>
-                  <ProgressBarFill
-                      $percent={displayPercent}
-                      $isLoading={ordersState.loading}
-                  />
-                </ProgressBarContainer>
+            <ProgressBarContainer>
+              <ProgressBarFill
+                $percent={displayPercent}
+                $isLoading={ordersState.loading}
+              />
+            </ProgressBarContainer>
 
-                <ProgressStatsRow>
-                  <ProgressStat>
-                    Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Productos: <ProgressValue>{totalProducts}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Registros totales:{' '}
-                    <ProgressValue>{loadedItems.toLocaleString('es-PE')}</ProgressValue>
-                  </ProgressStat>
-                  <ProgressStat>
-                    Avance:{' '}
-                    <ProgressValue>{fillPercent}%</ProgressValue>
-                  </ProgressStat>
-                </ProgressStatsRow>
-              </ProgressSection>
+            <ProgressStatsRow>
+              <ProgressStat>
+                Pedidos: <ProgressValue>{totalOrders}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Productos: <ProgressValue>{totalProducts}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Registros totales:{' '}
+                <ProgressValue>{loadedItems.toLocaleString('es-PE')}</ProgressValue>
+              </ProgressStat>
+              <ProgressStat>
+                Avance:{' '}
+                <ProgressValue>{fillPercent}%</ProgressValue>
+              </ProgressStat>
+            </ProgressStatsRow>
+          </ProgressSection>
         )}
-        
+
         <FormSection>
           <FormGroup>
             <Label htmlFor="simulation-date">Fecha de Inicio de la Simulación</Label>
@@ -976,41 +1035,42 @@ export function PlanificacionPage() {
             </span>
           </FormGroup>
 
-          <FormGroup>
-            <Label htmlFor="weeks-select">Semanas</Label>
-            <Select
-              id="weeks-select"
-              value={weeks}
-              onChange={(e) => setWeeks(Number(e.target.value))}
-              disabled={isLoadingReset || isLoadingConfig}
-            >
-              <option value={1}>1 semana</option>
-              <option value={2}>2 semanas</option>
-            </Select>
-            <span style={{ fontSize: '13px', color: '#6b7280' }}>
-              Se cargarán pedidos desde la fecha de inicio hasta la fecha de inicio + (semanas × 7
-              días - 1).
-            </span>
-          </FormGroup>
+          {simulationMode === 'weekly' && (
+            <>
+              <FormGroup>
+                <Label htmlFor="weeks-select">Semanas</Label>
+                <Select
+                  id="weeks-select"
+                  value={weeks}
+                  onChange={(e) => setWeeks(Number(e.target.value))}
+                  disabled={isLoadingReset || isLoadingConfig}
+                >
+                  <option value={1}>1 semana</option>
+                  <option value={2}>2 semanas</option>
+                </Select>
+                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                  Se cargarán pedidos desde la fecha de inicio hasta la fecha de inicio + (semanas × 7
+                  días - 1).
+                </span>
+              </FormGroup>
+            </>
+          )}
 
-          <InfoBox $variant="info">
-            <strong>ℹ️ Instrucciones:</strong>
-            <br />
-            1. Selecciona la fecha inicial para tu simulación
-            <br />
-            2. Elige cuántas semanas de datos quieres cargar (1 o 2)
-            <br />
-            3. Haz clic en &quot;Confirmar Fecha&quot; para guardar la configuración y cargar los
-            pedidos en ese rango
-            <br />
-            4. Si lo necesitas, usa &quot;Resetear datos&quot; para dejar la pantalla en blanco
-            nuevamente
-            <br />
-            5. Ve a &quot;Simulación Diaria&quot; para iniciar la simulación
-          </InfoBox>
+          {simulationMode === 'daily' && (
+            <InfoBox $variant="info">
+              <strong>⚡ Modo diario:</strong>
+              <br />
+              1. Selecciona la fecha y hora inicial de la operación.
+              <br />
+              2. Presiona &quot;Confirmar&quot;; iremos directo a la Simulación Diaria.
+              <br />
+              3. Las ordenes se asignarán en ventanas cortas (5-30 min) y se recalcularán cuando se
+              registren nuevos pedidos.
+            </InfoBox>
+          )}
         </FormSection>
 
-        
+
 
         <ButtonGroup>
           <Button
@@ -1019,7 +1079,7 @@ export function PlanificacionPage() {
             $isLoading={isLoadingConfig}
           >
             {isLoadingConfig && <LoadingSpinner />}
-            {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar Fecha'}
+            {isLoadingConfig ? 'Configurando y cargando...' : 'Confirmar'}
           </Button>
 
           <Button
@@ -1035,11 +1095,19 @@ export function PlanificacionPage() {
             onClick={handleGoToSimulation}
             disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
           >
-            Ir a Simulación Diaria →
+            Sim.Diaria →
+          </Button>
+
+          <Button
+            $variant="success"
+            onClick={handleGoToWeeklySimulation}
+            disabled={!hasValidConfig() || isLoadingConfig || isLoadingReset}
+          >
+            Sim.Semanal →
           </Button>
         </ButtonGroup>
 
-      
+
 
         {!hasValidConfig() && (
           <InfoBox $variant="warning">
@@ -1070,7 +1138,6 @@ export function PlanificacionPage() {
       <ModalOverlay $isOpen={showDatePicker} onClick={() => setShowDatePicker(false)}>
         <ModalContent onClick={(e) => e.stopPropagation()}>
           <ModalTitle>Selecciona una fecha </ModalTitle>
-          
           <CalendarShell>
             <MonthNavigation>
               <MonthButton onClick={() => handleMonthChange(-1)}>← Mes anterior</MonthButton>
@@ -1105,10 +1172,6 @@ export function PlanificacionPage() {
               })}
             </strong>
           </div>
-
-          
-          
-          
 
           <ModalButtonGroup>
             <ModalButton $variant="secondary" onClick={() => setShowDatePicker(false)}>
