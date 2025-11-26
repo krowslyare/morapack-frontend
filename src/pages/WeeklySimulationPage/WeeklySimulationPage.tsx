@@ -481,8 +481,9 @@ export function WeeklySimulationPage() {
     useEffect(() => {
         speedRef.current = playbackSpeed
     }, [playbackSpeed])
-
     
+    const updatesInProgressRef = useRef(0);
+
     const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
@@ -682,6 +683,7 @@ export function WeeklySimulationPage() {
     // 🐍 PYTHON REPLICA: Update states
     const runUpdateStates = useCallback(async (simTime: Date) => {
       
+      updatesInProgressRef.current += 1;
       setIsBackgroundProcessing(true)
 
       try {
@@ -724,7 +726,12 @@ export function WeeklySimulationPage() {
         console.error('❌ Error en update-states:', error)
         console.groupEnd()
       } finally {
-        setIsBackgroundProcessing(false)
+        updatesInProgressRef.current -= 1;
+
+        // 🔥 Se oculta solo cuando realmente NO hay trabajos en curso
+        if (updatesInProgressRef.current === 0) {
+          setIsBackgroundProcessing(false);
+        }
       }
     }, [])
 
@@ -749,10 +756,12 @@ export function WeeklySimulationPage() {
         setKpi(INITIAL_KPI)
         lastAlgorithmDayRef.current = -1
         lastUpdateHoursRef.current = 0
-        isUpdatingStatesRef.current = false
-        pausedRef.current = false
+        //isUpdatingStatesRef.current = false
+        //pausedRef.current = false
       }
-    }, [])
+    }, [])  
+
+    const hasShownCompletionToastRef = useRef(false);
 
     // ✅ AHORA SÍ PODEMOS USAR stop EN setupVisualClock
     const setupVisualClock = useCallback(() => {
@@ -772,9 +781,28 @@ export function WeeklySimulationPage() {
           const dayNumber = Math.floor(elapsedHours / 24)
 
           if (dayNumber >= TOTAL_DAYS) {
-            stop(false)  // ✅ Ahora stop ya está declarado
-            toast.info('✅ Simulación semanal completada')
-            return prev
+
+            // Detén el reloj visual
+            if (visualClockIntervalRef.current) {
+              clearInterval(visualClockIntervalRef.current);
+              visualClockIntervalRef.current = null;
+            }
+
+            setIsRunning(false);
+            setIsPaused(false);
+
+            // Mantén el banner hasta que backend termine
+            if (updatesInProgressRef.current === 0) {
+              setIsBackgroundProcessing(false);
+            }
+
+            // Mostrar toast solo UNA VEZ
+            if (!hasShownCompletionToastRef.current) {
+              hasShownCompletionToastRef.current = true;
+              toast.info("Simulación semanal completada");
+            }
+
+            return prev;
           }
 
           setDayIndex(dayNumber)
@@ -816,6 +844,7 @@ export function WeeklySimulationPage() {
       console.group('%c🐍 INICIANDO SIMULACIÓN', 'color:#10b981;font-weight:bold;')
       console.log('📅 Start Time (UTC):', startTime.toISOString())
       
+      hasShownCompletionToastRef.current = false;
       stop(false)
       lastAlgorithmDayRef.current = -1
       lastUpdateHoursRef.current = 0
