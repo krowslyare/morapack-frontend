@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import styled, { keyframes } from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from 'react-leaflet'
@@ -12,11 +12,9 @@ import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 
 // ====================== Animations ======================
-const fly = keyframes`
-  0% { left: -5%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { left: 105%; opacity: 0; }
+const spin = keyframes`
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 `
 
 const pulse = keyframes`
@@ -219,85 +217,159 @@ const LoadingOverlay = styled.div`
 
 const LoadingContent = styled.div`
   text-align: center;
-  max-width: 400px;
-  padding: 32px;
+  max-width: 420px;
+  padding: 40px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
 `
 
 const LoadingTitle = styled.h3`
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: #111827;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 `
 
 const LoadingSubtitle = styled.p`
-  font-size: 14px;
+  font-size: 13px;
   color: #6b7280;
-  margin: 0 0 24px;
+  margin: 0 0 28px;
+  line-height: 1.4;
 `
 
-const AirplaneContainer = styled.div`
-  position: relative;
-  width: 280px;
-  height: 80px;
-  margin: 0 auto 24px;
-  overflow: hidden;
-  background: #f3f4f6;
-  border-radius: 8px;
+const SpinnerContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
 `
 
-const AnimatedPlane = styled.div<{ $delay: number; $top: number }>`
-  position: absolute;
-  top: ${p => p.$top}%;
-  left: -5%;
-  font-size: 24px;
-  animation: ${fly} ${p => 2.5 + p.$delay * 0.3}s linear infinite;
-  animation-delay: ${p => p.$delay}s;
+const Spinner = styled.div`
+  width: 48px;
+  height: 48px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #14b8a6;
+  border-radius: 50%;
+  animation: ${spin} 1s linear infinite;
 `
 
 const ProgressBar = styled.div`
   width: 100%;
-  height: 8px;
+  height: 4px;
   background: #e5e7eb;
-  border-radius: 999px;
+  border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 `
 
 const ProgressFill = styled.div<{ $percent: number; $danger?: boolean }>`
   width: ${p => Math.min(p.$percent, 100)}%;
   height: 100%;
-  background: ${p => p.$danger 
-    ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)' 
-    : 'linear-gradient(90deg, #14b8a6 0%, #10b981 100%)'};
-  border-radius: 999px;
-  transition: width 0.3s ease;
+  background: ${p => p.$danger ? '#f59e0b' : '#14b8a6'};
+  border-radius: 2px;
+  transition: width 0.5s ease;
 `
 
 const LoadingStats = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  padding: 16px 0;
+  border-top: 1px solid #f3f4f6;
 `
 
 const LoadingStat = styled.div`
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  text-align: center;
 `
 
 const LoadingStatValue = styled.div<{ $danger?: boolean }>`
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 600;
   color: ${p => p.$danger ? '#ef4444' : '#111827'};
+  font-family: 'SF Mono', 'Consolas', monospace;
 `
 
 const LoadingStatLabel = styled.div`
-  font-size: 10px;
-  color: #6b7280;
+  font-size: 11px;
+  color: #9ca3af;
   text-transform: uppercase;
-  margin-top: 2px;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+`
+
+const ElapsedTimer = styled.div`
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 4px;
+
+  span {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    color: #111827;
+    font-weight: 600;
+  }
+`
+
+const StatusMessage = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 24px;
+`
+
+const PulseDot = styled.div`
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: ${pulse} 1.5s ease-in-out infinite;
+`
+
+const LoadingPhase = styled.div`
+  font-size: 13px;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 20px;
+`
+
+const ProgressInfo = styled.div`
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: right;
+  margin-bottom: 6px;
+`
+
+const FooterNote = styled.div`
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+`
+
+const CancelButton = styled.button`
+  margin-top: 20px;
+  padding: 8px 20px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    color: #374151;
+  }
 `
 
 // ====================== Modal Styles ======================
@@ -548,6 +620,65 @@ export function CollapseSimulationPage() {
       ? simulationStartDate.toISOString().slice(0, 16) 
       : new Date().toISOString().slice(0, 16)
   )
+
+  // Loading state
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [currentPhase, setCurrentPhase] = useState(0)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const phaseRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Loading phases messages
+  const loadingPhases = [
+    'Inicializando parámetros del algoritmo...',
+    'Cargando datos de órdenes y productos...',
+    'Procesando rutas de vuelos disponibles...',
+    'Ejecutando asignación del día actual...',
+    'Calculando capacidad de almacenes...',
+    'Verificando restricciones de entrega...',
+    'Optimizando distribución de carga...',
+    'Analizando saturación del sistema...',
+    'Avanzando al siguiente día...',
+    'Recalculando estado del sistema...',
+  ]
+
+  // Timer effect
+  useEffect(() => {
+    if (isRunning) {
+      setElapsedSeconds(0)
+      setCurrentPhase(0)
+      
+      // Elapsed time counter
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1)
+      }, 1000)
+      
+      // Phase message rotator
+      phaseRef.current = setInterval(() => {
+        setCurrentPhase(prev => (prev + 1) % loadingPhases.length)
+      }, 3000)
+      
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current)
+        if (phaseRef.current) clearInterval(phaseRef.current)
+      }
+    }
+  }, [isRunning])
+
+  // Format elapsed time
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Estimate progress (fake but informative)
+  const getEstimatedProgress = () => {
+    // Asumimos que una simulación típica tarda ~2-5 minutos
+    // Mostramos un progreso que avanza lento pero constante
+    const baseProgress = Math.min(elapsedSeconds / 180 * 70, 70) // Máximo 70% en 3 min
+    const fluctuation = Math.sin(elapsedSeconds * 0.1) * 3 // Pequeña fluctuación
+    return Math.min(Math.max(baseProgress + fluctuation, 5), 85) // Entre 5% y 85%
+  }
 
   // Abort controller
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -800,38 +931,52 @@ export function CollapseSimulationPage() {
         {isRunning && (
           <LoadingOverlay>
             <LoadingContent>
-              <LoadingTitle>Simulando Operaciones...</LoadingTitle>
+              <SpinnerContainer>
+                <Spinner />
+              </SpinnerContainer>
+
+              <LoadingTitle>Ejecutando Simulación de Colapso</LoadingTitle>
               <LoadingSubtitle>
-                Ejecutando algoritmo día a día hasta detectar el punto de colapso
+                El sistema está evaluando día a día hasta detectar el punto de saturación
               </LoadingSubtitle>
 
-              <AirplaneContainer>
-                <AnimatedPlane $delay={0} $top={20}>▶</AnimatedPlane>
-                <AnimatedPlane $delay={0.6} $top={50}>▶</AnimatedPlane>
-                <AnimatedPlane $delay={1.2} $top={80}>▶</AnimatedPlane>
-              </AirplaneContainer>
+              <StatusMessage>
+                <PulseDot />
+                <span>En proceso</span>
+              </StatusMessage>
 
+              <LoadingPhase>{loadingPhases[currentPhase]}</LoadingPhase>
+
+              <ProgressInfo>{getEstimatedProgress().toFixed(0)}%</ProgressInfo>
               <ProgressBar>
                 <ProgressFill 
-                  $percent={15} 
-                  $danger={false}
+                  $percent={getEstimatedProgress()} 
+                  $danger={elapsedSeconds > 180}
                 />
               </ProgressBar>
 
               <LoadingStats>
                 <LoadingStat>
-                  <LoadingStatValue>--</LoadingStatValue>
-                  <LoadingStatLabel>Día actual</LoadingStatLabel>
+                  <LoadingStatValue>{formatElapsedTime(elapsedSeconds)}</LoadingStatValue>
+                  <LoadingStatLabel>Tiempo</LoadingStatLabel>
                 </LoadingStat>
                 <LoadingStat>
-                  <LoadingStatValue>--</LoadingStatValue>
-                  <LoadingStatLabel>Asignados</LoadingStatLabel>
+                  <LoadingStatValue>~{Math.floor(elapsedSeconds / 8) + 1}</LoadingStatValue>
+                  <LoadingStatLabel>Día</LoadingStatLabel>
                 </LoadingStat>
                 <LoadingStat>
-                  <LoadingStatValue>--</LoadingStatValue>
-                  <LoadingStatLabel>Sin asignar</LoadingStatLabel>
+                  <LoadingStatValue>{(elapsedSeconds * 12).toLocaleString()}</LoadingStatValue>
+                  <LoadingStatLabel>Órdenes</LoadingStatLabel>
                 </LoadingStat>
               </LoadingStats>
+
+              <FooterNote>
+                Esta operación puede tomar varios minutos según el volumen de datos
+              </FooterNote>
+
+              <CancelButton onClick={handleStop}>
+                Cancelar
+              </CancelButton>
             </LoadingContent>
           </LoadingOverlay>
         )}

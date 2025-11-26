@@ -148,3 +148,27 @@ export const PlaceholderText = styled.p`
   font-size: 15px;
   padding: 40px 0;
 `
+
+export const NewOrderButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #14b8a6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #0d9488;
+    transform: translateY(-1px);
+  }
+
+  .material-symbols-outlined {
+    font-size: 18px;
+  }
+`

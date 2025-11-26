@@ -61,7 +61,10 @@ export function TrackingPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </S.Search>
-
+        <S.NewOrderButton onClick={() => navigate('/envios/registrar')}>
+          <span className="material-symbols-outlined">add</span>
+          Nuevo Pedido
+        </S.NewOrderButton>
       </S.ActionBar>
 
       <S.ContentPanel>
