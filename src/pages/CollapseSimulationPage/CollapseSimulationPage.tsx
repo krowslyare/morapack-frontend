@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from 'react-leaflet'
 import L, { type LatLngTuple } from 'leaflet'
 import { useAirports } from '../../hooks/api/useAirports'
-import { simulationService, type CollapseSimulationResult, type CollapseSimulationProgress } from '../../api/simulationService'
+import { simulationService, type CollapseSimulationResult } from '../../api/simulationService'
 import { toast } from 'react-toastify'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import type { Continent } from '../../types/Continent'
@@ -539,7 +539,6 @@ export function CollapseSimulationPage() {
   const [showConfigModal, setShowConfigModal] = useState(true)
   const [showResultModal, setShowResultModal] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
-  const [progress, setProgress] = useState<CollapseSimulationProgress | null>(null)
   const [result, setResult] = useState<CollapseSimulationResult | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
   
@@ -550,8 +549,8 @@ export function CollapseSimulationPage() {
       : new Date().toISOString().slice(0, 16)
   )
 
-  // Cancel ref
-  const cancelRef = useRef(false)
+  // Abort controller
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Load airports
   const { data: airportsData } = useAirports()
@@ -574,62 +573,61 @@ export function CollapseSimulationPage() {
 
   // Start simulation
   const handleStart = useCallback(async () => {
-    if (!configStartDate) {
-      toast.error('Debes seleccionar una fecha de inicio')
+    if (!configStartDate || !hasValidConfig() || !simulationStartDate) {
+      toast.error('Debes configurar la simulación antes de iniciar')
       return
     }
 
     setShowConfigModal(false)
     setIsRunning(true)
-    setProgress(null)
     setResult(null)
-    cancelRef.current = false
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
       toast.info('Iniciando simulación de colapso...')
 
-      const simResult = await simulationService.executeCollapseSimulation(
+      const simResult = await simulationService.runCollapseScenario(
         {
           simulationStartTime: new Date(configStartDate).toISOString(),
           useDatabase: true,
         },
-        (prog) => {
-          if (!cancelRef.current) {
-            setProgress(prog)
-          }
-        }
+        { signal: controller.signal }
       )
 
-      if (!cancelRef.current) {
-        setResult(simResult)
-        setIsRunning(false)
-        setShowResultModal(true)
+      setResult(simResult)
+      setShowResultModal(true)
 
-        if (simResult.hasCollapsed) {
-          toast.warning(`Sistema colapsó en el día ${simResult.collapseDay}`)
-        } else {
-          toast.success('Simulación completada sin colapso')
-        }
+      if (simResult.hasCollapsed) {
+        toast.warning(`Sistema colapsó en el día ${simResult.collapseDay}`)
+      } else {
+        toast.success('Simulación completada sin colapso')
       }
-    } catch (error) {
-      console.error('Error en simulación:', error)
-      toast.error('Error durante la simulación')
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        toast.info('Simulación cancelada')
+      } else {
+        console.error('Error en simulación:', error)
+        toast.error('Error durante la simulación')
+      }
+    } finally {
       setIsRunning(false)
+      abortControllerRef.current = null
     }
-  }, [configStartDate])
+  }, [configStartDate, hasValidConfig, simulationStartDate])
 
   // Stop simulation
   const handleStop = useCallback(() => {
-    cancelRef.current = true
-    setIsRunning(false)
-    toast.info('Simulación detenida')
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
   }, [])
 
   // Reset
   const handleReset = useCallback(() => {
     setShowResultModal(false)
     setResult(null)
-    setProgress(null)
     setShowConfigModal(true)
   }, [])
 
@@ -644,8 +642,8 @@ export function CollapseSimulationPage() {
   const getStatusText = () => {
     const status = getStatus()
     if (status === 'running') return '● Ejecutando'
-    if (status === 'collapsed') return '⚠ Colapsado'
-    if (status === 'success') return '✓ Completado'
+    if (status === 'collapsed') return 'Colapsado'
+    if (status === 'success') return 'Completado'
     return '○ Detenido'
   }
 
@@ -724,16 +722,16 @@ export function CollapseSimulationPage() {
                       <ResultCardLabel>Días simulados</ResultCardLabel>
                     </ResultCard>
                     <ResultCard>
-                      <ResultCardValue>{result.statistics.totalOrdersProcessed}</ResultCardValue>
+                      <ResultCardValue>{result.totalOrdersProcessed}</ResultCardValue>
                       <ResultCardLabel>Órdenes procesadas</ResultCardLabel>
                     </ResultCard>
                     <ResultCard>
-                      <ResultCardValue>{result.statistics.assignedProducts}</ResultCardValue>
+                      <ResultCardValue>{result.assignedProducts}</ResultCardValue>
                       <ResultCardLabel>Productos asignados</ResultCardLabel>
                     </ResultCard>
-                    <ResultCard $highlight={result.statistics.unassignedProducts > 0}>
-                      <ResultCardValue $danger={result.statistics.unassignedProducts > 0}>
-                        {result.statistics.unassignedProducts}
+                    <ResultCard $highlight={(result.unassignedProducts || 0) > 0}>
+                      <ResultCardValue $danger={(result.unassignedProducts || 0) > 0}>
+                        {result.unassignedProducts}
                       </ResultCardValue>
                       <ResultCardLabel>Sin asignar</ResultCardLabel>
                     </ResultCard>
@@ -745,7 +743,7 @@ export function CollapseSimulationPage() {
                   <ResultGrid>
                     <ResultCard>
                       <ResultCardValue>
-                        {result.statistics.unassignedPercentage.toFixed(1)}%
+                        {result.unassignedPercentage?.toFixed(1) ?? '0.0'}%
                       </ResultCardValue>
                       <ResultCardLabel>% Sin asignar</ResultCardLabel>
                     </ResultCard>
@@ -802,11 +800,7 @@ export function CollapseSimulationPage() {
         {isRunning && (
           <LoadingOverlay>
             <LoadingContent>
-              <LoadingTitle>
-                {progress?.hasCollapsed 
-                  ? '¡Sistema Colapsando!' 
-                  : 'Simulando Operaciones...'}
-              </LoadingTitle>
+              <LoadingTitle>Simulando Operaciones...</LoadingTitle>
               <LoadingSubtitle>
                 Ejecutando algoritmo día a día hasta detectar el punto de colapso
               </LoadingSubtitle>
@@ -819,24 +813,22 @@ export function CollapseSimulationPage() {
 
               <ProgressBar>
                 <ProgressFill 
-                  $percent={(progress?.currentDay || 0) * 3} 
-                  $danger={progress?.hasCollapsed}
+                  $percent={15} 
+                  $danger={false}
                 />
               </ProgressBar>
 
               <LoadingStats>
                 <LoadingStat>
-                  <LoadingStatValue>{progress?.currentDay || 0}</LoadingStatValue>
+                  <LoadingStatValue>--</LoadingStatValue>
                   <LoadingStatLabel>Día actual</LoadingStatLabel>
                 </LoadingStat>
                 <LoadingStat>
-                  <LoadingStatValue>{progress?.assignedProducts || 0}</LoadingStatValue>
+                  <LoadingStatValue>--</LoadingStatValue>
                   <LoadingStatLabel>Asignados</LoadingStatLabel>
                 </LoadingStat>
                 <LoadingStat>
-                  <LoadingStatValue $danger={(progress?.unassignedProducts || 0) > 0}>
-                    {progress?.unassignedProducts || 0}
-                  </LoadingStatValue>
+                  <LoadingStatValue>--</LoadingStatValue>
                   <LoadingStatLabel>Sin asignar</LoadingStatLabel>
                 </LoadingStat>
               </LoadingStats>
@@ -845,7 +837,7 @@ export function CollapseSimulationPage() {
         )}
 
         {/* Controls Panel */}
-        {!isRunning && progress && (
+        {!isRunning && result && (
           <SimulationControls>
             <div>
               <ControlsLabel>Último resultado</ControlsLabel>
@@ -865,12 +857,12 @@ export function CollapseSimulationPage() {
             <StatsRow>
               <StatLine>
                 <span>Productos asignados:</span>
-                <StatValue>{result?.statistics.assignedProducts || 0}</StatValue>
+                <StatValue>{result?.assignedProducts || 0}</StatValue>
               </StatLine>
               <StatLine>
                 <span>Sin asignar:</span>
-                <StatValue $danger={(result?.statistics.unassignedProducts || 0) > 0}>
-                  {result?.statistics.unassignedProducts || 0}
+                <StatValue $danger={(result?.unassignedProducts || 0) > 0}>
+                  {result?.unassignedProducts || 0}
                 </StatValue>
               </StatLine>
               <StatLine>

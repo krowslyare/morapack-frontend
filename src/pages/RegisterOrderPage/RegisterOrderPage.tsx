@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as S from './RegisterOrderPage.styles'
 import { useCreateOrder, useOrder, useUpdateOrder } from '../../hooks/api/useOrders'
 import { PackageStatus } from '../../types/PackageStatus'
+import { useSimulationStore } from '../../store/useSimulationStore'
+import { toast } from 'react-toastify'
 
 // RegisterOrderPage.tsx
 const STATUS_OPTS: PackageStatus[] = ['PENDING', 'IN_TRANSIT', 'DELIVERED', 'DELAYED']
@@ -17,6 +19,7 @@ export default function RegisterOrderPage() {
 
   const createOrder = useCreateOrder()
   const updateOrder = useUpdateOrder()
+  const { triggerRefreshIfNeeded } = useSimulationStore()
   const {
     data: existingOrder,
     isLoading: isOrderLoading,
@@ -91,37 +94,53 @@ export default function RegisterOrderPage() {
 
     try {
       const payload = {
-      name: form.name.trim(),
-      originCityId: parseId(form.originCityId, 'Ciudad origen (ID)'),
-      originCityName: form.originCityName || null,
-      destinationCityId: parseId(form.destinationCityId, 'Ciudad destino (ID)'),
-      destinationCityName: form.destinationCityName || null,
-      deliveryDate: toLocalDateTime(form.deliveryDate),
-      status: form.status as PackageStatus,
-      pickupTimeHours: form.pickupTimeHours ? Number(form.pickupTimeHours) : 0,
+        name: form.name.trim(),
+        originCityId: parseId(form.originCityId, 'Ciudad origen (ID)'),
+        originCityName: form.originCityName || null,
+        destinationCityId: parseId(form.destinationCityId, 'Ciudad destino (ID)'),
+        destinationCityName: form.destinationCityName || null,
+        deliveryDate: toLocalDateTime(form.deliveryDate),
+        status: form.status as PackageStatus,
+        pickupTimeHours: form.pickupTimeHours ? Number(form.pickupTimeHours) : 0,
         creationDate: existingOrder?.creationDate ?? toLocalDateTime(new Date()),
         updatedAt: toLocalDateTime(new Date()),
-      customerId: parseId(form.customerId, 'ID cliente'),
+        customerId: parseId(form.customerId, 'ID cliente'),
 
-      // Campos legacy opcionales: los dejamos null para que el backend los ignore si no aplica
-      customerSchema: null,
-      destinationCitySchema: null,
-      orderDate: null,
-      deliveryDeadline: null,
-      currentLocation: null,
-      assignedRouteSchema: null,
-      priority: 0,
-      productSchemas: [],
-    }
+        // Campos legacy opcionales: los dejamos null para que el backend los ignore si no aplica
+        customerSchema: null,
+        destinationCitySchema: null,
+        orderDate: null,
+        deliveryDeadline: null,
+        currentLocation: null,
+        assignedRouteSchema: null,
+        priority: 0,
+        productSchemas: [],
+      }
 
       if (isEditMode && orderId) {
         await updateOrder.mutateAsync({ id: orderId, updates: payload as any })
       } else {
         await createOrder.mutateAsync(payload as any)
+
+        // NEW: Check if order is within current daily simulation window
+        // If yes, trigger algorithm refresh in 1 minute
+        if (payload.deliveryDate) {
+          const orderDeliveryTime = new Date(payload.deliveryDate)
+          const willRefresh = triggerRefreshIfNeeded(orderDeliveryTime)
+
+          if (willRefresh) {
+            toast.info('Nueva orden detectada en ventana activa. Algoritmo se ejecutará en 2 minutos.', {
+              autoClose: 5000,
+            })
+          }
+        }
       }
       navigate('/envios')
     } catch (err: any) {
-      setError(err?.message || 'No se pudo registrar el pedido.')
+      // Extract error message from axios error response
+      const errorMessage = err?.response?.data?.error || err?.message || 'No se pudo registrar el pedido.'
+      setError(errorMessage)
+      console.error('Error al registrar orden:', err)
     }
   }
 
@@ -183,7 +202,7 @@ export default function RegisterOrderPage() {
               inputMode="numeric"
               disabled={isOrderLoading}
             />
-            <S.Help>Requerido. Usa el ID numérico de la ciudad.</S.Help>
+            <S.Help>Requerido. Usa el ID numérico de la ciudad (verifica IDs válidos en "Datos" del menú).</S.Help>
           </S.Field>
           <S.Field>
             <S.Label>Ciudad Origen (Nombre)</S.Label>
@@ -199,7 +218,7 @@ export default function RegisterOrderPage() {
               inputMode="numeric"
               disabled={isOrderLoading}
             />
-            <S.Help>Requerido. Usa el ID numérico de la ciudad.</S.Help>
+            <S.Help>Requerido. Usa el ID numérico de la ciudad (verifica IDs válidos en "Datos" del menú).</S.Help>
           </S.Field>
           <S.Field>
             <S.Label>Ciudad Destino (Nombre)</S.Label>
@@ -244,7 +263,7 @@ export default function RegisterOrderPage() {
               inputMode="numeric"
               disabled={isOrderLoading}
             />
-            <S.Help>Requerido. ID numérico del cliente existente.</S.Help>
+            <S.Help>Requerido. Verifica IDs válidos de clientes en "Datos" del menú.</S.Help>
           </S.Field>
         </S.Grid>
 
