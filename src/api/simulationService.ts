@@ -40,6 +40,11 @@ export interface UpdateStatesResponse {
     arrivedToDelivered: number
     total: number
   }
+  capacityStats?: {
+    usedCapacity: number
+    totalCapacity: number
+    averageUtilization: number
+  }
 }
 
 export interface FlightStatus {

@@ -441,6 +441,9 @@ const INITIAL_KPI = {
   avgCapacityUsage: 0,
   deliveredOrders: 0,
   deliveredProducts: 0,
+  assignmentRate: 0,        // NUEVO
+  totalProductsWeek: 0,     // NUEVO
+  assignedProductsWeek: 0,  // NUEVO
 }
 
 
@@ -652,15 +655,22 @@ export function WeeklySimulationPage() {
 
           const orders = Number(response.assignedOrders ?? 0)
           const products = Number(response.assignedProducts ?? 0)
+          const totalProds = Number(response.totalProducts ?? 0)
 
           setKpi(prev => {
             const prevOrders = Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0
             const prevProducts = Number.isFinite(prev.deliveredProducts) ? prev.deliveredProducts : 0
+            const newAssigned = prev.assignedProductsWeek + products
+            const newTotal = prev.totalProductsWeek + totalProds
+            const rate = newTotal > 0 ? (newAssigned / newTotal) * 100 : 0
 
             return {
               ...prev,
               deliveredOrders: prevOrders + orders,
               deliveredProducts: prevProducts + products,
+              assignedProductsWeek: newAssigned,
+              totalProductsWeek: newTotal,
+              assignmentRate: Number(rate.toFixed(2)),
             }
           })
           
@@ -707,6 +717,18 @@ export function WeeklySimulationPage() {
 
         const transitions = response?.transitions ?? 0
         console.log('✅ Transitions:', transitions)
+
+        if (response.capacityStats) {
+          const used = Number(response.capacityStats.usedCapacity ?? 0)
+          const total = Number(response.capacityStats.totalCapacity ?? 0)
+
+          const percent = total > 0 ? (used / total) * 100 : 0
+
+          setKpi(prev => ({
+            ...prev,
+            avgCapacityUsage: Number(percent.toFixed(2)),
+          }))
+        }
         
         // 👉 Lo que se entregó en este paso (productos / pedidos, según tu modelo)
         const deliveredThisStep = Number(transitions?.arrivedToDelivered ?? 0)
@@ -719,7 +741,8 @@ export function WeeklySimulationPage() {
               + deliveredThisStep,
           }))
         }
-        
+
+
         console.groupEnd()
         
       } catch (error) {
