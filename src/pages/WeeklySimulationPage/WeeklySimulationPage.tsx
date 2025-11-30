@@ -15,6 +15,10 @@ import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import './index.css' 
+import { FlightDrawer } from './FlightDrawer'
+import { useOrders } from '../../hooks/api/useOrders'
+import { useQueryClient } from '@tanstack/react-query'
+import { orderKeys } from '../../hooks/api/useOrders'
 
 // ====================== Styled Components =========================
 const Wrapper = styled.div`
@@ -110,13 +114,13 @@ const ControlButton = styled.button<{ $variant?: 'play' | 'stop' }>`
 
 const MapWrapper = styled.div`
   width: 100%;
-  height: 70vh;
+  height: 70vh;  // Ya está así, perfecto
   position: relative;
   background: #ffffff;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-`
+`;
 
 const SimulationControls = styled.div`
   position: absolute;
@@ -132,6 +136,8 @@ const SimulationControls = styled.div`
   gap: 12px;
   min-width: 260px;
 `
+
+
 
 const Clock = styled.div`
   font-size: 24px;
@@ -447,12 +453,36 @@ const INITIAL_KPI = {
 }
 
 
+function useThrottle<T>(value: T, delay: number): T {
+  const [throttledValue, setThrottledValue] = useState(value)
+  const lastRan = useRef(Date.now())
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (Date.now() - lastRan.current >= delay) {
+        setThrottledValue(value)
+        lastRan.current = Date.now()
+      }
+    }, delay - (Date.now() - lastRan.current))
+
+    return () => clearTimeout(handler)
+  }, [value, delay])
+
+  return throttledValue
+}
+
 
 
 // ===============================
 //  REPLICANDO SCRIPT PYTHON 
 // ===============================
 export function WeeklySimulationPage() {
+
+
+    const queryClient = useQueryClient()
+    const [showPanel, setShowPanel] = useState(true);
+    const [panelOpen, setPanelOpen] = useState(false);
+    const [panelTab, setPanelTab] = useState<"orders"|"flights">("flights");
 
     const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
 
@@ -476,6 +506,23 @@ export function WeeklySimulationPage() {
         0, 0, 0, 0
       ));
     }, [simulationStartDate]);
+
+    const { 
+      data: ordersData, 
+      isLoading: loadingOrders 
+    } = useOrders(
+      simulationStartDate ? {
+        // Filtrar pedidos de la semana de simulación
+        startDate: simulationStartDate.toISOString(),
+        endDate: new Date(simulationStartDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      } : undefined,
+      !!simulationStartDate
+    )
+
+    // ✅ Extraer los pedidos del resultado
+    const orders = useMemo(() => ordersData ?? [], [ordersData])
+
+    
     
 
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
@@ -630,6 +677,9 @@ export function WeeklySimulationPage() {
 
         console.log('📅 Sending to backend:', dateTimeStr)
 
+        
+
+
         try {
 
           const response = await simulationService.executeDaily({
@@ -638,6 +688,8 @@ export function WeeklySimulationPage() {
             useDatabase: true,
           })
           
+          // ✅ Refrescar pedidos después de ejecutar el algoritmo
+          queryClient.invalidateQueries({ queryKey: orderKeys.all })
 
           if (!response) {
             toast.error('Error: respuesta del algoritmo inválida')
@@ -680,7 +732,7 @@ export function WeeklySimulationPage() {
           if (products > 0) {
             toast.success(`Día ${dayNumber + 1}: ${products} productos asignados`)
           }
-
+          [queryClient] // ✅ Agregar a dependencies
         } catch (error) {
           console.error('❌ Error ejecutando algoritmo:', error)
           console.groupEnd()
@@ -1040,7 +1092,7 @@ export function WeeklySimulationPage() {
         return d === dayIndex
     })
 
-    const activeFlightsCount = currentTime
+    const activeFlightsCountRaw = currentTime
       ? flightsOfDay.filter(f => {
           const dep = new Date(f.departureTime)
           const arr = new Date(f.arrivalTime)
@@ -1048,12 +1100,31 @@ export function WeeklySimulationPage() {
         }).length
       : 0
 
+    // ✅ Solo actualiza cada 5 segundos
+    const activeFlightsCount = useThrottle(activeFlightsCountRaw, 5000)
+    
+    const activeFlights = useMemo(() => {
+      if (!currentTime) return []
+      
+      return flightInstances.filter(f => {
+        const dep = new Date(f.departureTime).getTime()
+        const arr = new Date(f.arrivalTime).getTime()
+        const now = currentTime.getTime()
+        return now >= dep && now <= arr
+      })
+    }, [flightInstances, currentTime])
+
     const bounds = airports?.length
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
 
     return (
         <Wrapper>
+
+            
+           
+
+          
 
             {isBackgroundProcessing && (
               <div
@@ -1304,6 +1375,22 @@ export function WeeklySimulationPage() {
                     />
                   )}
               </MapContainer>
+
+              {/* ✅ Drawer como componente separado */}
+              <FlightDrawer
+                isOpen={panelOpen}
+                onToggle={() => setPanelOpen(!panelOpen)}
+                panelTab={panelTab}
+                onTabChange={setPanelTab}
+                flightInstances={activeFlights}
+                flightHasProducts={flightHasProducts}
+                activeFlightsCount={activeFlightsCount}
+                onFlightClick={handleFlightClick}
+                orders={orders} // ✅ Pasar pedidos
+                loadingOrders={loadingOrders} // ✅ Pasar estado de carga
+              />
+
+
             </MapWrapper>
 
             {selectedAirport && (
@@ -1321,6 +1408,10 @@ export function WeeklySimulationPage() {
                   onClose={() => setSelectedFlight(null)}
                 />
             )}
+
+            
+            
+
 
         </Wrapper>
     )
