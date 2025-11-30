@@ -313,20 +313,27 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     const stepMs = playbackSpeed * 1000
     const halfWindowMs = Math.max(30 * 60 * 1000, stepMs * 2)
 
-    const ahead  = new Date(currentSimTime.getTime() + halfWindowMs)
-    const behind = new Date(currentSimTime.getTime() - halfWindowMs)
+    const now = currentSimTime.getTime()  // ✅ Obtener timestamp
+    const ahead  = now + halfWindowMs     // ✅ Ya es número
+    const behind = now - halfWindowMs     // ✅ Ya es número
+    
 
     const newFlights = flightInstances
-        .filter(f => {
-        const dep = new Date(f.departureTime)
-        const arr = new Date(f.arrivalTime)
+      .filter(f => {
+        const dep = new Date(f.departureTime).getTime()  // ✅ Convertir a timestamp
+        const arr = new Date(f.arrivalTime).getTime()    // ✅ Convertir a timestamp
+        
         return (
             !processedRef.current.has(f.id) &&
-            dep <= ahead &&
-            arr >= behind
+            dep <= now + halfWindowMs &&  // ✅ Solo si despega pronto o ya despegó
+            arr >= now - halfWindowMs &&  // ✅ Solo si no aterrizó hace mucho
+            dep <= ahead &&               // ✅ Dentro de la ventana adelante
+            arr >= behind                 // ✅ Dentro de la ventana atrás
         )
-        })
-        .slice(0, MAX_FLIGHTS)
+      })
+      .slice(0, MAX_FLIGHTS)
+
+    console.log(`⏰ Tiempo actual: ${currentSimTime.toLocaleTimeString('es-PE')} - Animando ${newFlights.length} vuelos`)
 
     newFlights.forEach(f => {
         processedRef.current.add(f.id)
@@ -483,6 +490,10 @@ export function WeeklySimulationPage() {
     const [showPanel, setShowPanel] = useState(true);
     const [panelOpen, setPanelOpen] = useState(false);
     const [panelTab, setPanelTab] = useState<"orders"|"flights">("flights");
+
+    // ✅ AGREGAR estos refs para control de cancelación
+    const abortControllersRef = useRef<AbortController[]>([])
+    const pendingRequestsRef = useRef(0)
 
     const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
 
@@ -659,6 +670,22 @@ export function WeeklySimulationPage() {
         }
     }, [airports, startTime])
 
+    // Helper para crear peticiones cancelables
+    const createCancelableRequest = useCallback((requestFn: (signal: AbortSignal) => Promise<any>) => {
+      const controller = new AbortController()
+      abortControllersRef.current.push(controller)
+      pendingRequestsRef.current += 1
+      
+      return requestFn(controller.signal)
+        .finally(() => {
+          pendingRequestsRef.current -= 1
+          const index = abortControllersRef.current.indexOf(controller)
+          if (index > -1) {
+            abortControllersRef.current.splice(index, 1)
+          }
+        })
+    }, [])
+
     // 🐍 PYTHON REPLICA: Algoritmo diario
     const runDailyAlgorithm = useCallback(
       async (dayStart: Date, dayNumber: number) => {
@@ -677,15 +704,15 @@ export function WeeklySimulationPage() {
 
         console.log('📅 Sending to backend:', dateTimeStr)
 
-        
-
-
         try {
 
-          const response = await simulationService.executeDaily({
-            simulationStartTime: dateTimeStr,
-            simulationDurationHours: 24,
-            useDatabase: true,
+          // ✅ Usar petición cancelable
+          const response = await createCancelableRequest(async (signal) => {
+            return await simulationService.executeDaily({
+              simulationStartTime: dateTimeStr,
+              simulationDurationHours: 24,
+              useDatabase: true,
+            }, signal)  // ⚠️ Asegúrate que tu service acepte signal
           })
           
           // ✅ Refrescar pedidos después de ejecutar el algoritmo
@@ -733,7 +760,16 @@ export function WeeklySimulationPage() {
             toast.success(`Día ${dayNumber + 1}: ${products} productos asignados`)
           }
           [queryClient] // ✅ Agregar a dependencies
-        } catch (error) {
+        } catch (error: any) {
+
+          // ✅ Ignorar errores de cancelación
+          if (error.name === 'AbortError') {
+            console.log('❌ Petición cancelada por el usuario')
+            console.groupEnd()
+            return
+          }
+
+
           console.error('❌ Error ejecutando algoritmo:', error)
           console.groupEnd()
           toast.error('Error al ejecutar el algoritmo diario')
@@ -763,9 +799,13 @@ export function WeeklySimulationPage() {
 
         console.log('⏰ Current Time (sending):', dateTimeStr)
         
+        // ✅ Con signal
+        const controller = new AbortController()
+        abortControllersRef.current.push(controller)
+        
         const response = await simulationService.updateStates({
           currentTime: dateTimeStr,
-        })
+        }, controller.signal)  // ✅ Pasar signal
 
         const transitions = response?.transitions ?? 0
         console.log('✅ Transitions:', transitions)
@@ -797,7 +837,15 @@ export function WeeklySimulationPage() {
 
         console.groupEnd()
         
-      } catch (error) {
+      } catch (error: any) {
+
+        // ✅ Manejar cancelación de Axios
+        if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+          console.log('❌ update-states cancelado')
+          console.groupEnd()
+          return
+        }
+
         console.error('❌ Error en update-states:', error)
         console.groupEnd()
       } finally {
@@ -815,6 +863,21 @@ export function WeeklySimulationPage() {
     // 🐍 DECLARAR STOP PRIMERO (para evitar error de orden)
     const stop = useCallback((reset: boolean = true) => {
       console.log(`🛑 Deteniendo simulación (reset: ${reset})`)
+
+      // ✅ CANCELAR TODAS LAS PETICIONES PENDIENTES
+      console.log(`🔥 Cancelando ${abortControllersRef.current.length} peticiones pendientes...`)
+      abortControllersRef.current.forEach(controller => {
+        try {
+          controller.abort()
+        } catch (e) {
+          console.error('Error al cancelar:', e)
+        }
+      })
+      abortControllersRef.current = []
+
+      // ✅ Forzar fin del procesamiento en background
+      updatesInProgressRef.current = 0
+      setIsBackgroundProcessing(false)
       
       setIsRunning(false)
       setIsPaused(false)

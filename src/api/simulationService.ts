@@ -288,10 +288,14 @@ export const simulationService = {
    * Execute daily algorithm for incremental scheduling
    * Uses long-running client (90 min timeout)
    */
-  executeDaily: async (request: DailyAlgorithmRequest): Promise<DailyAlgorithmResponse> => {
+  executeDaily: async (
+    request: DailyAlgorithmRequest, 
+    signal?: AbortSignal  // ✅ Agregar parámetro opcional
+  ): Promise<DailyAlgorithmResponse> => {
     const { data } = await apiLongRunning.post<DailyAlgorithmResponse>(
       '/algorithm/daily',
-      request
+      request,
+      { signal }  // ✅ Pasar signal a axios
     )
     return data
   },
@@ -299,10 +303,14 @@ export const simulationService = {
   /**
    * Update product states based on current simulation time
    */
-  updateStates: async (request: UpdateStatesRequest): Promise<UpdateStatesResponse> => {
+  updateStates: async (
+    request: UpdateStatesRequest,
+    signal?: AbortSignal  // ✅ Agregar parámetro opcional
+  ): Promise<UpdateStatesResponse> => {
     const { data } = await apiLongRunning.post<UpdateStatesResponse>(
       '/simulation/update-states',
-      request
+      request,
+      { signal }  // ✅ Pasar signal a axios
     )
     return data
   },
