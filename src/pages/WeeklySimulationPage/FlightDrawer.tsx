@@ -416,7 +416,6 @@ export const FlightDrawer = memo(function FlightDrawer({
   orders,           // ✅ Agregar
   loadingOrders,    // ✅ Agregar
 }: FlightDrawerProps) {
-  console.log('🔄 FlightDrawer render') // Para debug
 
   return (
     <>
