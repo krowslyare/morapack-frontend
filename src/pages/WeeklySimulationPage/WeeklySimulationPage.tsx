@@ -311,27 +311,33 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
 
     const timeline = timelineRef.current
     const stepMs = playbackSpeed * 1000
-    const halfWindowMs = Math.max(30 * 60 * 1000, stepMs * 2)
 
     const now = currentSimTime.getTime()  // ✅ Obtener timestamp
-    const ahead  = now + halfWindowMs     // ✅ Ya es número
-    const behind = now - halfWindowMs     // ✅ Ya es número
     
+
+    const PRELOAD_WINDOW = 5 * 60 * 1000  // 5 minutos
 
     const newFlights = flightInstances
       .filter(f => {
-        const dep = new Date(f.departureTime).getTime()  // ✅ Convertir a timestamp
-        const arr = new Date(f.arrivalTime).getTime()    // ✅ Convertir a timestamp
+        const dep = new Date(f.departureTime).getTime()
+        const arr = new Date(f.arrivalTime).getTime()
         
         return (
             !processedRef.current.has(f.id) &&
-            dep <= now + halfWindowMs &&  // ✅ Solo si despega pronto o ya despegó
-            arr >= now - halfWindowMs &&  // ✅ Solo si no aterrizó hace mucho
-            dep <= ahead &&               // ✅ Dentro de la ventana adelante
-            arr >= behind                 // ✅ Dentro de la ventana atrás
+            dep <= now + PRELOAD_WINDOW &&  // ✅ Máximo 5 min antes
+            arr >= now - PRELOAD_WINDOW     // ✅ Y no aterrizó hace más de 5 min
         )
       })
       .slice(0, MAX_FLIGHTS)
+
+    if (newFlights.length > 0) {
+      console.log(`🛫 Mostrando ${newFlights.length} vuelos:`)
+      newFlights.slice(0, 5).forEach(f => {
+        const dep = new Date(f.departureTime)
+        const arr = new Date(f.arrivalTime)
+        console.log(`  - ${f.flightCode}: Sale ${dep.toLocaleTimeString('es-PE')} → Llega ${arr.toLocaleTimeString('es-PE')}`)
+      })
+    }
 
     console.log(`⏰ Tiempo actual: ${currentSimTime.toLocaleTimeString('es-PE')} - Animando ${newFlights.length} vuelos`)
 
