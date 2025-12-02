@@ -70,6 +70,9 @@ export interface FlightStatus {
   utilizationPercentage: number
   assignedProducts: number
   assignedOrders: number
+  // Horarios reales del vuelo (formato HH:mm:ss o HH:mm)
+  departureTime?: string  // e.g., "03:34:00"
+  arrivalTime?: string    // e.g., "05:21:00"
 }
 
 export interface FlightInstance {
@@ -78,6 +81,7 @@ export interface FlightInstance {
   flightCode: string
   departureTime: string // ISO 8601
   arrivalTime: string // ISO 8601
+  instanceId: string // e.g., "FL-123-DAY-0-0334" - matches backend format
   originAirportId: number
   destinationAirportId: number
   originAirport: {
@@ -324,6 +328,20 @@ export const simulationService = {
   },
 
   /**
+   * Get all flight instances that have products assigned
+   * Returns instance IDs like "FL-123-DAY-0-0800" with product counts
+   * Used for accurate simulation visualization
+   */
+  getAssignedFlightInstances: async (): Promise<{
+    success: boolean
+    totalInstances: number
+    instances: Record<string, number>  // instanceId -> productCount
+  }> => {
+    const { data } = await api.get('/query/flights/instances/assigned')
+    return data
+  },
+
+  /**
    * Get orders assigned to a specific flight
    */
   getFlightOrders: async (flightCode: string): Promise<FlightOrdersResponse> => {
@@ -383,9 +401,9 @@ export const simulationService = {
   },
 
   /**
-   * Generate flight instances for a time window with cyclic daily repetition
-   * This creates scheduled flights based on flight data and simulation time
-   * Handles midnight-crossing flights properly
+   * Generate flight instances for a time window using REAL departure/arrival times
+   * Each flight operates once per day at its scheduled time from flights.txt
+   * Handles midnight-crossing flights properly (e.g., departs 22:00, arrives 02:00 next day)
    */
   generateFlightInstances: (
     flights: FlightStatus[],
@@ -407,16 +425,20 @@ export const simulationService = {
     }
 
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
-
-    // Calculate how many full days we need
     const durationDays = Math.ceil(durationHours / 24)
 
-    flights.forEach((flight) => {
-      // Generate instances based on daily frequency
-      const frequency = flight.dailyFrequency || 1
-      const intervalHours = 24 / frequency
-      const flightDurationMs = flight.transportTimeDays * 24 * 60 * 60 * 1000
+    // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
+    const parseTimeString = (timeStr: string | undefined): { hours: number; minutes: number } | null => {
+      if (!timeStr) return null
+      const parts = timeStr.split(':')
+      if (parts.length < 2) return null
+      const hours = parseInt(parts[0], 10)
+      const minutes = parseInt(parts[1], 10)
+      if (isNaN(hours) || isNaN(minutes)) return null
+      return { hours, minutes }
+    }
 
+    flights.forEach((flight) => {
       // Find airport coordinates
       const originAirport = airports.find(
         (a: any) => a.cityName === flight.originAirport.city.name
@@ -427,48 +449,111 @@ export const simulationService = {
 
       if (!originAirport || !destAirport) return
 
-      // Generate instances for each day in the window
+      // Parse real departure and arrival times from backend
+      const depTime = parseTimeString(flight.departureTime)
+      const arrTime = parseTimeString(flight.arrivalTime)
+
+      // If we have real times, use them; otherwise fall back to transport time
+      const hasRealTimes = depTime !== null && arrTime !== null
+
+      // Generate one instance per day (each flight operates once per day at its scheduled time)
       for (let day = 0; day < durationDays; day++) {
-        const dayStart = new Date(startTime.getTime() + day * 24 * 60 * 60 * 1000)
+        // Get the start of this simulation day in UTC
+        // This matches the simulated time shown in the UI
+        const dayStart = new Date(Date.UTC(
+          startTime.getUTCFullYear(),
+          startTime.getUTCMonth(),
+          startTime.getUTCDate() + day,
+          0, 0, 0, 0
+        ))
 
-        // Generate instances for this day based on frequency
-        for (let i = 0; i < frequency; i++) {
-          const departureTime = new Date(
-            dayStart.getTime() + i * intervalHours * 60 * 60 * 1000
-          )
+        let departureDateTime: Date
+        let arrivalDateTime: Date
 
-          // Only include if departure is within window
-          // But allow arrival to extend beyond (for midnight-crossing flights)
-          if (departureTime >= startTime && departureTime < endTime) {
-            const arrivalTime = new Date(departureTime.getTime() + flightDurationMs)
+        if (hasRealTimes) {
+          // Use real scheduled times from flights.txt in UTC
+          departureDateTime = new Date(Date.UTC(
+            dayStart.getUTCFullYear(),
+            dayStart.getUTCMonth(),
+            dayStart.getUTCDate(),
+            depTime.hours,
+            depTime.minutes,
+            0, 0
+          ))
 
-            instances.push({
-              id: `${flight.code}-D${day}-F${i}-${departureTime.getTime()}`,
-              flightId: flight.id,
-              flightCode: flight.code,
-              departureTime: departureTime.toISOString(),
-              arrivalTime: arrivalTime.toISOString(),
-              originAirportId: originAirport.id,
-              destinationAirportId: destAirport.id,
-              originAirport: {
-                codeIATA: originAirport.codeIATA,
-                city: { name: originAirport.cityName },
-                latitude: parseFloat(originAirport.latitude),
-                longitude: parseFloat(originAirport.longitude),
-              },
-              destinationAirport: {
-                codeIATA: destAirport.codeIATA,
-                city: { name: destAirport.cityName },
-                latitude: parseFloat(destAirport.latitude),
-                longitude: parseFloat(destAirport.longitude),
-              },
-              status: 'SCHEDULED',
-              assignedProducts: flight.assignedProducts || 0,
-            })
+          // Calculate arrival - may be next day if flight crosses midnight
+          arrivalDateTime = new Date(Date.UTC(
+            dayStart.getUTCFullYear(),
+            dayStart.getUTCMonth(),
+            dayStart.getUTCDate(),
+            arrTime.hours,
+            arrTime.minutes,
+            0, 0
+          ))
+
+          // If arrival time is before departure time, flight crosses midnight
+          if (arrivalDateTime <= departureDateTime) {
+            arrivalDateTime = new Date(arrivalDateTime.getTime() + 24 * 60 * 60 * 1000)
           }
+        } else {
+          // Fallback: use transport time (spread flights evenly if multiple per day)
+          const frequency = flight.dailyFrequency || 1
+          const intervalHours = 24 / frequency
+          const flightDurationMs = (flight.transportTimeDays || 0.5) * 24 * 60 * 60 * 1000
+
+          // For fallback, just use midnight as departure
+          departureDateTime = new Date(dayStart.getTime())
+          arrivalDateTime = new Date(departureDateTime.getTime() + flightDurationMs)
+        }
+
+        // Only include if departure is within simulation window
+        if (departureDateTime >= startTime && departureDateTime < endTime) {
+          // Generate instanceId matching backend format: FL-{flightId}-DAY-{day}-{HHMM}
+          // Use the scheduled hours/minutes from flights.txt (depTime), not the Date object
+          const instanceHours = hasRealTimes ? depTime.hours : 0
+          const instanceMinutes = hasRealTimes ? depTime.minutes : 0
+          const instanceId = `FL-${flight.id}-DAY-${day}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
+          
+          instances.push({
+            id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
+            flightId: flight.id,
+            flightCode: flight.code,
+            departureTime: departureDateTime.toISOString(),
+            arrivalTime: arrivalDateTime.toISOString(),
+            instanceId: instanceId,
+            originAirportId: originAirport.id,
+            destinationAirportId: destAirport.id,
+            originAirport: {
+              codeIATA: originAirport.codeIATA,
+              city: { name: originAirport.cityName },
+              latitude: parseFloat(originAirport.latitude),
+              longitude: parseFloat(originAirport.longitude),
+            },
+            destinationAirport: {
+              codeIATA: destAirport.codeIATA,
+              city: { name: destAirport.cityName },
+              latitude: parseFloat(destAirport.latitude),
+              longitude: parseFloat(destAirport.longitude),
+            },
+            status: 'SCHEDULED',
+            assignedProducts: flight.assignedProducts || 0,
+          })
         }
       }
     })
+
+    // Sort instances by departure time for predictable ordering
+    instances.sort((a, b) => 
+      new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
+    )
+
+    console.log(`✈️ Generated ${instances.length} flight instances for ${durationDays} days`)
+    if (instances.length > 0) {
+      const firstFlight = instances[0]
+      const lastFlight = instances[instances.length - 1]
+      console.log(`   First: ${firstFlight.flightCode} (${firstFlight.instanceId}) at ${new Date(firstFlight.departureTime).toLocaleString()}`)
+      console.log(`   Last: ${lastFlight.flightCode} (${lastFlight.instanceId}) at ${new Date(lastFlight.departureTime).toLocaleString()}`)
+    }
 
     return instances
   },

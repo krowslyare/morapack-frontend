@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane } from 'react-leaflet'
@@ -11,8 +11,10 @@ import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import { FlightDrawer } from '../WeeklySimulationPage/FlightDrawer'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import type { Continent } from '../../types/Continent'
+import '../WeeklySimulationPage/index.css'
 
 const Wrapper = styled.div`
   padding: 16px 20px;
@@ -408,6 +410,8 @@ interface AnimatedFlightsProps {
   playbackSpeed: number
   onFlightClick: (flight: FlightInstance) => void
   onFlightHover: (flight: FlightInstance | null) => void
+  instanceHasProducts: Record<string, number>
+  showOnlyWithProducts: boolean
 }
 
 function AnimatedFlights({
@@ -419,7 +423,9 @@ function AnimatedFlights({
   onFlightClick,
   onFlightHover,
   processedIdsRef,
-  markersRef
+  markersRef,
+  instanceHasProducts,
+  showOnlyWithProducts,
 }: AnimatedFlightsProps & {
   processedIdsRef: React.MutableRefObject<Set<string>>,
   markersRef: React.MutableRefObject<Record<string, Marker>>
@@ -489,6 +495,12 @@ function AnimatedFlights({
       .filter((f) => {
         const dept = new Date(f.departureTime)
         const arr = new Date(f.arrivalTime)
+        
+        // ✅ Si toggle activo, filtrar vuelos sin productos
+        const productCount = instanceHasProducts[f.instanceId] ?? 0
+        const hasProducts = productCount > 0
+        if (showOnlyWithProducts && !hasProducts) return false
+        
         // Include flights that: depart soon, are currently flying, or recently arrived (cleanup window)
         return (
           !processedIdsRef.current.has(f.id) && // use f.id (string unique instance id)
@@ -498,8 +510,9 @@ function AnimatedFlights({
       })
       // Prioritize flights with cargo to ensure they are visualized when concurrency limit is hit
       .sort((a, b) => {
-        const cargoA = a.assignedProducts || 0
-        const cargoB = b.assignedProducts || 0
+        // ✅ Usar instanceHasProducts para priorizar
+        const cargoA = instanceHasProducts[a.instanceId] ?? 0
+        const cargoB = instanceHasProducts[b.instanceId] ?? 0
 
         // Priority 1: Cargo vs No Cargo (Flights with cargo come first)
         if (cargoA > 0 && cargoB === 0) return -1
@@ -520,6 +533,10 @@ function AnimatedFlights({
     newInstances.forEach((flight) => {
       // Mark as processed
       processedIdsRef.current.add(flight.id) // use flight.id
+      
+      // ✅ Verificar si tiene productos
+      const productCount = instanceHasProducts[flight.instanceId] ?? 0
+      const hasProducts = productCount > 0
 
       const origin: LatLngTuple = [
         flight.originAirport.latitude,
@@ -539,10 +556,10 @@ function AnimatedFlights({
       const initialBearing = calculateBearing(origin, destination)
       const adjustedInitialBearing = (initialBearing + 90) % 360
 
-      // Create marker with rotation
+      // Create marker with rotation - use loaded class if flight has products
       const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${adjustedInitialBearing}deg);transition:transform 0.3s linear;" />`
       const planeIcon = new DivIcon({
-        className: 'plane-icon',
+        className: hasProducts ? 'plane-icon plane-icon--loaded' : 'plane-icon plane-icon--empty',
         html: planeHTML,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
@@ -691,6 +708,14 @@ export function DailySimulationPage() {
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
   const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+  
+  // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
+  const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
+  // ✅ Toggle para mostrar solo vuelos con productos
+  const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(false)
+  // ✅ Panel lateral de vuelos
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelTab, setPanelTab] = useState<'flights' | 'orders'>('flights')
 
   // Loading states
   const [isLoadingData, setIsLoadingData] = useState(false)
@@ -707,7 +732,7 @@ export function DailySimulationPage() {
   // Refs
   const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const lastAlgorithmDayRef = useRef(-1)
-  const lastStateUpdateDayRef = useRef(-1)
+  const lastStateUpdateHourRef = useRef(-1)  // Tracks hourly state updates
   // Lifted refs for cleanup access
   const processedIdsRef = useRef<Set<string>>(new Set())
   const markersRef = useRef<Record<string, Marker>>({})
@@ -726,7 +751,12 @@ export function DailySimulationPage() {
     try {
       setIsLoadingData(true)
       console.log('Loading flight statuses from backend...')
-      const response = await simulationService.getFlightStatuses()
+      
+      // ✅ Cargar vuelos e instancias asignadas en paralelo
+      const [response, instancesResponse] = await Promise.all([
+        simulationService.getFlightStatuses(),
+        simulationService.getAssignedFlightInstances()
+      ])
 
       // Validate response structure
       if (!response) {
@@ -744,6 +774,10 @@ export function DailySimulationPage() {
 
       console.log(`Received ${response.flights.length} flight statuses from backend`)
       flightStatusesRef.current = response.flights
+
+      // ✅ Guardar instancias con productos
+      setInstanceHasProducts(instancesResponse.instances ?? {})
+      console.log(`📦 Instancias con productos: ${Object.keys(instancesResponse.instances ?? {}).length}`)
 
       // Validate airports
       if (!airports || airports.length === 0) {
@@ -972,15 +1006,21 @@ export function DailySimulationPage() {
           }
         }
 
-        // Update package states near the end of the day (e.g., 23:00)
-        // This ensures orders transition to DELIVERED status
-        if (hourOfDay >= 23 && currentDay > lastStateUpdateDayRef.current) {
-          console.log(`🔄 Updating package states for Day ${currentDay + 1} at ${next.toLocaleTimeString()}`)
-          lastStateUpdateDayRef.current = currentDay
+        // Update package states every hour of simulation time
+        // This allows packages to transition smoothly: IN_TRANSIT → ARRIVED → DELIVERED
+        // For Daily simulation this is fine since it runs slower
+        const currentHour = Math.floor(next.getTime() / (1000 * 60 * 60))
+        const lastUpdateHour = lastStateUpdateHourRef.current
+        
+        if (currentHour > lastUpdateHour) {
+          console.log(`🔄 Updating package states at ${next.toLocaleTimeString()} (Hour ${hourOfDay})`)
+          lastStateUpdateHourRef.current = currentHour
           simulationService.updateStates({
             currentTime: next.toISOString()
           }).then(response => {
-            console.log('✅ States updated:', response.transitions)
+            if (response.transitions.total > 0) {
+              console.log('✅ States updated:', response.transitions)
+            }
           }).catch(err => console.error('Failed to update states:', err))
         }
 
@@ -1032,6 +1072,7 @@ export function DailySimulationPage() {
     setIsInitializing(true)
     setDayCount(0)
     lastAlgorithmDayRef.current = -1
+    lastStateUpdateHourRef.current = -1  // Reset hourly state tracker
 
     try {
       // ✅ STEP 1: Auto-load orders from files to database
@@ -1107,6 +1148,7 @@ export function DailySimulationPage() {
     setDayCount(0)
     setFlightInstances([])
     lastAlgorithmDayRef.current = -1
+    lastStateUpdateHourRef.current = -1  // Reset hourly state tracker
     setKpi({
       totalOrders: 0,
       assignedOrders: 0,
@@ -1313,6 +1355,36 @@ export function DailySimulationPage() {
               </>
             )}
           </div>
+          
+          {/* Toggle para mostrar solo vuelos con productos */}
+          <div style={{ 
+            marginTop: '12px', 
+            padding: '8px',
+            background: '#f3f4f6',
+            borderRadius: '6px',
+          }}>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#374151',
+            }}>
+              <input
+                type="checkbox"
+                checked={showOnlyWithProducts}
+                onChange={(e) => setShowOnlyWithProducts(e.target.checked)}
+                style={{ width: '16px', height: '16px' }}
+              />
+              Solo vuelos con carga
+            </label>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px' }}>
+              {showOnlyWithProducts 
+                ? 'Mostrando solo vuelos con paquetes asignados'
+                : 'Mostrando todos los vuelos'}
+            </div>
+          </div>
         </SimulationControls>
 
         <MapContainer
@@ -1465,10 +1537,34 @@ export function DailySimulationPage() {
               onFlightHover={handleFlightHover}
               processedIdsRef={processedIdsRef}
               markersRef={markersRef}
+              instanceHasProducts={instanceHasProducts}
+              showOnlyWithProducts={showOnlyWithProducts}
             />
           )}
         </MapContainer>
       </MapWrapper>
+
+      {/* Flight Drawer Panel - same as WeeklySimulationPage */}
+      {simulationStartDate && (
+        <FlightDrawer
+          isOpen={panelOpen}
+          onToggle={() => setPanelOpen(!panelOpen)}
+          panelTab={panelTab}
+          onTabChange={setPanelTab}
+          flightInstances={flightInstances}
+          instanceHasProducts={instanceHasProducts}
+          simulationStartTime={simulationStartDate}
+          activeFlightsCount={flightInstances.filter(f => {
+            if (!currentSimTime) return false
+            const dept = new Date(f.departureTime)
+            const arr = new Date(f.arrivalTime)
+            return currentSimTime >= dept && currentSimTime <= arr
+          }).length}
+          onFlightClick={(f) => handleFlightClick(f)}
+          orders={[]}
+          loadingOrders={false}
+        />
+      )}
 
       {/* Flight packages modal */}
       {selectedFlight && (

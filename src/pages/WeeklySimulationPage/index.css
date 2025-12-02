@@ -13,8 +13,6 @@
 .plane-icon--loaded img {
   opacity: 1;
   filter: none;
-  /* si quieres, un borde “brillante” */
-  box-shadow: 0 0 8px rgba(59,130,246,0.9);
 }
 
 .blocking-overlay {
