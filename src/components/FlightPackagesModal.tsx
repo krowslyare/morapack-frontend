@@ -23,7 +23,7 @@ const Overlay = styled.div`
 const Modal = styled.div`
   background: #ffffff;
   border-radius: 18px;
-  width: min(900px, 96vw);
+  width: min(1100px, 96vw);   /* antes 900px */
   max-height: 90vh;
   overflow-y: auto;
   box-shadow:
@@ -267,6 +267,7 @@ export function FlightPackagesModal({
                       <th>ID</th>
                       <th>Orden</th>
                       <th>Nombre de orden</th>
+                      <th>Origen</th>        {/* 👈 nueva columna */}
                       <th>Destino</th>
                       <th>Cliente</th>
                       <th>Estado</th>
@@ -280,6 +281,7 @@ export function FlightPackagesModal({
                         <td>{p.id}</td>
                         <td>{p.order?.id ?? '—'}</td>
                         <td>{p.order?.name ?? '—'}</td>
+                        <td>{p.order?.origin ?? '—'}</td>          {/* 👈 aquí el origen */}
                         <td>{p.order?.destination ?? '—'}</td>
                         <td>{p.order?.customer ?? '—'}</td>
                         <td>
@@ -292,7 +294,7 @@ export function FlightPackagesModal({
 
                     {products.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ padding: '14px 10px', color: '#9ca3af' }}>
+                        <td colSpan={9} style={{ padding: '14px 10px', color: '#9ca3af' }}>
                           No se encontraron paquetes asignados a este vuelo.
                         </td>
                       </tr>
