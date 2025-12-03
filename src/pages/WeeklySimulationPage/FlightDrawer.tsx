@@ -465,107 +465,107 @@ export const FlightDrawer = memo(function FlightDrawer({
         </DrawerTabs>
 
         {panelTab === "orders" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              padding: "12px 20px",
-              borderBottom: "1px solid #e5e7eb",
-              background: "#f8fafc",
-            }}
-          >
-            {/* Filtros por estado (lado izquierdo) */}
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                onClick={() => setOrderFilter('IN_TRANSIT')}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #cbd5e1",
-                  background: orderFilter === 'IN_TRANSIT' ? "#2563eb" : "white",
-                  color: orderFilter === 'IN_TRANSIT' ? "white" : "#475569",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                En tránsito
-              </button>
-
-              <button
-                onClick={() => setOrderFilter('ARRIVED')}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #cbd5e1",
-                  background: orderFilter === 'ARRIVED' ? "#2563eb" : "white",
-                  color: orderFilter === 'ARRIVED' ? "white" : "#475569",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Llegados
-              </button>
-
-              <button
-                onClick={() => setOrderFilter('DELIVERED')}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #cbd5e1",
-                  background: orderFilter === 'DELIVERED' ? "#2563eb" : "white",
-                  color: orderFilter === 'DELIVERED' ? "white" : "#475569",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Entregados
-              </button>
-
-              <button
-                onClick={() => setOrderFilter('PENDING')}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #cbd5e1",
-                  background: orderFilter === 'PENDING' ? "#2563eb" : "white",
-                  color: orderFilter === 'PENDING' ? "white" : "#475569",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Pendientes
-              </button>
-            </div>
-
-            {/* Buscador (lado derecho) */}
-            <div
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "12px 20px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#f8fafc",
+          }}
+        >
+          {/* Filtros por estado (lado izquierdo) */}
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={() => setOrderFilter('IN_TRANSIT')}
               style={{
-                minWidth: "260px",
-                maxWidth: "360px",
-                flexShrink: 0,
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                background: orderFilter === 'IN_TRANSIT' ? "#2563eb" : "white",
+                color: orderFilter === 'IN_TRANSIT' ? "white" : "#475569",
+                fontWeight: 600,
+                cursor: "pointer",
               }}
             >
-              <input
-                type="text"
-                placeholder="Buscar pedido por número de orden..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "999px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "14px",
-                  outline: "none",
-                  background: "#f9fafb",
-                  color: "#111827",
-                }}
-              />
-            </div>
+              En tránsito
+            </button>
+
+            <button
+              onClick={() => setOrderFilter('ARRIVED')}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                background: orderFilter === 'ARRIVED' ? "#2563eb" : "white",
+                color: orderFilter === 'ARRIVED' ? "white" : "#475569",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Llegados
+            </button>
+
+            <button
+              onClick={() => setOrderFilter('DELIVERED')}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                background: orderFilter === 'DELIVERED' ? "#2563eb" : "white",
+                color: orderFilter === 'DELIVERED' ? "white" : "#475569",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Entregados
+            </button>
+
+            <button
+              onClick={() => setOrderFilter('PENDING')}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                background: orderFilter === 'PENDING' ? "#2563eb" : "white",
+                color: orderFilter === 'PENDING' ? "white" : "#475569",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Pendientes
+            </button>
           </div>
-        )}
+
+          {/* Buscador (lado derecho) */}
+          <div
+            style={{
+              minWidth: "260px",
+              maxWidth: "360px",
+              flexShrink: 0,
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Buscar pedido por número de orden..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "999px",
+                border: "1px solid #cbd5e1",
+                fontSize: "14px",
+                outline: "none",
+                background: "#f9fafb",
+                color: "#111827",
+              }}
+            />
+          </div>
+        </div>
+      )}
 
         
 
