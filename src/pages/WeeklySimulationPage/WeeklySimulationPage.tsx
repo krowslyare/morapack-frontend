@@ -228,6 +228,51 @@ const SpeedHint = styled.div`
   margin-top: 4px;
 `
 
+const ToggleContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+`
+
+const ToggleLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+`
+
+const ToggleSwitch = styled.div<{ $active: boolean }>`
+  width: 40px;
+  height: 22px;
+  background: ${p => p.$active ? '#10b981' : '#d1d5db'};
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: ${p => p.$active ? '20px' : '2px'};
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: left 0.2s ease;
+  }
+`
+
+const ToggleHint = styled.div`
+  font-size: 10px;
+  color: #9ca3af;
+`
+
 const KPIPanel = styled.div`
   margin: 4px 0 8px;
   display: flex;
@@ -269,9 +314,11 @@ interface AnimatedFlightsProps {
   currentSimTime: Date
   isPlaying: boolean
   playbackSpeed: number
+  speedRef: React.MutableRefObject<number>
   onFlightClick: (flight: FlightInstance) => void
   onFlightHover: (flight: FlightInstance | null) => void
-  flightHasProducts: Record<number, boolean>
+  instanceHasProducts: Record<string, number>  // instanceId -> productCount (from algorithm)
+  showOnlyWithProducts: boolean
 }
 
 function AnimatedFlights(props: AnimatedFlightsProps) {
@@ -281,164 +328,221 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     currentSimTime, 
     isPlaying, 
     playbackSpeed,
+    speedRef,
     onFlightClick,
     onFlightHover,
-    flightHasProducts,
+    instanceHasProducts,
+    showOnlyWithProducts,
   } = props
 
   const map = useMap()
   const markersRef = useRef<Record<string, Marker>>({})
-  const timelineRef = useRef<gsap.core.Timeline | null>(null)
-  const processedRef = useRef<Set<string>>(new Set())
+  const flightAnimationsRef = useRef<Record<string, gsap.core.Tween>>({})
+  const departureTimesRef = useRef<Record<string, number>>({})
   const arrivalTimesRef = useRef<Record<string, number>>({})
 
   const MAX_FLIGHTS = 300
 
+  // Limpiar al desmontar
   useEffect(() => {
     if (!map) return
-    timelineRef.current = gsap.timeline({ paused: true })
     return () => {
-      timelineRef.current?.kill()
+      Object.values(flightAnimationsRef.current).forEach(tween => tween.kill())
       Object.values(markersRef.current).forEach(m => m.remove())
       markersRef.current = {}
-      processedRef.current.clear()
+      flightAnimationsRef.current = {}
+      departureTimesRef.current = {}
       arrivalTimesRef.current = {}
     }
   }, [map])
 
+  // Gestionar vuelos basándose en el tiempo actual de simulación
   useEffect(() => {
-    if (!timelineRef.current || flightInstances.length === 0) return
+    if (!map || flightInstances.length === 0 || !currentSimTime) return
 
-    const timeline = timelineRef.current
-    const stepMs = playbackSpeed * 1000
+    const now = currentSimTime.getTime()
 
-    const now = currentSimTime.getTime()  // ✅ Obtener timestamp
-    
+    flightInstances.forEach(f => {
+      const depDate = new Date(f.departureTime)
+      const depMs = depDate.getTime()
+      const arrMs = new Date(f.arrivalTime).getTime()
 
-    const PRELOAD_WINDOW = 5 * 60 * 1000  // 5 minutos
+      // Usar instanceId del objeto (generado consistentemente con backend)
+      const productCount = instanceHasProducts[f.instanceId] ?? 0
+      const hasProducts = productCount > 0
 
-    const newFlights = flightInstances
-      .filter(f => {
-        const dep = new Date(f.departureTime).getTime()
-        const arr = new Date(f.arrivalTime).getTime()
-        
-        return (
-            !processedRef.current.has(f.id) &&
-            dep <= now + PRELOAD_WINDOW &&  // ✅ Máximo 5 min antes
-            arr >= now - PRELOAD_WINDOW     // ✅ Y no aterrizó hace más de 5 min
-        )
+      // ==========================================
+      // CASO 1: Vuelo vacío cuando toggle está activo → ELIMINAR
+      // ==========================================
+      if (showOnlyWithProducts && !hasProducts) {
+        if (markersRef.current[f.id]) {
+          markersRef.current[f.id].remove()
+          delete markersRef.current[f.id]
+        }
+        if (flightAnimationsRef.current[f.id]) {
+          flightAnimationsRef.current[f.id].kill()
+          delete flightAnimationsRef.current[f.id]
+        }
+        delete departureTimesRef.current[f.id]
+        delete arrivalTimesRef.current[f.id]
+        return
+      }
+
+      // ==========================================
+      // CASO 2: Vuelo ya llegó → ELIMINAR
+      // ==========================================
+      if (now > arrMs) {
+        if (markersRef.current[f.id]) {
+          markersRef.current[f.id].remove()
+          delete markersRef.current[f.id]
+        }
+        if (flightAnimationsRef.current[f.id]) {
+          flightAnimationsRef.current[f.id].kill()
+          delete flightAnimationsRef.current[f.id]
+        }
+        delete departureTimesRef.current[f.id]
+        delete arrivalTimesRef.current[f.id]
+        return
+      }
+
+      // ==========================================
+      // CASO 3: Vuelo aún NO ha despegado → NO CREAR (esperar)
+      // ==========================================
+      if (now < depMs) {
+        // No hacer nada - el vuelo se creará cuando llegue su hora
+        return
+      }
+
+      // ==========================================
+      // CASO 4: Vuelo YA está en el aire y ya está animándose → NADA
+      // ==========================================
+      if (markersRef.current[f.id]) {
+        return
+      }
+
+      // ==========================================
+      // CASO 5: Vuelo ACABA DE despegar o estamos en medio del vuelo → CREAR
+      // ==========================================
+      const flightDurationMs = arrMs - depMs
+      const origin: LatLngTuple = [f.originAirport.latitude, f.originAirport.longitude]
+      const dest: LatLngTuple = [f.destinationAirport.latitude, f.destinationAirport.longitude]
+      const ctrl = computeControlPoint(origin, dest)
+
+      // Calcular progreso actual (si la simulación empezó en medio del vuelo)
+      const elapsedSinceDepart = now - depMs
+      const initialProgress = Math.min(1, Math.max(0, elapsedSinceDepart / flightDurationMs))
+      
+      // Posición inicial basada en el progreso
+      const startPos = bezierPoint(initialProgress, origin, ctrl, dest)
+      
+      // Ángulo inicial
+      const tangent = bezierTangent(initialProgress, origin, ctrl, dest)
+      const initialAngle = (Math.atan2(tangent[1], tangent[0]) * 180 / Math.PI + 90) % 360
+
+      const icon = new DivIcon({
+        className: hasProducts ? 'plane-icon plane-icon--loaded' : 'plane-icon plane-icon--empty',
+        html: `<img src="/airplane.png"
+                    style="width:20px;height:20px;display:block;
+                          transform-origin:50% 50%;
+                          transform:rotate(${initialAngle}deg);" />`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
       })
-      .slice(0, MAX_FLIGHTS)
 
-    if (newFlights.length > 0) {
-      //console.log(`🛫 Mostrando ${newFlights.length} vuelos:`)
-      newFlights.slice(0, 5).forEach(f => {
-        const dep = new Date(f.departureTime)
-        const arr = new Date(f.arrivalTime)
-        
-      })
-    }
+      // Crear marker visible inmediatamente (ya despegó)
+      const marker = L.marker(startPos, { icon }).addTo(map)
+      marker.setOpacity(1)
 
-    //console.log(`⏰ Tiempo actual (UTC): ${currentSimTime.toISOString()} - Animando ${newFlights.length} vuelos`)
+      markersRef.current[f.id] = marker
+      departureTimesRef.current[f.id] = depMs
+      arrivalTimesRef.current[f.id] = arrMs
 
-    newFlights.forEach(f => {
-        processedRef.current.add(f.id)
+      marker.on('click', () => onFlightClick(f))
+      marker.on('mouseover', () => onFlightHover(f))
+      marker.on('mouseout', () => onFlightHover(null))
 
-        const origin: LatLngTuple = [f.originAirport.latitude, f.originAirport.longitude]
-        const dest: LatLngTuple   = [f.destinationAirport.latitude, f.destinationAirport.longitude]
-        const ctrl = computeControlPoint(origin, dest)
+      // Calcular duración restante en tiempo REAL (considerando velocidad actual)
+      const remainingFlightMs = arrMs - now
+      const currentSpeed = speedRef.current
+      const remainingDurationSec = remainingFlightMs / (currentSpeed * 1000)
 
-        const initialAngle = (calculateBearing(origin, dest) + 90) % 360
-        const hasProducts = !!flightHasProducts[Number(f.id)]
+      // Crear animación desde el progreso actual hasta el final
+      const animObj = { t: initialProgress }
 
-        const icon = new DivIcon({
-          className: hasProducts
-            ? 'plane-icon plane-icon--loaded'
-            : 'plane-icon plane-icon--empty',
-          html: `<img src="/airplane.png"
-                        style="width:20px;height:20px;display:block;
-                              transform-origin:50% 50%;
-                              transform:rotate(${initialAngle}deg);" />`,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10],
-        })
+      const tween = gsap.to(animObj, {
+        t: 1,
+        duration: remainingDurationSec,
+        ease: 'none',
+        paused: !isPlaying,
+        onUpdate() {
+          const pos = bezierPoint(animObj.t, origin, ctrl, dest)
+          marker.setLatLng(pos)
 
-        const marker = L.marker(origin, { icon }).addTo(map)
-        marker.setOpacity(0)
-        markersRef.current[f.id] = marker
+          const tan = bezierTangent(animObj.t, origin, ctrl, dest)
+          const angle = (Math.atan2(tan[1], tan[0]) * 180) / Math.PI
+          const adj = (angle + 90) % 360
 
-        marker.on('click', () => onFlightClick(f))
-        marker.on('mouseover', () => onFlightHover(f))
-        marker.on('mouseout', () => onFlightHover(null))
-
-        const depMs = new Date(f.departureTime).getTime()
-        const arrMs = new Date(f.arrivalTime).getTime()
-        arrivalTimesRef.current[f.id] = arrMs
-
-        const durationSec = (arrMs - depMs) / 1000
-        const offsetSec   = (depMs - simulationStartTime.getTime()) / 1000
-
-        const animObj = { t: 0 }
-
-        timeline.to(
-        animObj,
-        {
-            t: 1,
-            duration: durationSec,
-            ease: 'none',
-            onUpdate() {
-            const pos = bezierPoint(animObj.t, origin, ctrl, dest)
-            marker.setLatLng(pos)
-
-            const tangent = bezierTangent(animObj.t, origin, ctrl, dest)
-            const angle = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
-            const adj = (angle + 90) % 360
-
-            const img = marker.getElement()?.querySelector('img') as HTMLImageElement | null
-            if (img) img.style.transform = `rotate(${adj}deg)`
-            },
-            onStart() {
-            marker.setOpacity(1)
-            },
-            onComplete() {
-            const id = f.id
-            const m = markersRef.current[id]
-            if (m) {
-                m.remove()
-                delete markersRef.current[id]
-            }
-            },
+          const img = marker.getElement()?.querySelector('img') as HTMLImageElement | null
+          if (img) img.style.transform = `rotate(${adj}deg)`
         },
-        offsetSec
-        )
+        onComplete() {
+          // Eliminar al llegar
+          const m = markersRef.current[f.id]
+          if (m) {
+            m.remove()
+            delete markersRef.current[f.id]
+          }
+          delete flightAnimationsRef.current[f.id]
+          delete departureTimesRef.current[f.id]
+          delete arrivalTimesRef.current[f.id]
+        },
+      })
+
+      flightAnimationsRef.current[f.id] = tween
     })
 
-    const elapsedSec = (currentSimTime.getTime() - simulationStartTime.getTime()) / 1000
-    timeline.seek(elapsedSec, false)
-  }, [flightInstances, currentSimTime, playbackSpeed])
+  }, [flightInstances, currentSimTime, map, isPlaying, instanceHasProducts, showOnlyWithProducts, onFlightClick, onFlightHover])
 
+  // Control de play/pause y velocidad - transición suave
+  useEffect(() => {
+    Object.values(flightAnimationsRef.current).forEach(tween => {
+      // Transición suave del timeScale
+      gsap.to(tween, { 
+        timeScale: playbackSpeed, 
+        duration: 0.3, 
+        ease: 'power2.out' 
+      })
+      if (isPlaying) {
+        tween.play()
+      } else {
+        tween.pause()
+      }
+    })
+  }, [isPlaying, playbackSpeed])
+
+  // Limpiar vuelos que ya llegaron (respaldo)
   useEffect(() => {
     if (!currentSimTime) return
 
     const now = currentSimTime.getTime()
 
     Object.entries(arrivalTimesRef.current).forEach(([id, arrMs]) => {
-      if (now > arrMs + 60_000) {
+      if (now > arrMs + 5000) {  // 5 segundos después de llegar
         const marker = markersRef.current[id]
         if (marker) {
           marker.remove()
           delete markersRef.current[id]
         }
+        const tween = flightAnimationsRef.current[id]
+        if (tween) {
+          tween.kill()
+          delete flightAnimationsRef.current[id]
+        }
+        delete departureTimesRef.current[id]
         delete arrivalTimesRef.current[id]
       }
     })
   }, [currentSimTime])
-
-  useEffect(() => {
-    if (!timelineRef.current) return
-    timelineRef.current.timeScale(playbackSpeed)
-    isPlaying ? timelineRef.current.play() : timelineRef.current.pause()
-  }, [isPlaying, playbackSpeed])
 
   return null
 }
@@ -496,7 +600,7 @@ export function WeeklySimulationPage() {
     const [showPanel, setShowPanel] = useState(true);
     const [panelOpen, setPanelOpen] = useState(false);
     const [panelTab, setPanelTab] = useState<"orders"|"flights">("flights");
-    const [showOnlyLoadedFlights, setShowOnlyLoadedFlights] = useState(false)
+    const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(false);
 
     // ✅ AGREGAR estos refs para control de cancelación
     const abortControllersRef = useRef<AbortController[]>([])
@@ -540,6 +644,9 @@ export function WeeklySimulationPage() {
     // ✅ Extraer los pedidos del resultado
     const orders = useMemo(() => ordersData ?? [], [ordersData])
 
+    
+    
+
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW)
     const speedRef = useRef(SPEED_SLOW)
 
@@ -549,7 +656,8 @@ export function WeeklySimulationPage() {
     
     const updatesInProgressRef = useRef(0);
 
-    const [flightHasProducts, setFlightHasProducts] = useState<Record<number, boolean>>({})
+    // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
+    const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
     const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
@@ -592,7 +700,11 @@ export function WeeklySimulationPage() {
 
     const loadWeeklyFlights = useCallback(async () => {
         try {
-            const response = await simulationService.getFlightStatuses()
+            // Cargar vuelos y sus instancias asignadas en paralelo
+            const [flightResponse, instancesResponse] = await Promise.all([
+              simulationService.getFlightStatuses(),
+              simulationService.getAssignedFlightInstances()
+            ])
 
             if (!airports || airports.length === 0) {
               toast.error("No hay aeropuertos cargados")
@@ -600,7 +712,7 @@ export function WeeklySimulationPage() {
             }
 
             const inst = simulationService.generateFlightInstances(
-              response.flights,
+              flightResponse.flights,
               startTime,
               168,
               airports
@@ -608,14 +720,26 @@ export function WeeklySimulationPage() {
 
             setFlightInstances(inst)
 
-            console.log("Flights ->", response.flights.slice(0, 5))
-
-            const hasProductsMap: Record<number, boolean> = {}
-            response.flights.forEach((f: any) => {
-              const assigned = f.assignedProducts ?? 0
-              hasProductsMap[Number(f.id)] = assigned > 0
-            })
-            setFlightHasProducts(hasProductsMap)
+            // ✅ Usar instancias reales del algoritmo (no vuelos base)
+            // instancesResponse.instances = { "FL-123-DAY-0-0800": 5, ... }
+            setInstanceHasProducts(instancesResponse.instances ?? {})
+            
+            console.log(`📦 Instancias con productos: ${Object.keys(instancesResponse.instances ?? {}).length}`)
+            
+            // DEBUG: Mostrar primeras instancias del backend vs frontend
+            const backendInstances = Object.keys(instancesResponse.instances ?? {}).slice(0, 5)
+            console.log('🔍 Backend instanceIds (primeros 5):', backendInstances)
+            
+            // DEBUG: Mostrar instanceIds generados por el frontend
+            if (inst.length > 0) {
+              const frontendInstanceIds = inst.slice(0, 5).map(f => f.instanceId)
+              console.log('🔍 Frontend instanceIds (primeros 5):', frontendInstanceIds)
+              
+              // Verificar cuántos coinciden
+              const backendSet = new Set(Object.keys(instancesResponse.instances ?? {}))
+              const matches = inst.filter(f => backendSet.has(f.instanceId)).length
+              console.log(`✅ Vuelos con productos asignados detectados: ${matches} de ${backendSet.size}`)
+            }
 
             // KPIs
             const flightsByAirport: Record<string, number> = {}
@@ -667,7 +791,7 @@ export function WeeklySimulationPage() {
             setKpi(prev => ({
               ...prev,
               totalFlights: inst.length,
-              avgCapacityUsage: response.statistics?.averageUtilization ?? 0,
+              avgCapacityUsage: flightResponse.statistics?.averageUtilization ?? 0,
             }))
 
         } catch (error) {
@@ -700,6 +824,7 @@ export function WeeklySimulationPage() {
         console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
 
         console.log('📅 Day Start (UTC):', dayStart.toISOString())
+        console.log('📅 Day Start (local):', dayStart.toLocaleString('es-PE', { hour12: false }))
         
         // ✅ Formatear como Python: solo fecha + T00:00:00
         const year = dayStart.getUTCFullYear()
@@ -1067,6 +1192,7 @@ export function WeeklySimulationPage() {
         'color:#8b5cf6;font-weight:bold;'
       );
       console.log('⏰ Simulation Time (UTC):', currentTime.toISOString());
+      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }));
 
       // Ejecutar el algoritmo al inicio de un nuevo día
       if (dayNumber > lastAlgorithmDayRef.current) {
@@ -1185,13 +1311,13 @@ export function WeeklySimulationPage() {
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
 
-    const filteredFlightInstances = useMemo(() => {
-      if (!showOnlyLoadedFlights) return flightInstances
-      return flightInstances.filter(f => flightHasProducts[Number(f.id)])
-    }, [showOnlyLoadedFlights, flightInstances, flightHasProducts])
-
     return (
         <Wrapper>
+
+            
+           
+
+          
 
             {isBackgroundProcessing && (
               <div
@@ -1277,9 +1403,6 @@ export function WeeklySimulationPage() {
             <MapWrapper>
               <SimulationControls>
                   <div>
-
-                    
-
                     <ClockLabel>Tiempo de simulación</ClockLabel>
                     <Clock>
                       {currentTime
@@ -1343,30 +1466,38 @@ export function WeeklySimulationPage() {
                       </SpeedHint>
                   </SpeedControlContainer>
 
-                  <button
-                    onClick={() => setShowOnlyLoadedFlights(prev => !prev)}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      background: showOnlyLoadedFlights ? "#14b8a6" : "#e5e7eb",
-                      color: showOnlyLoadedFlights ? "white" : "#374151",
-                      fontWeight: 600,
-                      border: "none",
-                      cursor: "pointer"
-                    }}
-                  >
-                    {showOnlyLoadedFlights ? "Mostrar todos los aviones" : "Solo aviones con pedidos"}
-                  </button>
-
-
+                  <ToggleContainer>
+                    <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
+                      <ToggleSwitch $active={showOnlyWithProducts} />
+                      <span>Solo vuelos con carga</span>
+                    </ToggleLabel>
+                    <ToggleHint>
+                      {showOnlyWithProducts 
+                        ? 'Mostrando solo vuelos con paquetes asignados'
+                        : 'Mostrando todos los vuelos'}
+                    </ToggleHint>
+                  </ToggleContainer>
               </SimulationControls>
 
-              <MapContainer bounds={bounds} style={{ height: '100%', width: '100%' }}>
+              <MapContainer 
+                  bounds={bounds} 
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={true}
+                  worldCopyJump={false}
+                  maxBounds={new L.LatLngBounds([
+                    [-90, -180],
+                    [90, 180],
+                  ])}
+                  maxBoundsViscosity={1.0}
+                  minZoom={3}
+                  maxZoom={7}
+                  zoomControl={true}
+              >
                   <Pane name="routes" style={{ zIndex: 400 }} />
                   <Pane name="airports" style={{ zIndex: 450 }} />
                   <Pane name="main-hubs" style={{ zIndex: 500 }} />
 
-                  <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                  <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" noWrap={true} />
 
                   {mainWarehouses.map((airport: any) => {
                     const center: LatLngTuple = [
@@ -1451,14 +1582,16 @@ export function WeeklySimulationPage() {
 
                   {isRunning && currentTime && (
                     <AnimatedFlights
-                      flightInstances={filteredFlightInstances}
+                      flightInstances={flightInstances}
                       currentSimTime={currentTime}
                       simulationStartTime={startTime}
                       isPlaying={isRunning && !isPaused}
                       playbackSpeed={playbackSpeed}
+                      speedRef={speedRef}
                       onFlightClick={handleFlightClick}
                       onFlightHover={setHoveredFlight}
-                      flightHasProducts={flightHasProducts}
+                      instanceHasProducts={instanceHasProducts}
+                      showOnlyWithProducts={showOnlyWithProducts}
                     />
                   )}
               </MapContainer>
@@ -1470,11 +1603,12 @@ export function WeeklySimulationPage() {
                 panelTab={panelTab}
                 onTabChange={setPanelTab}
                 flightInstances={activeFlights}
-                flightHasProducts={flightHasProducts}
+                instanceHasProducts={instanceHasProducts}
+                simulationStartTime={startTime}
                 activeFlightsCount={activeFlightsCount}
                 onFlightClick={handleFlightClick}
-                orders={orders} // ✅ Pasar pedidos
-                loadingOrders={loadingOrders} // ✅ Pasar estado de carga
+                orders={orders}
+                loadingOrders={loadingOrders}
               />
 
 

@@ -9,11 +9,12 @@ interface FlightDrawerProps {
   panelTab: 'flights' | 'orders'
   onTabChange: (tab: 'flights' | 'orders') => void
   flightInstances: FlightInstance[]
-  flightHasProducts: Record<number, boolean>
+  instanceHasProducts: Record<string, number>  // instanceId -> productCount
+  simulationStartTime: Date
   activeFlightsCount: number
   onFlightClick: (flight: FlightInstance) => void
-  orders: OrderSchema[]         // ✅ Tipo correcto
-  loadingOrders: boolean // ✅ Nuevo
+  orders: OrderSchema[]
+  loadingOrders: boolean
 }
 
 // Todos los styled components del drawer aquí...
@@ -410,11 +411,12 @@ export const FlightDrawer = memo(function FlightDrawer({
   panelTab,
   onTabChange,
   flightInstances,
-  flightHasProducts,
+  instanceHasProducts,
+  simulationStartTime,
   activeFlightsCount,
   onFlightClick,
-  orders,           // ✅ Agregar
-  loadingOrders,    // ✅ Agregar
+  orders,
+  loadingOrders,
 }: FlightDrawerProps) {
 
   return (
@@ -461,13 +463,16 @@ export const FlightDrawer = memo(function FlightDrawer({
               ) : (
                 <DrawerGrid>
                   {flightInstances.map(f => {
-                    const hasProducts = flightHasProducts[f.flightId];
+                    // Usar instanceId directamente del objeto
+                    const productCount = instanceHasProducts[f.instanceId] ?? 0
+                    const hasProducts = productCount > 0
+                    
                     return (
                       <FlightCard key={f.id} onClick={() => onFlightClick(f)}>
                         <FlightCardHeader>
                           <FlightCode>{f.flightCode}</FlightCode>
                           <FlightBadge $hasProducts={hasProducts}>
-                            {hasProducts ? "Con carga" : "Vacío"}
+                            {hasProducts ? `${productCount} prod.` : "Vacío"}
                           </FlightBadge>
                         </FlightCardHeader>
                         
