@@ -331,15 +331,15 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       .slice(0, MAX_FLIGHTS)
 
     if (newFlights.length > 0) {
-      console.log(`🛫 Mostrando ${newFlights.length} vuelos:`)
+      //console.log(`🛫 Mostrando ${newFlights.length} vuelos:`)
       newFlights.slice(0, 5).forEach(f => {
         const dep = new Date(f.departureTime)
         const arr = new Date(f.arrivalTime)
-        console.log(`  - ${f.flightCode}: Sale ${dep.toLocaleTimeString('es-PE')} → Llega ${arr.toLocaleTimeString('es-PE')}`)
+        
       })
     }
 
-    console.log(`⏰ Tiempo actual: ${currentSimTime.toLocaleTimeString('es-PE')} - Animando ${newFlights.length} vuelos`)
+    //console.log(`⏰ Tiempo actual (UTC): ${currentSimTime.toISOString()} - Animando ${newFlights.length} vuelos`)
 
     newFlights.forEach(f => {
         processedRef.current.add(f.id)
@@ -349,7 +349,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         const ctrl = computeControlPoint(origin, dest)
 
         const initialAngle = (calculateBearing(origin, dest) + 90) % 360
-        const hasProducts = !!flightHasProducts[f.flightId]
+        const hasProducts = !!flightHasProducts[Number(f.id)]
 
         const icon = new DivIcon({
           className: hasProducts
@@ -496,6 +496,7 @@ export function WeeklySimulationPage() {
     const [showPanel, setShowPanel] = useState(true);
     const [panelOpen, setPanelOpen] = useState(false);
     const [panelTab, setPanelTab] = useState<"orders"|"flights">("flights");
+    const [showOnlyLoadedFlights, setShowOnlyLoadedFlights] = useState(false)
 
     // ✅ AGREGAR estos refs para control de cancelación
     const abortControllersRef = useRef<AbortController[]>([])
@@ -539,11 +540,8 @@ export function WeeklySimulationPage() {
     // ✅ Extraer los pedidos del resultado
     const orders = useMemo(() => ordersData ?? [], [ordersData])
 
-    
-    
-
-    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_FAST)
-    const speedRef = useRef(SPEED_FAST)
+    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW)
+    const speedRef = useRef(SPEED_SLOW)
 
     useEffect(() => {
         speedRef.current = playbackSpeed
@@ -610,10 +608,12 @@ export function WeeklySimulationPage() {
 
             setFlightInstances(inst)
 
+            console.log("Flights ->", response.flights.slice(0, 5))
+
             const hasProductsMap: Record<number, boolean> = {}
             response.flights.forEach((f: any) => {
               const assigned = f.assignedProducts ?? 0
-              hasProductsMap[f.flightId] = assigned > 0
+              hasProductsMap[Number(f.id)] = assigned > 0
             })
             setFlightHasProducts(hasProductsMap)
 
@@ -700,7 +700,6 @@ export function WeeklySimulationPage() {
         console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
 
         console.log('📅 Day Start (UTC):', dayStart.toISOString())
-        console.log('📅 Day Start (local):', dayStart.toLocaleString('es-PE', { hour12: false }))
         
         // ✅ Formatear como Python: solo fecha + T00:00:00
         const year = dayStart.getUTCFullYear()
@@ -1068,7 +1067,6 @@ export function WeeklySimulationPage() {
         'color:#8b5cf6;font-weight:bold;'
       );
       console.log('⏰ Simulation Time (UTC):', currentTime.toISOString());
-      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }));
 
       // Ejecutar el algoritmo al inicio de un nuevo día
       if (dayNumber > lastAlgorithmDayRef.current) {
@@ -1187,13 +1185,13 @@ export function WeeklySimulationPage() {
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
 
+    const filteredFlightInstances = useMemo(() => {
+      if (!showOnlyLoadedFlights) return flightInstances
+      return flightInstances.filter(f => flightHasProducts[Number(f.id)])
+    }, [showOnlyLoadedFlights, flightInstances, flightHasProducts])
+
     return (
         <Wrapper>
-
-            
-           
-
-          
 
             {isBackgroundProcessing && (
               <div
@@ -1279,6 +1277,9 @@ export function WeeklySimulationPage() {
             <MapWrapper>
               <SimulationControls>
                   <div>
+
+                    
+
                     <ClockLabel>Tiempo de simulación</ClockLabel>
                     <Clock>
                       {currentTime
@@ -1341,6 +1342,23 @@ export function WeeklySimulationPage() {
                           {playbackSpeed === SPEED_FAST && `${SPEED_FAST / 60} minutos simulados = 1 segundo real`}
                       </SpeedHint>
                   </SpeedControlContainer>
+
+                  <button
+                    onClick={() => setShowOnlyLoadedFlights(prev => !prev)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: showOnlyLoadedFlights ? "#14b8a6" : "#e5e7eb",
+                      color: showOnlyLoadedFlights ? "white" : "#374151",
+                      fontWeight: 600,
+                      border: "none",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {showOnlyLoadedFlights ? "Mostrar todos los aviones" : "Solo aviones con pedidos"}
+                  </button>
+
+
               </SimulationControls>
 
               <MapContainer bounds={bounds} style={{ height: '100%', width: '100%' }}>
@@ -1433,7 +1451,7 @@ export function WeeklySimulationPage() {
 
                   {isRunning && currentTime && (
                     <AnimatedFlights
-                      flightInstances={flightInstances}
+                      flightInstances={filteredFlightInstances}
                       currentSimTime={currentTime}
                       simulationStartTime={startTime}
                       isPlaying={isRunning && !isPaused}

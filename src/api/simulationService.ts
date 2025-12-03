@@ -70,6 +70,9 @@ export interface FlightStatus {
   utilizationPercentage: number
   assignedProducts: number
   assignedOrders: number
+
+  departureTime: string      // viene de flights.departure_time
+  arrivalTime: string        // viene de flights.arrival_time
 }
 
 export interface FlightInstance {
@@ -433,9 +436,14 @@ export const simulationService = {
 
         // Generate instances for this day based on frequency
         for (let i = 0; i < frequency; i++) {
-          const departureTime = new Date(
-            dayStart.getTime() + i * intervalHours * 60 * 60 * 1000
-          )
+          
+          // ⚠️ departure_time viene como HH:mm:ss, lo convertimos a horas UTC reales
+          const [hh, mm, ss] = (flight.departureTime || "00:00:00").split(':').map(Number);
+
+          const departureTime = new Date(dayStart);
+          departureTime.setUTCHours(hh);
+          departureTime.setUTCMinutes(mm || 0);
+          departureTime.setUTCSeconds(ss || 0);
 
           // Only include if departure is within window
           // But allow arrival to extend beyond (for midnight-crossing flights)
