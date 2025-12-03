@@ -419,6 +419,10 @@ export const FlightDrawer = memo(function FlightDrawer({
   loadingOrders,
 }: FlightDrawerProps) {
 
+  const flightsWithProducts = flightInstances.filter(
+    f => (instanceHasProducts[f.instanceId] ?? 0) > 0
+  )
+
   return (
     <>
       <DrawerToggle $open={isOpen} onClick={onToggle}>
@@ -442,7 +446,7 @@ export const FlightDrawer = memo(function FlightDrawer({
 
         <DrawerTabs>
           <DrawerTab $active={panelTab === "flights"} onClick={() => onTabChange("flights")}>
-            ✈️ Vuelos ({flightInstances.length})
+            ✈️ Vuelos ({flightsWithProducts.length})
           </DrawerTab>
           <DrawerTab $active={panelTab === "orders"} onClick={() => onTabChange("orders")}>
             📦 Pedidos
@@ -462,38 +466,39 @@ export const FlightDrawer = memo(function FlightDrawer({
                 </EmptyState>
               ) : (
                 <DrawerGrid>
-                  {flightInstances.map(f => {
-                    // Usar instanceId directamente del objeto
-                    const productCount = instanceHasProducts[f.instanceId] ?? 0
-                    const hasProducts = productCount > 0
-                    
-                    return (
-                      <FlightCard key={f.id} onClick={() => onFlightClick(f)}>
-                        <FlightCardHeader>
-                          <FlightCode>{f.flightCode}</FlightCode>
-                          <FlightBadge $hasProducts={hasProducts}>
-                            {hasProducts ? `${productCount} prod.` : "Vacío"}
-                          </FlightBadge>
-                        </FlightCardHeader>
-                        
-                        <FlightRoute>
-                          {f.originAirport.codeIATA} 
-                          <span style={{ color: "#2563eb" }}>→</span> 
-                          {f.destinationAirport.codeIATA}
-                        </FlightRoute>
-                        
-                        <FlightTime>
-                          🛫 {new Date(f.departureTime).toLocaleString("es-PE", { 
-                            timeZone: "UTC",
-                            month: "short", 
-                            day: "numeric", 
-                            hour: "2-digit", 
-                            minute: "2-digit" 
-                          })}
-                        </FlightTime>
-                      </FlightCard>
-                    );
-                  })}
+                  {flightInstances
+                    .filter(f => (instanceHasProducts[f.instanceId] ?? 0) > 0)
+                    .map(f => {
+                      const productCount = instanceHasProducts[f.instanceId] ?? 0
+                      const hasProducts = productCount > 0
+
+                      return (
+                        <FlightCard key={f.id} onClick={() => onFlightClick(f)}>
+                          <FlightCardHeader>
+                            <FlightCode>{f.flightCode}</FlightCode>
+                            <FlightBadge $hasProducts={hasProducts}>
+                              {productCount} prod.
+                            </FlightBadge>
+                          </FlightCardHeader>
+
+                          <FlightRoute>
+                            {f.originAirport.codeIATA}
+                            <span style={{ color: "#2563eb" }}>→</span>
+                            {f.destinationAirport.codeIATA}
+                          </FlightRoute>
+
+                          <FlightTime>
+                            🛫 {new Date(f.departureTime).toLocaleString("es-PE", {
+                              timeZone: "UTC",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </FlightTime>
+                        </FlightCard>
+                      )
+                    })}
                 </DrawerGrid>
               )}
             </>

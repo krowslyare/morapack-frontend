@@ -336,10 +336,10 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   } = props
 
   const map = useMap()
-  const markersRef = useRef<Record<string, Marker>>({})
-  const flightAnimationsRef = useRef<Record<string, gsap.core.Tween>>({})
-  const departureTimesRef = useRef<Record<string, number>>({})
-  const arrivalTimesRef = useRef<Record<string, number>>({})
+  const markersRef = useRef<Partial<Record<string, Marker>>>({})
+  const flightAnimationsRef = useRef<Partial<Record<string, gsap.core.Tween>>>({})
+  const departureTimesRef = useRef<Partial<Record<string, number>>>({})
+  const arrivalTimesRef = useRef<Partial<Record<string, number>>>({})
 
   const MAX_FLIGHTS = 300
 
@@ -347,8 +347,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   useEffect(() => {
     if (!map) return
     return () => {
-      Object.values(flightAnimationsRef.current).forEach(tween => tween.kill())
-      Object.values(markersRef.current).forEach(m => m.remove())
+      Object.values(flightAnimationsRef.current).forEach(t => {
+        if (t) t.kill()
+      })
+      Object.values(markersRef.current).forEach(m => {
+        if (m) m.remove()
+      })
       markersRef.current = {}
       flightAnimationsRef.current = {}
       departureTimesRef.current = {}
@@ -376,11 +380,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (showOnlyWithProducts && !hasProducts) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id].remove()
+          markersRef.current[f.id]?.remove()
           delete markersRef.current[f.id]
         }
-        if (flightAnimationsRef.current[f.id]) {
-          flightAnimationsRef.current[f.id].kill()
+        const tween = flightAnimationsRef.current[f.id]
+        if (tween) {
+          tween.kill()
           delete flightAnimationsRef.current[f.id]
         }
         delete departureTimesRef.current[f.id]
@@ -393,11 +398,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (now > arrMs) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id].remove()
+          markersRef.current[f.id]?.remove()
           delete markersRef.current[f.id]
         }
-        if (flightAnimationsRef.current[f.id]) {
-          flightAnimationsRef.current[f.id].kill()
+        const tween = flightAnimationsRef.current[f.id]
+        if (tween) {
+          tween.kill()
           delete flightAnimationsRef.current[f.id]
         }
         delete departureTimesRef.current[f.id]
@@ -506,12 +512,14 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   // Control de play/pause y velocidad - transición suave
   useEffect(() => {
     Object.values(flightAnimationsRef.current).forEach(tween => {
-      // Transición suave del timeScale
-      gsap.to(tween, { 
-        timeScale: playbackSpeed, 
-        duration: 0.3, 
-        ease: 'power2.out' 
+      if (!tween) return  // ← TS feliz, gsap feliz
+
+      gsap.to(tween, {
+        timeScale: playbackSpeed,
+        duration: 0.3,
+        ease: "power2.out",
       })
+
       if (isPlaying) {
         tween.play()
       } else {
@@ -527,17 +535,21 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     const now = currentSimTime.getTime()
 
     Object.entries(arrivalTimesRef.current).forEach(([id, arrMs]) => {
-      if (now > arrMs + 5000) {  // 5 segundos después de llegar
+      if (arrMs === undefined) return
+
+      if (now > arrMs + 5000) {
         const marker = markersRef.current[id]
         if (marker) {
           marker.remove()
           delete markersRef.current[id]
         }
+
         const tween = flightAnimationsRef.current[id]
         if (tween) {
           tween.kill()
           delete flightAnimationsRef.current[id]
         }
+
         delete departureTimesRef.current[id]
         delete arrivalTimesRef.current[id]
       }

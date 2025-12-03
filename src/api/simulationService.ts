@@ -512,7 +512,8 @@ export const simulationService = {
           // Use the scheduled hours/minutes from flights.txt (depTime), not the Date object
           const instanceHours = hasRealTimes ? depTime.hours : 0
           const instanceMinutes = hasRealTimes ? depTime.minutes : 0
-          const instanceId = `FL-${flight.id}-DAY-${day}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
+          const instanceId = `FL-${flight.id}-DAY-${day + 1}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
+
           
           instances.push({
             id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
