@@ -72,7 +72,7 @@ const DrawerToggle = styled.button<{ $open: boolean }>`
 `;
 
 const DrawerHeader = styled.div`
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #27b49dff 0%, #12b39dff 100%);
   color: white;
   padding: 16px 24px;
   display: flex;
@@ -119,7 +119,7 @@ const DrawerTab = styled.button<{ $active: boolean }>`
   font-size: 14px;
   background: ${p => p.$active ? "#f1f5f9" : "white"};
   border: none;
-  border-bottom: 3px solid ${p => p.$active ? "#2563eb" : "transparent"};
+  border-bottom: 3px solid ${p => p.$active ? "#17b1a4ff" : "transparent"};
   color: ${p => p.$active ? "#2563eb" : "#64748b"};
   cursor: pointer;
   transition: all 0.2s;
@@ -484,7 +484,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cbd5e1",
-                background: orderFilter === 'IN_TRANSIT' ? "#2563eb" : "white",
+                background: orderFilter === 'IN_TRANSIT' ? "#13a390ff" : "white",
                 color: orderFilter === 'IN_TRANSIT' ? "white" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -499,7 +499,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cbd5e1",
-                background: orderFilter === 'ARRIVED' ? "#2563eb" : "white",
+                background: orderFilter === 'ARRIVED' ? "#13a390ff" : "white",
                 color: orderFilter === 'ARRIVED' ? "white" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -514,7 +514,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cbd5e1",
-                background: orderFilter === 'DELIVERED' ? "#2563eb" : "white",
+                background: orderFilter === 'DELIVERED' ? "#13a390ff" : "white",
                 color: orderFilter === 'DELIVERED' ? "white" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -529,7 +529,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 padding: "6px 12px",
                 borderRadius: "6px",
                 border: "1px solid #cbd5e1",
-                background: orderFilter === 'PENDING' ? "#2563eb" : "white",
+                background: orderFilter === 'PENDING' ? "#13a390ff" : "white",
                 color: orderFilter === 'PENDING' ? "white" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
