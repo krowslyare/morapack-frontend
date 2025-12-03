@@ -2,6 +2,7 @@ import { memo } from 'react'
 import styled from 'styled-components'
 import type { FlightInstance } from '../../api/simulationService'
 import type { OrderSchema } from '../../types'
+import { useState } from 'react';
 
 interface FlightDrawerProps {
   isOpen: boolean
@@ -23,7 +24,8 @@ const BottomDrawer = styled.div<{ $open: boolean }>`
   bottom: 0;
   left: 0;
   right: 0;
-  height: ${p => p.$open ? "320px" : "0px"};
+  /* más alto y relativo al viewport */
+  height: ${p => p.$open ? "min(45vh, 420px)" : "0px"};
   background: white;
   border-top: 2px solid #e5e7eb;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
@@ -38,7 +40,7 @@ const BottomDrawer = styled.div<{ $open: boolean }>`
 
 const DrawerToggle = styled.button<{ $open: boolean }>`
   position: absolute;
-  bottom: ${p => p.$open ? "320px" : "0px"};
+  bottom: ${p => p.$open ? "min(45vh, 420px)" : "0px"};
   left: 50%;
   transform: translateX(-50%);
   padding: 10px 32px;
@@ -56,7 +58,7 @@ const DrawerToggle = styled.button<{ $open: boolean }>`
   align-items: center;
   gap: 8px;
   z-index: 9001;
-  
+
   &:hover {
     background: #f8fafc;
     border-color: #2563eb;
@@ -68,8 +70,6 @@ const DrawerToggle = styled.button<{ $open: boolean }>`
     font-size: 12px;
   }
 `;
-
-// ... (copiar todos los demás styled components del drawer)
 
 const DrawerHeader = styled.div`
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
@@ -404,6 +404,8 @@ const OrderLocation = styled.div`
   }
 `;
 
+
+
 // ✅ Componente memoizado para evitar re-renders
 export const FlightDrawer = memo(function FlightDrawer({
   isOpen,
@@ -422,6 +424,15 @@ export const FlightDrawer = memo(function FlightDrawer({
   const flightsWithProducts = flightInstances.filter(
     f => (instanceHasProducts[f.instanceId] ?? 0) > 0
   )
+
+  const [orderFilter, setOrderFilter] = useState<'PENDING' | 'IN_TRANSIT' | 'ARRIVED' | 'DELIVERED'>('IN_TRANSIT');
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredOrders = orders
+    .filter(o => o.status === orderFilter)
+    .filter(o =>
+      o.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <>
@@ -452,6 +463,111 @@ export const FlightDrawer = memo(function FlightDrawer({
             📦 Pedidos
           </DrawerTab>
         </DrawerTabs>
+
+        {panelTab === "orders" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: "12px 20px",
+              borderBottom: "1px solid #e5e7eb",
+              background: "#f8fafc",
+            }}
+          >
+            {/* Filtros por estado (lado izquierdo) */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={() => setOrderFilter('IN_TRANSIT')}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  background: orderFilter === 'IN_TRANSIT' ? "#2563eb" : "white",
+                  color: orderFilter === 'IN_TRANSIT' ? "white" : "#475569",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                En tránsito
+              </button>
+
+              <button
+                onClick={() => setOrderFilter('ARRIVED')}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  background: orderFilter === 'ARRIVED' ? "#2563eb" : "white",
+                  color: orderFilter === 'ARRIVED' ? "white" : "#475569",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Llegados
+              </button>
+
+              <button
+                onClick={() => setOrderFilter('DELIVERED')}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  background: orderFilter === 'DELIVERED' ? "#2563eb" : "white",
+                  color: orderFilter === 'DELIVERED' ? "white" : "#475569",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Entregados
+              </button>
+
+              <button
+                onClick={() => setOrderFilter('PENDING')}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  background: orderFilter === 'PENDING' ? "#2563eb" : "white",
+                  color: orderFilter === 'PENDING' ? "white" : "#475569",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Pendientes
+              </button>
+            </div>
+
+            {/* Buscador (lado derecho) */}
+            <div
+              style={{
+                minWidth: "260px",
+                maxWidth: "360px",
+                flexShrink: 0,
+              }}
+            >
+              <input
+                type="text"
+                placeholder="Buscar pedido por número de orden..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "999px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "14px",
+                  outline: "none",
+                  background: "#f9fafb",
+                  color: "#111827",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        
 
         <DrawerContent>
           {panelTab === "flights" && (
@@ -511,17 +627,19 @@ export const FlightDrawer = memo(function FlightDrawer({
                     <EmptyIcon>⏳</EmptyIcon>
                     <EmptyTitle>Cargando pedidos...</EmptyTitle>
                 </EmptyState>
-                ) : orders.length === 0 ? (
-                <EmptyState>
-                    <EmptyIcon>📦</EmptyIcon>
-                    <EmptyTitle>No hay pedidos disponibles</EmptyTitle>
-                    <EmptySubtitle>
-                    Los pedidos aparecerán cuando se ejecute el algoritmo diario
-                    </EmptySubtitle>
-                </EmptyState>
+                ) : filteredOrders.length === 0 ? (
+                  <EmptyState>
+                    <EmptyIcon>📭</EmptyIcon>
+                    <EmptyTitle>No hay resultados</EmptyTitle>
+                    {searchQuery.trim() !== "" ? (
+                      <EmptySubtitle>No existe ningún pedido que coincida con la búsqueda</EmptySubtitle>
+                    ) : (
+                      <EmptySubtitle>Intenta seleccionar otro estado del filtro</EmptySubtitle>
+                    )}
+                  </EmptyState>
                 ) : (
                 <DrawerGrid>
-                    {orders.map(order => (
+                    {filteredOrders.map(order => (
                     <OrderCard key={order.id}>
                         <OrderCardHeader>
                         <OrderCode>
