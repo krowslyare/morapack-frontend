@@ -7,6 +7,22 @@ import { useWarehouseByAirport } from '../hooks/api/useWarehouses'
 import { FlightsListModal } from './FlightsListModal'
 import { FlightPackagesModal } from './FlightPackagesModal'
 
+
+// IMPORTA EL TIPO
+import type { FlightInstance } from '../api/simulationService'
+
+interface AirportDetailsModalProps {
+  airport: SimAirport | null
+  onClose: () => void
+  readOnly?: boolean
+
+  // 👇 igual que en FlightDrawer
+  flightInstances: FlightInstance[]
+  instanceHasProducts: Record<string, number>
+}
+
+
+
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
@@ -320,16 +336,13 @@ const Button = styled.button`
   }
 `
 
-interface AirportDetailsModalProps {
-  airport: SimAirport | null
-  onClose: () => void
-  readOnly?: boolean
-}
 
 export function AirportDetailsModal({
   airport,
   onClose,
   readOnly = false,
+  flightInstances,
+  instanceHasProducts,
 }: AirportDetailsModalProps) {
   const [showFlightsList, setShowFlightsList] = useState(false)
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code?: string } | null>(null)
@@ -388,6 +401,15 @@ export function AirportDetailsModal({
 
   const priorityVariant: 'success' | 'warning' | 'danger' =
     priority === 'Alta' ? 'danger' : priority === 'Media' ? 'warning' : 'success'
+
+  // 🔢 misma lógica que en FlightDrawer, pero por id de vuelo base
+  const getProductsForFlight = (flightId?: number) => {
+    if (!flightId) return 0
+
+    return flightInstances
+      .filter((fi) => fi.flightId === flightId)
+      .reduce((sum, fi) => sum + (instanceHasProducts[fi.instanceId] ?? 0), 0)
+  }
 
   return (
     <>
@@ -464,38 +486,45 @@ export function AirportDetailsModal({
               {!flightsLoading && flights.length > 0 ? (
                 <>
                   <FlightsList>
-                    {displayedFlights.map((flight) => (
-                      <FlightItem key={flight.id}>
-                        <FlightInfo>
-                          <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
-                          <FlightRoute>
-                            {flight.originAirportCode} → {flight.destinationAirportCode}
-                            {flight.assignedProducts !== undefined && (
-                              <span style={{ 
-                                marginLeft: '8px',
-                                padding: '2px 6px',
-                                background: flight.assignedProducts > 0 ? '#d1fae5' : '#f3f4f6',
-                                color: flight.assignedProducts > 0 ? '#065f46' : '#6b7280',
-                                borderRadius: '999px',
-                                fontSize: '11px',
-                                fontWeight: 600
-                              }}>
-                                {flight.assignedProducts} {flight.assignedProducts === 1 ? 'producto' : 'productos'}
-                              </span>
-                            )}
-                          </FlightRoute>
-                        </FlightInfo>
-                        <FlightActions>
-                          <SmallButton
-                            onClick={() =>
-                              setSelectedFlight({ id: flight.id ?? 0, code: flight.code ?? '' })
-                            }
-                          >
-                            Ver
-                          </SmallButton>
-                        </FlightActions>
-                      </FlightItem>
-                    ))}
+                    {displayedFlights.map((flight) => {
+                      const productsOnFlight = getProductsForFlight(flight.id)
+
+                      return (
+                        <FlightItem key={flight.id}>
+                          <FlightInfo>
+                            <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
+                            <FlightRoute>
+                              {flight.originAirportCode} → {flight.destinationAirportCode}
+                              {productsOnFlight > 0 && (
+                                <span
+                                  style={{
+                                    marginLeft: '8px',
+                                    padding: '2px 6px',
+                                    background: '#d1fae5',
+                                    color: '#065f46',
+                                    borderRadius: '999px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {productsOnFlight}{' '}
+                                  {productsOnFlight === 1 ? 'producto' : 'productos'}
+                                </span>
+                              )}
+                            </FlightRoute>
+                          </FlightInfo>
+                          <FlightActions>
+                            <SmallButton
+                              onClick={() =>
+                                setSelectedFlight({ id: flight.id ?? 0, code: flight.code ?? '' })
+                              }
+                            >
+                              Ver
+                            </SmallButton>
+                          </FlightActions>
+                        </FlightItem>
+                      )
+                    })}
                   </FlightsList>
 
                   {flights.length > 3 && (
@@ -556,6 +585,8 @@ export function AirportDetailsModal({
           airportName={airport.city}
           flights={flights}
           onClose={() => setShowFlightsList(false)}
+          flightInstances={flightInstances}
+          instanceHasProducts={instanceHasProducts}
         />
       )}
 

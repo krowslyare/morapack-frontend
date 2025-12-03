@@ -1630,7 +1630,8 @@ export function WeeklySimulationPage() {
                 <AirportDetailsModal
                   airport={selectedAirport}
                   onClose={() => setSelectedAirport(null)}
-                  readOnly
+                  flightInstances={flightInstances}
+                  instanceHasProducts={instanceHasProducts}
                 />
             )}
 
