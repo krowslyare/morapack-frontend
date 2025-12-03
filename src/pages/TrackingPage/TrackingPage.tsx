@@ -6,24 +6,39 @@ import { useNavigate } from 'react-router-dom'
 
 const PAGE_SIZE = 14
 
+type StatusFilter =
+  | 'ALL'
+  | 'PENDING'
+  | 'ASSIGNED'
+  | 'IN_TRANSIT'
+  | 'ARRIVED'
+  | 'DELIVERED'
+
 export function TrackingPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
 
   const { data: orders = [], isLoading, error } = useOrders()
   const deleteOrder = useDeleteOrder()
 
-  const filtered = orders.filter((order: OrderSchema) =>
+  // 1) Filtrar por estado
+  const byStatus = (order: OrderSchema) =>
+    statusFilter === 'ALL' ? true : order.status === statusFilter
+
+  // 2) Luego filtrar por texto
+  const bySearch = (order: OrderSchema) =>
     Object.values(order).some((v) =>
       v?.toString().toLowerCase().includes(search.toLowerCase()),
-    ),
-  )
+    )
 
-  // si cambia la búsqueda, volvemos a la página 1
+  const filtered = orders.filter(byStatus).filter(bySearch)
+
+  // si cambia la búsqueda o el filtro de estado, volvemos a la página 1
   useEffect(() => {
     setPage(1)
-  }, [search])
+  }, [search, statusFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -53,14 +68,49 @@ export function TrackingPage() {
   return (
     <S.Wrapper>
       <S.ActionBar>
-        <S.Search>
-          <span className="material-symbols-outlined">search</span>
-          <input
-            placeholder="Buscar pedido"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </S.Search>
+        {/* Grupo izquierdo: buscador + filtro de estado */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flex: 1,
+          }}
+        >
+          <S.Search>
+            <span className="material-symbols-outlined">search</span>
+            <input
+              placeholder="Buscar pedido"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </S.Search>
+
+          {/* Filtro por estado */}
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '999px',
+                border: '1px solid #d1d5db',
+                background: '#f9fafb',
+                fontSize: 13,
+                color: '#111827',
+              }}
+            >
+              <option value="ALL">Todos</option>
+              <option value="PENDING">Pendientes</option>
+              <option value="ASSIGNED">Asignados</option>
+              <option value="IN_TRANSIT">En tránsito</option>
+              <option value="ARRIVED">Llegados</option>
+              <option value="DELIVERED">Entregados</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Botón de nuevo pedido a la derecha */}
         <S.NewOrderButton onClick={() => navigate('/envios/registrar')}>
           <span className="material-symbols-outlined">add</span>
           Nuevo Pedido
