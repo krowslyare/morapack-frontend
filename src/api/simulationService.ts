@@ -429,6 +429,8 @@ export const simulationService = {
     const durationDays = Math.ceil(durationHours / 24)
     const baseDay = options?.baseDay ?? 1  // 👈 por defecto arranca en 1
 
+    
+
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
     const parseTimeString = (timeStr: string | undefined): { hours: number; minutes: number } | null => {
       if (!timeStr) return null
@@ -441,6 +443,7 @@ export const simulationService = {
     }
 
     flights.forEach((flight) => {
+
       // Find airport coordinates
       const originAirport = airports.find(
         (a: any) => a.cityName === flight.originAirport.city.name
@@ -454,6 +457,8 @@ export const simulationService = {
       // Parse real departure and arrival times from backend
       const depTime = parseTimeString(flight.departureTime)
       const arrTime = parseTimeString(flight.arrivalTime)
+
+      
 
       // If we have real times, use them; otherwise fall back to transport time
       const hasRealTimes = depTime !== null && arrTime !== null
@@ -507,6 +512,8 @@ export const simulationService = {
           departureDateTime = new Date(dayStart.getTime())
           arrivalDateTime = new Date(departureDateTime.getTime() + flightDurationMs)
         }
+
+        
 
         // Only include if departure is within simulation window
         if (departureDateTime >= startTime && departureDateTime < endTime) {
