@@ -15,6 +15,7 @@ interface SimulationStore {
   dailyPlaybackSpeed: number
   lastAlgorithmRunTime: number | null  // When the algorithm last ran // CHANGED: Store as timestamp
   nextAlgorithmRunTime: number | null  // When the next run is scheduled // CHANGED: Store as timestamp
+  lastRealTimestamp: number | null  // Real-world timestamp when sim time was last updated (for background catch-up)
 
   // Actions
   setSimulationStartDate: (date: Date) => void
@@ -30,6 +31,9 @@ interface SimulationStore {
   stopDailySimulation: () => void
   setLastAlgorithmRunTime: (time: Date) => void
   setNextAlgorithmRunTime: (time: Date | null) => void
+  
+  // Get adjusted simulation time (accounts for time passed while away)
+  getAdjustedSimTime: () => number | null
 
   // Check if a new order is within the current 10-min window
   isOrderInCurrentWindow: (orderTime: Date) => boolean
@@ -56,6 +60,7 @@ export const useSimulationStore = create<SimulationStore>()(
       dailyPlaybackSpeed: 1,
       lastAlgorithmRunTime: null,
       nextAlgorithmRunTime: null,
+      lastRealTimestamp: null,
 
       setSimulationStartDate: (date: Date) => {
         set({
@@ -77,6 +82,7 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyCurrentSimTime: null,
           lastAlgorithmRunTime: null,
           nextAlgorithmRunTime: null,
+          lastRealTimestamp: null,
         })
       },
 
@@ -98,6 +104,7 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyPlaybackSpeed: speed,
           lastAlgorithmRunTime: startTime.getTime(), // Store as timestamp
           nextAlgorithmRunTime: nextRun.getTime(), // Store as timestamp
+          lastRealTimestamp: Date.now(), // Track when we started
         })
       },
 
@@ -106,10 +113,16 @@ export const useSimulationStore = create<SimulationStore>()(
           // Updater function - get current state and apply function
           const currentTime = get().dailyCurrentSimTime
           const newTime = time(currentTime)
-          set({ dailyCurrentSimTime: newTime ? newTime.getTime() : null })
+          set({ 
+            dailyCurrentSimTime: newTime ? newTime.getTime() : null,
+            lastRealTimestamp: Date.now(), // Update real timestamp
+          })
         } else {
           // Direct value
-          set({ dailyCurrentSimTime: time.getTime() })
+          set({ 
+            dailyCurrentSimTime: time.getTime(),
+            lastRealTimestamp: Date.now(), // Update real timestamp
+          })
         }
       },
 
@@ -123,18 +136,45 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyCurrentSimTime: null,
           lastAlgorithmRunTime: null,
           nextAlgorithmRunTime: null,
+          lastRealTimestamp: null,
         })
       },
 
       setLastAlgorithmRunTime: (time: Date) => {
-        set({ lastAlgorithmRunTime: time.getTime() }) // Store as timestamp
+        // When algorithm runs, update last run time AND schedule next run
+        const nextRun = new Date(time.getTime() + DAILY_REFRESH_WINDOW_MS - ALGORITHM_BUFFER_MS)
+        set({ 
+          lastAlgorithmRunTime: time.getTime(),
+          nextAlgorithmRunTime: nextRun.getTime(),
+        })
+        console.log(`✅ Algorithm completed. Next run scheduled at ${nextRun.toLocaleTimeString()} (sim time)`)
       },
 
       setNextAlgorithmRunTime: (time: Date | null) => {
         set({ nextAlgorithmRunTime: time ? time.getTime() : null }) // Store as timestamp
       },
 
+      // Get adjusted simulation time (accounts for time passed while away from the page)
+      getAdjustedSimTime: () => {
+        const state = get()
+        if (!state.isDailyRunning || !state.dailyCurrentSimTime || !state.lastRealTimestamp) {
+          return state.dailyCurrentSimTime
+        }
+
+        // Calculate how much real time passed since last update
+        const realTimeElapsed = Date.now() - state.lastRealTimestamp
+        
+        // Convert to simulation time based on playback speed
+        // speed=1 means 1 sim second = 1 real second
+        // speed=60 means 60 sim seconds = 1 real second
+        const simTimeElapsed = realTimeElapsed * state.dailyPlaybackSpeed
+        
+        // Return adjusted simulation time
+        return state.dailyCurrentSimTime + simTimeElapsed
+      },
+
       // Check if a new order is within the current 10-min window
+      // (Legacy - kept for backwards compatibility but not used for new orders)
       isOrderInCurrentWindow: (orderTime: Date) => {
         const state = get()
         if (!state.isDailyRunning || !state.lastAlgorithmRunTime) {
@@ -149,23 +189,21 @@ export const useSimulationStore = create<SimulationStore>()(
         return orderTime >= windowStart && orderTime <= windowEnd
       },
 
-      // Trigger immediate algorithm refresh if new order is in current window
-      triggerRefreshIfNeeded: (orderTime: Date) => {
+      // Trigger algorithm refresh when a new order is added during daily simulation
+      // Any new order while daily simulation is running should trigger a re-run
+      triggerRefreshIfNeeded: (_orderTime: Date) => {
         const state = get()
         if (!state.isDailyRunning || !state.dailyCurrentSimTime) {
-          return false // Simulation not running
+          return false // Simulation not running, no refresh needed
         }
 
-        // Check if order is in current window
-        if (state.isOrderInCurrentWindow(orderTime)) {
-          // Force next algorithm run sooner (in 2 minute buffer)
-          const currentTime = new Date(state.dailyCurrentSimTime)
-          const nextRun = new Date(currentTime.getTime() + ALGORITHM_BUFFER_MS)
-          set({ nextAlgorithmRunTime: nextRun.getTime() }) // Store as timestamp
-          return true // Will trigger refresh
-        }
-
-        return false // Order outside window, no refresh needed
+        // Force next algorithm run sooner (in 2 minute buffer)
+        // This ensures the new order gets processed and assigned to a flight
+        const currentTime = new Date(state.dailyCurrentSimTime)
+        const nextRun = new Date(currentTime.getTime() + ALGORITHM_BUFFER_MS)
+        set({ nextAlgorithmRunTime: nextRun.getTime() }) // Store as timestamp
+        console.log(`📦 New order added - scheduling algorithm refresh at ${nextRun.toLocaleTimeString()}`)
+        return true // Will trigger refresh
       },
     }),
     {

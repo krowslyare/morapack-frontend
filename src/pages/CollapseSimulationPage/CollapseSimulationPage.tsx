@@ -489,9 +489,18 @@ const ResultHeader = styled.div<{ $collapsed: boolean }>`
   border-bottom: 1px solid ${p => p.$collapsed ? '#fecaca' : '#bbf7d0'};
 `
 
-const ResultIcon = styled.div`
-  font-size: 48px;
-  margin-bottom: 12px;
+const ResultIcon = styled.div<{ $collapsed?: boolean }>`
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 28px;
+  font-weight: 700;
+  background: ${p => p.$collapsed ? '#fecaca' : '#bbf7d0'};
+  color: ${p => p.$collapsed ? '#dc2626' : '#16a34a'};
 `
 
 const ResultTitle = styled.h2`
@@ -560,13 +569,15 @@ const ReasonBadge = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 12px 18px;
   background: #fef2f2;
   border: 1px solid #fecaca;
   border-radius: 8px;
-  color: #dc2626;
+  color: #b91c1c;
   font-weight: 600;
   font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
 `
 
 const ResultFooter = styled.div`
@@ -591,12 +602,18 @@ function mapAirportToSimAirport(a: any): SimAirport {
 
 function formatCollapseReason(reason: string): string {
   switch (reason) {
+    case 'SLA_BREACH':
+      return 'Incumplimiento de SLA (entregas fuera de tiempo)'
+    case 'CAPACITY_EXHAUSTED':
+      return 'Capacidad agotada (productos sin asignar)'
     case 'UNASSIGNED_ORDERS':
       return 'Órdenes sin asignar'
     case 'WAREHOUSE_SATURATED':
       return 'Almacén saturado'
     case 'NO_FLIGHTS':
       return 'Sin vuelos disponibles'
+    case 'NO_COLLAPSE':
+      return 'Sin colapso'
     default:
       return 'Desconocido'
   }
@@ -773,8 +790,8 @@ export function CollapseSimulationPage() {
   const getStatusText = () => {
     const status = getStatus()
     if (status === 'running') return '● Ejecutando'
-    if (status === 'collapsed') return 'Colapsado'
-    if (status === 'success') return 'Completado'
+    if (status === 'collapsed') return 'SLA Incumplido'
+    if (status === 'success') return 'SLA OK'
     return '○ Detenido'
   }
 
@@ -785,8 +802,10 @@ export function CollapseSimulationPage() {
         <ModalContent>
           <ModalTitle>Configurar Simulación de Colapso</ModalTitle>
           <ModalSubtitle>
-            La simulación ejecutará el algoritmo día a día hasta que el sistema colapse 
-            (cuando hay órdenes sin asignar o almacenes saturados).
+            La simulación ejecutará el algoritmo día a día y verificará el cumplimiento del SLA:
+            <br />• <strong>Continental:</strong> máximo 2 días (48 horas)
+            <br />• <strong>Intercontinental:</strong> máximo 3 días (72 horas)
+            <br />• <strong>Colapso:</strong> cuando más del 5% de productos no puedan asignarse durante 3 días consecutivos
           </ModalSubtitle>
 
           <FormGroup>
@@ -822,16 +841,20 @@ export function CollapseSimulationPage() {
           {result && (
             <>
               <ResultHeader $collapsed={result.hasCollapsed}>
-                <ResultIcon>
-                  {result.hasCollapsed ? '!' : '✓'}
+                <ResultIcon $collapsed={result.hasCollapsed}>
+                  {result.hasCollapsed ? '✕' : '✓'}
                 </ResultIcon>
                 <ResultTitle>
-                  {result.hasCollapsed ? 'Sistema Colapsado' : 'Simulación Completada'}
+                  {result.hasCollapsed 
+                    ? (result.collapseReason === 'SLA_BREACH' ? 'SLA Incumplido' : 'Sistema Colapsado')
+                    : 'Simulación Completada'}
                 </ResultTitle>
                 <ResultSubtitle>
                   {result.hasCollapsed 
-                    ? `El sistema colapsó después de ${result.collapseDay} días de operación`
-                    : `Se simularon ${result.totalDaysSimulated} días sin colapso`}
+                    ? (result.collapseReason === 'SLA_BREACH' 
+                        ? `${result.productsLate ?? 0} productos (${result.slaViolationPercentage?.toFixed(1) ?? 0}%) no cumplen con el SLA de entrega`
+                        : `El sistema colapsó: ${result.unassignedProducts} productos sin asignar`)
+                    : `Todos los productos entregados dentro del SLA (${result.slaCompliancePercentage?.toFixed(1) ?? 100}% a tiempo)`}
                 </ResultSubtitle>
               </ResultHeader>
 
@@ -845,8 +868,69 @@ export function CollapseSimulationPage() {
                   </ResultSection>
                 )}
 
+                {/* SLA Metrics Section */}
                 <ResultSection>
-                  <ResultSectionTitle>Estadísticas</ResultSectionTitle>
+                  <ResultSectionTitle>Cumplimiento SLA</ResultSectionTitle>
+                  <ResultGrid>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.slaCompliancePercentage?.toFixed(1) ?? '100.0'}%
+                      </ResultCardValue>
+                      <ResultCardLabel>A tiempo</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard $highlight={(result.productsLate ?? 0) > 0}>
+                      <ResultCardValue $danger={(result.productsLate ?? 0) > 0}>
+                        {result.slaViolationPercentage?.toFixed(1) ?? '0.0'}%
+                      </ResultCardValue>
+                      <ResultCardLabel>Fuera de SLA</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>{result.productsOnTime ?? result.assignedProducts}</ResultCardValue>
+                      <ResultCardLabel>Productos a tiempo</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard $highlight={(result.productsLate ?? 0) > 0}>
+                      <ResultCardValue $danger={(result.productsLate ?? 0) > 0}>
+                        {result.productsLate ?? 0}
+                      </ResultCardValue>
+                      <ResultCardLabel>Productos tarde</ResultCardLabel>
+                    </ResultCard>
+                  </ResultGrid>
+                </ResultSection>
+
+                {/* Continental vs Intercontinental */}
+                <ResultSection>
+                  <ResultSectionTitle>Desglose por Tipo de Envío</ResultSectionTitle>
+                  <ResultGrid>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.continentalSlaCompliance?.toFixed(0) ?? '100'}%
+                      </ResultCardValue>
+                      <ResultCardLabel>Continental (≤48h)</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.intercontinentalSlaCompliance?.toFixed(0) ?? '100'}%
+                      </ResultCardValue>
+                      <ResultCardLabel>Intercontinental (≤72h)</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.continentalOrdersOnTime ?? 0}/{result.continentalOrdersTotal ?? 0}
+                      </ResultCardValue>
+                      <ResultCardLabel>Cont. a tiempo</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.intercontinentalOrdersOnTime ?? 0}/{result.intercontinentalOrdersTotal ?? 0}
+                      </ResultCardValue>
+                      <ResultCardLabel>Inter. a tiempo</ResultCardLabel>
+                    </ResultCard>
+                  </ResultGrid>
+                </ResultSection>
+
+                {/* Original Statistics */}
+                <ResultSection>
+                  <ResultSectionTitle>Estadísticas Generales</ResultSectionTitle>
                   <ResultGrid>
                     <ResultCard>
                       <ResultCardValue>{result.totalDaysSimulated}</ResultCardValue>
@@ -880,9 +964,21 @@ export function CollapseSimulationPage() {
                     </ResultCard>
                     <ResultCard>
                       <ResultCardValue>
-                        {result.executionTimeSeconds.toFixed(1)}s
+                        {result.executionTimeSeconds >= 60 
+                          ? `${Math.floor(result.executionTimeSeconds / 60)}m ${Math.floor(result.executionTimeSeconds % 60)}s`
+                          : `${result.executionTimeSeconds.toFixed(1)}s`}
                       </ResultCardValue>
                       <ResultCardLabel>Tiempo ejecución</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>
+                        {result.slaThresholdUsed ?? 5}%
+                      </ResultCardValue>
+                      <ResultCardLabel>Umbral diario</ResultCardLabel>
+                    </ResultCard>
+                    <ResultCard>
+                      <ResultCardValue>3</ResultCardValue>
+                      <ResultCardLabel>Días consecutivos</ResultCardLabel>
                     </ResultCard>
                   </ResultGrid>
                 </ResultSection>
@@ -905,7 +1001,7 @@ export function CollapseSimulationPage() {
         <TitleBlock>
           <Title>Simulación de Colapso</Title>
           <Subtitle>
-            Ejecuta el algoritmo hasta que el sistema colapse por falta de capacidad
+            Detecta cuándo el sistema no puede cumplir con los SLA de entrega (≤48h continental / ≤72h intercontinental)
           </Subtitle>
         </TitleBlock>
 
@@ -985,34 +1081,54 @@ export function CollapseSimulationPage() {
         {!isRunning && result && (
           <SimulationControls>
             <div>
-              <ControlsLabel>Último resultado</ControlsLabel>
+              <ControlsLabel>Resultado SLA</ControlsLabel>
               {result?.hasCollapsed ? (
                 <ProgressBoxDanger>
-                  <ProgressValue>Día {result.collapseDay}</ProgressValue>
-                  <ProgressLabel>Punto de colapso</ProgressLabel>
+                  <ProgressValue>
+                    {result.collapseReason === 'SLA_BREACH' 
+                      ? `${result.slaViolationPercentage?.toFixed(1) ?? 0}%`
+                      : `${result.unassignedProducts}`}
+                  </ProgressValue>
+                  <ProgressLabel>
+                    {result.collapseReason === 'SLA_BREACH' 
+                      ? 'SLA Incumplido'
+                      : 'Sin asignar'}
+                  </ProgressLabel>
                 </ProgressBoxDanger>
               ) : (
                 <ProgressBox>
-                  <ProgressValue>{result?.totalDaysSimulated || 0}</ProgressValue>
-                  <ProgressLabel>Días simulados</ProgressLabel>
+                  <ProgressValue>{result?.slaCompliancePercentage?.toFixed(0) ?? 100}%</ProgressValue>
+                  <ProgressLabel>SLA Cumplido</ProgressLabel>
                 </ProgressBox>
               )}
             </div>
 
             <StatsRow>
               <StatLine>
-                <span>Productos asignados:</span>
-                <StatValue>{result?.assignedProducts || 0}</StatValue>
+                <span>A tiempo (SLA OK):</span>
+                <StatValue>{result?.productsOnTime ?? result?.assignedProducts ?? 0}</StatValue>
               </StatLine>
               <StatLine>
-                <span>Sin asignar:</span>
-                <StatValue $danger={(result?.unassignedProducts || 0) > 0}>
-                  {result?.unassignedProducts || 0}
+                <span>Tarde (SLA violado):</span>
+                <StatValue $danger={(result?.productsLate ?? 0) > 0}>
+                  {result?.productsLate ?? 0}
                 </StatValue>
               </StatLine>
               <StatLine>
+                <span>Continental (≤48h):</span>
+                <StatValue>{result?.continentalSlaCompliance?.toFixed(0) ?? 100}%</StatValue>
+              </StatLine>
+              <StatLine>
+                <span>Intercont. (≤72h):</span>
+                <StatValue>{result?.intercontinentalSlaCompliance?.toFixed(0) ?? 100}%</StatValue>
+              </StatLine>
+              <StatLine>
                 <span>Tiempo ejecución:</span>
-                <StatValue>{(result?.executionTimeSeconds || 0).toFixed(1)}s</StatValue>
+                <StatValue>
+                  {(result?.executionTimeSeconds ?? 0) >= 60 
+                    ? `${Math.floor((result?.executionTimeSeconds ?? 0) / 60)}m`
+                    : `${(result?.executionTimeSeconds ?? 0).toFixed(0)}s`}
+                </StatValue>
               </StatLine>
             </StatsRow>
           </SimulationControls>

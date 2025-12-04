@@ -4,6 +4,7 @@ import * as S from './RegisterOrderPage.styles'
 import { useCreateOrder, useOrder, useUpdateOrder } from '../../hooks/api/useOrders'
 import { PackageStatus } from '../../types/PackageStatus'
 import { useSimulationStore } from '../../store/useSimulationStore'
+import { simulationService } from '../../api/simulationService'
 import { toast } from 'react-toastify'
 
 // RegisterOrderPage.tsx
@@ -19,7 +20,7 @@ export default function RegisterOrderPage() {
 
   const createOrder = useCreateOrder()
   const updateOrder = useUpdateOrder()
-  const { triggerRefreshIfNeeded, isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
+  const { isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
   const {
     data: existingOrder,
     isLoading: isOrderLoading,
@@ -131,16 +132,52 @@ export default function RegisterOrderPage() {
       } else {
         await createOrder.mutateAsync(payload as any)
 
-        // NEW: Check if order is within current daily simulation window
-        // If yes, trigger algorithm refresh in 1 minute
-        if (payload.deliveryDate) {
-          const orderDeliveryTime = new Date(payload.deliveryDate)
-          const willRefresh = triggerRefreshIfNeeded(orderDeliveryTime)
-
-          if (willRefresh) {
-            toast.info('Nueva orden detectada en ventana activa. Algoritmo se ejecutará en 2 minutos.', {
-              autoClose: 5000,
+        // If Daily simulation is running, refresh orders and execute algorithm immediately
+        // This ensures the new order gets assigned to a flight right away
+        if (isDailyRunning && dailyCurrentSimTime) {
+          toast.info('Cargando órdenes y ejecutando algoritmo...', { autoClose: 3000 })
+          
+          try {
+            const simTime = new Date(dailyCurrentSimTime)
+            const playbackSpeed = useSimulationStore.getState().dailyPlaybackSpeed
+            
+            // Format sim time as LOCAL time
+            const year = simTime.getFullYear()
+            const month = String(simTime.getMonth() + 1).padStart(2, '0')
+            const day = String(simTime.getDate()).padStart(2, '0')
+            const hours = String(simTime.getHours()).padStart(2, '0')
+            const minutes = String(simTime.getMinutes()).padStart(2, '0')
+            const seconds = String(simTime.getSeconds()).padStart(2, '0')
+            const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+            
+            // STEP 1: Refresh orders from files (loads new ones, skips duplicates)
+            console.log('📦 Refreshing orders from files...')
+            const refreshResponse = await simulationService.refreshOrdersForDaily(localTimeString)
+            
+            if (refreshResponse.success) {
+              console.log(`✅ Orders refreshed: ${refreshResponse.statistics.ordersCreated} new, ${refreshResponse.statistics.duplicatesSkipped} skipped`)
+            }
+            
+            // STEP 2: Execute algorithm
+            console.log('🚀 Running algorithm...')
+            const response = await simulationService.executeDaily({
+              simulationStartTime: localTimeString,
+              simulationDurationHours: 10 / 60,  // 10 minutes
+              useDatabase: true,
+              simulationSpeed: playbackSpeed,
             })
+            
+            if (response.success) {
+              toast.success(`✅ Orden asignada: ${response.assignedOrders} órdenes procesadas`, { autoClose: 4000 })
+              
+              // Update store with new algorithm run time
+              useSimulationStore.getState().setLastAlgorithmRunTime(simTime)
+            } else {
+              toast.warning('Algoritmo ejecutado pero sin asignaciones nuevas')
+            }
+          } catch (err) {
+            console.error('Error running algorithm after order creation:', err)
+            toast.error('Error al ejecutar algoritmo. La orden se procesará cuando vuelvas a Daily.')
           }
         }
       }
