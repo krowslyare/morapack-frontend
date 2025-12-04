@@ -260,6 +260,51 @@ const SpeedHint = styled.div`
   margin-top: 4px;
 `
 
+const ToggleContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+`
+
+const ToggleLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+`
+
+const ToggleSwitch = styled.div<{ $active: boolean }>`
+  width: 40px;
+  height: 22px;
+  background: ${p => p.$active ? '#10b981' : '#d1d5db'};
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: ${p => p.$active ? '20px' : '2px'};
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: left 0.2s ease;
+  }
+`
+
+const ToggleHint = styled.div`
+  font-size: 10px;
+  color: #9ca3af;
+`
+
 const LoadingOverlay = styled.div`
   position: absolute;
   inset: 0;
@@ -674,6 +719,32 @@ function AnimatedFlights({
     // At playbackSpeed 60, timeScale should be 60 (timeline runs 60x faster)
     timelineRef.current.timeScale(playbackSpeed)
   }, [playbackSpeed])
+
+  // Toggle visibility of markers based on showOnlyWithProducts
+  useEffect(() => {
+    // Iterate over existing markers and show/hide based on product status
+    Object.entries(markersRef.current).forEach(([flightId, marker]) => {
+      // Find the flight instance to get the instanceId
+      const flight = flightInstances.find(f => f.id === flightId)
+      if (!flight) return
+
+      const productCount = instanceHasProducts[flight.instanceId] ?? 0
+      const hasProducts = productCount > 0
+
+      if (showOnlyWithProducts && !hasProducts) {
+        // Hide markers for flights without products
+        marker.setOpacity(0)
+      } else {
+        // Check if the flight is currently in-flight to show it
+        const dept = new Date(flight.departureTime)
+        const arr = new Date(flight.arrivalTime)
+        if (currentSimTime >= dept && currentSimTime <= arr) {
+          marker.setOpacity(1)
+        }
+        // If the flight hasn't departed yet or already arrived, keep it hidden (the timeline handles this)
+      }
+    })
+  }, [showOnlyWithProducts, instanceHasProducts, flightInstances, currentSimTime, markersRef])
 
   return null
 }
@@ -1623,35 +1694,18 @@ export function DailySimulationPage() {
             )}
           </div>
           
-          {/* Toggle para mostrar solo vuelos con productos */}
-          <div style={{ 
-            marginTop: '12px', 
-            padding: '8px',
-            background: '#f3f4f6',
-            borderRadius: '6px',
-          }}>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: '#374151',
-            }}>
-              <input
-                type="checkbox"
-                checked={showOnlyWithProducts}
-                onChange={(e) => setShowOnlyWithProducts(e.target.checked)}
-                style={{ width: '16px', height: '16px' }}
-              />
-              Solo vuelos con carga
-            </label>
-            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px' }}>
+          {/* Toggle para mostrar solo vuelos con productos - igual que Weekly */}
+          <ToggleContainer>
+            <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
+              <ToggleSwitch $active={showOnlyWithProducts} />
+              <span>Solo vuelos con carga</span>
+            </ToggleLabel>
+            <ToggleHint>
               {showOnlyWithProducts 
                 ? 'Mostrando solo vuelos con paquetes asignados'
                 : 'Mostrando todos los vuelos'}
-            </div>
-          </div>
+            </ToggleHint>
+          </ToggleContainer>
         </SimulationControls>
 
         <MapContainer
