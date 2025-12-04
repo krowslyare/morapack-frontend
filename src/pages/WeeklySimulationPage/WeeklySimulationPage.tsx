@@ -772,7 +772,8 @@ export function WeeklySimulationPage() {
               flightResponse.flights,
               startTime,
               168,
-              airports
+              airports,
+              { baseDay: 1 }   // 👈 día 1..7
             )
 
             setFlightInstances(inst)
