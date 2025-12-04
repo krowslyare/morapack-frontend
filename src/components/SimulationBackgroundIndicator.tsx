@@ -104,11 +104,27 @@ const CloseButton = styled.button`
 
 export function SimulationBackgroundIndicator() {
   const location = useLocation()
-  const { isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
+  const { isDailyRunning, getAdjustedSimTime } = useSimulationStore()
   const [dismissed, setDismissed] = useState(false)
+  const [currentTime, setCurrentTime] = useState<number | null>(null)
 
   // Check if we're NOT on the daily simulation page
   const isNotOnDailySimPage = location.pathname !== '/simulacion/diaria'
+
+  // Update time every second to show real-time progress
+  useEffect(() => {
+    if (!isDailyRunning || !isNotOnDailySimPage) return
+
+    const updateTime = () => {
+      const adjusted = getAdjustedSimTime()
+      setCurrentTime(adjusted)
+    }
+
+    updateTime() // Initial update
+    const interval = setInterval(updateTime, 1000)
+
+    return () => clearInterval(interval)
+  }, [isDailyRunning, isNotOnDailySimPage, getAdjustedSimTime])
 
   // Reset dismissed state when navigating to daily simulation page
   useEffect(() => {
@@ -157,7 +173,7 @@ export function SimulationBackgroundIndicator() {
       <TextContent>
         <Label>Simulación activa</Label>
         <TimeDisplay>
-          {formatSimDate(dailyCurrentSimTime)} {formatSimTime(dailyCurrentSimTime)}
+          {formatSimDate(currentTime)} {formatSimTime(currentTime)}
         </TimeDisplay>
       </TextContent>
       <CloseButton onClick={handleClose} title="Ocultar">

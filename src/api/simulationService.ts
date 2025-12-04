@@ -360,6 +360,7 @@ export const simulationService = {
   /**
    * Load orders for Daily Simulation with automatic cleanup and 10-minute timeframe
    * This endpoint automatically clears old data and loads orders within the simulation window
+   * USE THIS FOR INITIAL START ONLY
    */
   loadForDailySimulation: async (startTime: string): Promise<{
     success: boolean
@@ -380,6 +381,38 @@ export const simulationService = {
     }
   }> => {
     const { data } = await api.post('/data/load-for-daily', null, {
+      params: { startTime },
+    })
+    return data
+  },
+
+  /**
+   * Refresh orders for Daily Simulation WITHOUT clearing existing orders
+   * Use this when re-running the algorithm during simulation (e.g., when new order is added)
+   * - Does NOT clear existing orders
+   * - Loads new orders from files within the 10-minute window
+   * - Skips duplicates (orders already in DB)
+   */
+  refreshOrdersForDaily: async (startTime: string): Promise<{
+    success: boolean
+    message: string
+    statistics: {
+      ordersLoaded: number
+      ordersCreated: number
+      ordersFiltered: number
+      duplicatesSkipped: number
+      customersCreated: number
+      parseErrors: number
+      fileErrors: number
+      durationSeconds: number
+    }
+    timeWindow: {
+      startTime: string
+      endTime: string
+      durationMinutes: number
+    }
+  }> => {
+    const { data } = await api.post('/data/refresh-orders-for-daily', null, {
       params: { startTime },
     })
     return data
