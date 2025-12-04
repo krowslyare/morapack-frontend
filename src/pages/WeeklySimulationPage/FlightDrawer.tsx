@@ -580,6 +580,15 @@ export const FlightDrawer = memo(function FlightDrawer({
                     Inicia la simulación para visualizar los vuelos de la semana
                   </EmptySubtitle>
                 </EmptyState>
+              ) : flightsWithProducts.length === 0 ? (
+                // Caso 2: sí hay vuelos, pero ninguno con paquetes
+                <EmptyState>
+                  <EmptyIcon>📦</EmptyIcon>
+                  <EmptyTitle>No hay vuelos con paquetes asignados</EmptyTitle>
+                  <EmptySubtitle>
+                    Por el momento no hay carga en tránsito. Ejecuta el algoritmo diario o avanza la simulación.
+                  </EmptySubtitle>
+                </EmptyState>
               ) : (
                 <DrawerGrid>
                   {flightInstances

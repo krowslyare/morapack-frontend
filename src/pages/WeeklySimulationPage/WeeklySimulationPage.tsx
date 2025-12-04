@@ -773,7 +773,8 @@ export function WeeklySimulationPage() {
               flightResponse.flights,
               startTime,
               168,
-              airports
+              airports,
+              { baseDay: 1 }   // 👈 día 1..7
             )
 
             setFlightInstances(inst)
@@ -849,7 +850,6 @@ export function WeeklySimulationPage() {
             setKpi(prev => ({
               ...prev,
               totalFlights: inst.length,
-              avgCapacityUsage: flightResponse.statistics?.averageUtilization ?? 0,
             }))
 
         } catch (error) {
@@ -1398,37 +1398,6 @@ export function WeeklySimulationPage() {
     return (
         <Wrapper>
 
-            
-           
-
-          
-
-            {isBackgroundProcessing && (
-              <div
-                style={{
-                  background: "#fef3c7",
-                  color: "#92400e",
-                  padding: "10px 16px",
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8
-                }}
-              >
-                <span style={{
-                  width: 14,
-                  height: 14,
-                  border: "2px solid #92400e",
-                  borderTopColor: "transparent",
-                  borderRadius: "50%",
-                  animation: "spin 1s linear infinite"
-                }} />
-                Procesando información… El sistema sigue ejecutando actualizaciones internas.
-              </div>
-            )}
 
             <Header>
 
@@ -1487,7 +1456,7 @@ export function WeeklySimulationPage() {
                 />
                 <WeeklyKPICard
                   label="Pedidos entregados"
-                  value={deliveredOrdersFromDb}
+                  value={deliveredOrdersFromDb + kpi.deliveredOrders}
                 />
                 <WeeklyKPICard
                   label="Uso actual de capacidad"
