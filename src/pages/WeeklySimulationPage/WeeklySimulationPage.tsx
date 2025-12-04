@@ -627,7 +627,8 @@ export function WeeklySimulationPage() {
     const SPEED_FAST = 600    // 1 hora simulada por segundo real
     
     // 🐍 PYTHON REPLICA: Pasos discretos de 4 horas
-    const STEP_HOURS = 4
+    const STEP_HOURS = 0.5 //speedRef
+    const STEP_MIN = 0.05 //speedRef
     const TOTAL_HOURS = 24 * TOTAL_DAYS  // 168 horas
 
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
@@ -1159,7 +1160,7 @@ export function WeeklySimulationPage() {
           }
 
           // Update-states cada 4h
-          const currentStepHours = Math.floor(elapsedHours / STEP_HOURS) * STEP_HOURS
+          const currentStepHours = Math.floor(elapsedHours / (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) * (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)
           
           if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
             lastUpdateHoursRef.current = currentStepHours
@@ -1294,9 +1295,9 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Loop secuencial (espera a que termine cada paso)
     const runSimulationLoop = useCallback(async () => {
-      const msPerStep = (STEP_HOURS * 3600 * 1000) / speedRef.current;
+      const msPerStep = ((speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS) * 3600 * 1000) / speedRef.current;
 
-      for (let stepHours = STEP_HOURS; stepHours <= TOTAL_HOURS; stepHours += STEP_HOURS) {
+      for (let stepHours = (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS); stepHours <= TOTAL_HOURS; stepHours += (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) {
 
         // ✅ Esperar mientras esté pausado
         while (pausedRef.current && intervalRef.current) {
