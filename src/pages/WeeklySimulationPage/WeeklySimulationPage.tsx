@@ -470,7 +470,8 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // Calcular duración restante en tiempo REAL (considerando velocidad actual)
       const remainingFlightMs = arrMs - now
       const currentSpeed = speedRef.current
-      const remainingDurationSec = remainingFlightMs / (currentSpeed * 1000)
+      // ✅ DESPUÉS: duración en segundos "simulados"
+      const remainingDurationSec = remainingFlightMs / 1000
 
       // Crear animación desde el progreso actual hasta el final
       const animObj = { t: initialProgress }
@@ -1016,6 +1017,9 @@ export function WeeklySimulationPage() {
         const transitions = response?.transitions ?? 0
         console.log('✅ Transitions:', transitions)
 
+        // 👇👇 AQUI invalidas los pedidos para que el drawer se refresque
+        queryClient.invalidateQueries({ queryKey: orderKeys.all })
+
         if (response.capacityStats) {
           const used = Number(response.capacityStats.usedCapacity ?? 0)
           const total = Number(response.capacityStats.totalCapacity ?? 0)
@@ -1061,7 +1065,7 @@ export function WeeklySimulationPage() {
           setIsBackgroundProcessing(false);
         }
       }
-    }, [])
+    }, [queryClient])
 
     
 

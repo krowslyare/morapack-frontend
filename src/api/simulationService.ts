@@ -478,7 +478,7 @@ export const simulationService = {
         let arrivalDateTime: Date
 
         if (hasRealTimes) {
-          // Use real scheduled times from flights.txt in UTC
+          // 1) Salida: usa la hora real de la BD
           departureDateTime = new Date(Date.UTC(
             dayStart.getUTCFullYear(),
             dayStart.getUTCMonth(),
@@ -488,20 +488,22 @@ export const simulationService = {
             0, 0
           ))
 
-          // Calculate arrival - may be next day if flight crosses midnight
-          arrivalDateTime = new Date(Date.UTC(
-            dayStart.getUTCFullYear(),
-            dayStart.getUTCMonth(),
-            dayStart.getUTCDate(),
-            arrTime.hours,
-            arrTime.minutes,
-            0, 0
-          ))
+          // 2) Duración real del vuelo según transport_time_days
+          const flightDurationMs =
+            (flight.transportTimeDays || 0) * 24 * 60 * 60 * 1000
 
-          // If arrival time is before departure time, flight crosses midnight
-          if (arrivalDateTime <= departureDateTime) {
-            arrivalDateTime = new Date(arrivalDateTime.getTime() + 24 * 60 * 60 * 1000)
+          // 3) Llegada = salida + duración
+          arrivalDateTime = new Date(departureDateTime.getTime() + flightDurationMs)
+
+          if (flight.code === 'FL-1342') {
+            const diffMinutes =
+              (arrivalDateTime.getTime() - departureDateTime.getTime()) / (60 * 1000)
+
+            console.log(
+              `FL-1342 dep=${departureDateTime.toISOString()} arr=${arrivalDateTime.toISOString()} diffMinutes=${diffMinutes}`
+            )
           }
+
         } else {
           // Fallback: use transport time (spread flights evenly if multiple per day)
           const frequency = flight.dailyFrequency || 1
