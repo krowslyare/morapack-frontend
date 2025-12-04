@@ -10,6 +10,7 @@ export interface FlightPackageProduct {
   order?: {
     id?: number
     name?: string
+    origin?: string      // 👈 NUEVO
     destination?: string
     customer?: string
   }

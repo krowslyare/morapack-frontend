@@ -336,10 +336,10 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   } = props
 
   const map = useMap()
-  const markersRef = useRef<Record<string, Marker>>({})
-  const flightAnimationsRef = useRef<Record<string, gsap.core.Tween>>({})
-  const departureTimesRef = useRef<Record<string, number>>({})
-  const arrivalTimesRef = useRef<Record<string, number>>({})
+  const markersRef = useRef<Partial<Record<string, Marker>>>({})
+  const flightAnimationsRef = useRef<Partial<Record<string, gsap.core.Tween>>>({})
+  const departureTimesRef = useRef<Partial<Record<string, number>>>({})
+  const arrivalTimesRef = useRef<Partial<Record<string, number>>>({})
 
   const MAX_FLIGHTS = 300
 
@@ -347,8 +347,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   useEffect(() => {
     if (!map) return
     return () => {
-      Object.values(flightAnimationsRef.current).forEach(tween => tween.kill())
-      Object.values(markersRef.current).forEach(m => m.remove())
+      Object.values(flightAnimationsRef.current).forEach(t => {
+        if (t) t.kill()
+      })
+      Object.values(markersRef.current).forEach(m => {
+        if (m) m.remove()
+      })
       markersRef.current = {}
       flightAnimationsRef.current = {}
       departureTimesRef.current = {}
@@ -376,11 +380,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (showOnlyWithProducts && !hasProducts) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id].remove()
+          markersRef.current[f.id]?.remove()
           delete markersRef.current[f.id]
         }
-        if (flightAnimationsRef.current[f.id]) {
-          flightAnimationsRef.current[f.id].kill()
+        const tween = flightAnimationsRef.current[f.id]
+        if (tween) {
+          tween.kill()
           delete flightAnimationsRef.current[f.id]
         }
         delete departureTimesRef.current[f.id]
@@ -393,11 +398,12 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (now > arrMs) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id].remove()
+          markersRef.current[f.id]?.remove()
           delete markersRef.current[f.id]
         }
-        if (flightAnimationsRef.current[f.id]) {
-          flightAnimationsRef.current[f.id].kill()
+        const tween = flightAnimationsRef.current[f.id]
+        if (tween) {
+          tween.kill()
           delete flightAnimationsRef.current[f.id]
         }
         delete departureTimesRef.current[f.id]
@@ -506,12 +512,14 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   // Control de play/pause y velocidad - transición suave
   useEffect(() => {
     Object.values(flightAnimationsRef.current).forEach(tween => {
-      // Transición suave del timeScale
-      gsap.to(tween, { 
-        timeScale: playbackSpeed, 
-        duration: 0.3, 
-        ease: 'power2.out' 
+      if (!tween) return  // ← TS feliz, gsap feliz
+
+      gsap.to(tween, {
+        timeScale: playbackSpeed,
+        duration: 0.3,
+        ease: "power2.out",
       })
+
       if (isPlaying) {
         tween.play()
       } else {
@@ -527,17 +535,21 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     const now = currentSimTime.getTime()
 
     Object.entries(arrivalTimesRef.current).forEach(([id, arrMs]) => {
-      if (now > arrMs + 5000) {  // 5 segundos después de llegar
+      if (arrMs === undefined) return
+
+      if (now > arrMs + 5000) {
         const marker = markersRef.current[id]
         if (marker) {
           marker.remove()
           delete markersRef.current[id]
         }
+
         const tween = flightAnimationsRef.current[id]
         if (tween) {
           tween.kill()
           delete flightAnimationsRef.current[id]
         }
+
         delete departureTimesRef.current[id]
         delete arrivalTimesRef.current[id]
       }
@@ -560,13 +572,15 @@ function mapAirportToSimAirport(a: any): SimAirport {
 }
 
 const INITIAL_KPI = {
-  totalFlights: 0,
-  avgCapacityUsage: 0,
-  deliveredOrders: 0,
-  deliveredProducts: 0,
-  assignmentRate: 0,        // NUEVO
-  totalProductsWeek: 0,     // NUEVO
-  assignedProductsWeek: 0,  // NUEVO
+  totalFlights: 0,          // total planificado semana (si lo quieres guardar)
+  avgCapacityUsage: 0,      // uso actual de capacidad (%)
+  deliveredOrders: 0,       // pedidos realmente entregados
+  deliveredProducts: 0,     // si luego tienes dato real, por ahora queda en 0
+  assignmentRate: 0,
+  totalProductsWeek: 0,
+  assignedProductsWeek: 0,
+  totalOrdersWeek: 0,
+  assignedOrdersWeek: 0,
 }
 
 
@@ -613,7 +627,8 @@ export function WeeklySimulationPage() {
     const SPEED_FAST = 600    // 1 hora simulada por segundo real
     
     // 🐍 PYTHON REPLICA: Pasos discretos de 4 horas
-    const STEP_HOURS = 4
+    const STEP_HOURS = 0.5 //speedRef
+    const STEP_MIN = 0.05 //speedRef
     const TOTAL_HOURS = 24 * TOTAL_DAYS  // 168 horas
 
     const { simulationStartDate, hasValidConfig } = useSimulationStore()
@@ -643,8 +658,51 @@ export function WeeklySimulationPage() {
 
     // ✅ Extraer los pedidos del resultado
     const orders = useMemo(() => ordersData ?? [], [ordersData])
+    // ✅ KPIs derivados de los pedidos reales
 
+    // Conteo por estado en base a los pedidos que ya tienes en memoria
+    const ordersByStatus = useMemo(() => {
+      const base = {
+        PENDING: 0,
+        IN_TRANSIT: 0,
+        ARRIVED: 0,
+        DELIVERED: 0,
+      }
+
+      for (const o of orders) {
+        const s = (o.status || '').toUpperCase() as keyof typeof base
+        if (s in base) {
+          base[s] += 1
+        }
+      }
+
+      return base
+    }, [orders])
     
+    // Total pedidos (suma de todos los estados)
+    const totalOrdersFromDb = useMemo(
+      () =>
+        ordersByStatus.PENDING +
+        ordersByStatus.IN_TRANSIT +
+        ordersByStatus.ARRIVED +
+        ordersByStatus.DELIVERED,
+      [ordersByStatus]
+    )
+
+    // Si para ti "con ruta asignada" = todo lo que NO está pendiente:
+    const ordersWithRoute = useMemo(
+      () =>
+        ordersByStatus.IN_TRANSIT +
+        ordersByStatus.ARRIVED +
+        ordersByStatus.DELIVERED,
+      [ordersByStatus]
+    )
+
+    // Entregados desde BD (por estado)
+    const deliveredOrdersFromDb = useMemo(
+      () => ordersByStatus.DELIVERED,
+      [ordersByStatus]
+    )
     
 
     const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW)
@@ -715,7 +773,8 @@ export function WeeklySimulationPage() {
               flightResponse.flights,
               startTime,
               168,
-              airports
+              airports,
+              { baseDay: 1 }   // 👈 día 1..7
             )
 
             setFlightInstances(inst)
@@ -791,7 +850,6 @@ export function WeeklySimulationPage() {
             setKpi(prev => ({
               ...prev,
               totalFlights: inst.length,
-              avgCapacityUsage: flightResponse.statistics?.averageUtilization ?? 0,
             }))
 
         } catch (error) {
@@ -862,34 +920,53 @@ export function WeeklySimulationPage() {
             score: response.score,
           })
 
-          const orders = Number(response.assignedOrders ?? 0)
-          const products = Number(response.assignedProducts ?? 0)
-          const totalProds = Number(response.totalProducts ?? 0)
+          const assignedOrders = Number(response.assignedOrders ?? 0)
+          const assignedProducts = Number(response.assignedProducts ?? 0)
+          const totalOrders = Number(response.totalOrders ?? 0)
+          const totalProducts = Number(response.totalProducts ?? 0)
 
           setKpi(prev => {
-            const prevOrders = Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0
-            const prevProducts = Number.isFinite(prev.deliveredProducts) ? prev.deliveredProducts : 0
-            const newAssigned = prev.assignedProductsWeek + products
-            const newTotal = prev.totalProductsWeek + totalProds
-            const rate = newTotal > 0 ? (newAssigned / newTotal) * 100 : 0
+            const newAssignedProductsWeek = prev.assignedProductsWeek + assignedProducts
+            const newTotalProductsWeek = prev.totalProductsWeek + totalProducts
+            const newAssignedOrdersWeek = prev.assignedOrdersWeek + assignedOrders
+            const newTotalOrdersWeek = prev.totalOrdersWeek + totalOrders
+
+            const rate =
+              newTotalProductsWeek > 0
+                ? (newAssignedProductsWeek / newTotalProductsWeek) * 100
+                : 0
 
             return {
               ...prev,
-              deliveredOrders: prevOrders + orders,
-              deliveredProducts: prevProducts + products,
-              assignedProductsWeek: newAssigned,
-              totalProductsWeek: newTotal,
+              assignedProductsWeek: newAssignedProductsWeek,
+              totalProductsWeek: newTotalProductsWeek,
+              assignedOrdersWeek: newAssignedOrdersWeek,
+              totalOrdersWeek: newTotalOrdersWeek,
               assignmentRate: Number(rate.toFixed(2)),
+              // ❌ NO tocamos deliveredOrders / deliveredProducts aquí
             }
           })
           
           console.groupEnd()
 
-          // ✅ Solo toast si hay productos asignados
-          if (products > 0) {
-            toast.success(`Día ${dayNumber + 1}: ${products} productos asignados`)
+          // ✅ Solo toast si hay algo asignado ese día
+          if (assignedProducts > 0 || assignedOrders > 0) {
+            const partes: string[] = []
+
+            if (assignedOrders > 0) {
+              partes.push(
+                `${assignedOrders} pedido${assignedOrders !== 1 ? 's' : ''}`
+              )
+            }
+            if (assignedProducts > 0) {
+              partes.push(
+                `${assignedProducts} producto${assignedProducts !== 1 ? 's' : ''}`
+              )
+            }
+
+            toast.success(`Día ${dayNumber + 1}: ${partes.join(' y ')} asignados`)
           }
-          [queryClient] // ✅ Agregar a dependencies
+
         } catch (error: any) {
 
           // ✅ Ignorar errores de cancelación
@@ -905,7 +982,7 @@ export function WeeklySimulationPage() {
           toast.error('Error al ejecutar el algoritmo diario')
         }
       },
-      []
+      [simulationStartDate, createCancelableRequest, queryClient]
     )
 
     // 🐍 PYTHON REPLICA: Update states
@@ -943,26 +1020,25 @@ export function WeeklySimulationPage() {
         if (response.capacityStats) {
           const used = Number(response.capacityStats.usedCapacity ?? 0)
           const total = Number(response.capacityStats.totalCapacity ?? 0)
-
           const percent = total > 0 ? (used / total) * 100 : 0
 
           setKpi(prev => ({
             ...prev,
-            avgCapacityUsage: Number(percent.toFixed(2)),
+            avgCapacityUsage: Number(percent.toFixed(2)), // uso actual de capacidad
           }))
         }
         
         // 👉 Lo que se entregó en este paso (productos / pedidos, según tu modelo)
-        const deliveredThisStep = Number(transitions?.arrivedToDelivered ?? 0)
+        const deliveredThisStep = Number(response.transitions?.arrivedToDelivered ?? 0)
 
-        if (deliveredThisStep > 0) {
-          setKpi(prev => ({
-            ...prev,
-            deliveredOrders:
-              (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0)
-              + deliveredThisStep,
-          }))
-        }
+       if (deliveredThisStep > 0) {
+        setKpi(prev => ({
+          ...prev,
+          deliveredOrders:
+            (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0) +
+            deliveredThisStep,
+        }))
+      }
 
 
         console.groupEnd()
@@ -1084,7 +1160,7 @@ export function WeeklySimulationPage() {
           }
 
           // Update-states cada 4h
-          const currentStepHours = Math.floor(elapsedHours / STEP_HOURS) * STEP_HOURS
+          const currentStepHours = Math.floor(elapsedHours / (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) * (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)
           
           if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
             lastUpdateHoursRef.current = currentStepHours
@@ -1219,9 +1295,9 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Loop secuencial (espera a que termine cada paso)
     const runSimulationLoop = useCallback(async () => {
-      const msPerStep = (STEP_HOURS * 3600 * 1000) / speedRef.current;
+      const msPerStep = ((speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS) * 3600 * 1000) / speedRef.current;
 
-      for (let stepHours = STEP_HOURS; stepHours <= TOTAL_HOURS; stepHours += STEP_HOURS) {
+      for (let stepHours = (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS); stepHours <= TOTAL_HOURS; stepHours += (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) {
 
         // ✅ Esperar mientras esté pausado
         while (pausedRef.current && intervalRef.current) {
@@ -1307,6 +1383,14 @@ export function WeeklySimulationPage() {
       })
     }, [flightInstances, currentTime])
 
+    const flightsStartedSoFar = useMemo(() => {
+      if (!currentTime) return 0
+      const now = currentTime.getTime()
+      return flightInstances.filter(f =>
+        new Date(f.departureTime).getTime() <= now
+      ).length
+    }, [flightInstances, currentTime])
+
     const bounds = airports?.length
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
@@ -1314,37 +1398,6 @@ export function WeeklySimulationPage() {
     return (
         <Wrapper>
 
-            
-           
-
-          
-
-            {isBackgroundProcessing && (
-              <div
-                style={{
-                  background: "#fef3c7",
-                  color: "#92400e",
-                  padding: "10px 16px",
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8
-                }}
-              >
-                <span style={{
-                  width: 14,
-                  height: 14,
-                  border: "2px solid #92400e",
-                  borderTopColor: "transparent",
-                  borderRadius: "50%",
-                  animation: "spin 1s linear infinite"
-                }} />
-                Procesando información… El sistema sigue ejecutando actualizaciones internas.
-              </div>
-            )}
 
             <Header>
 
@@ -1393,10 +1446,28 @@ export function WeeklySimulationPage() {
               </KPIPanelHeader>
 
               <KPIContainer>
-                  <WeeklyKPICard label="Total de vuelos" value={kpi.totalFlights} />
-                  <WeeklyKPICard label="Capacidad Promedio" value={kpi.avgCapacityUsage + "%"} />
-                  <WeeklyKPICard label="Unidades entregadas" value={kpi.deliveredOrders} />
-                  <WeeklyKPICard label="Productos entregados" value={kpi.deliveredProducts} />
+                <WeeklyKPICard
+                  label="Vuelos activos"
+                  value={activeFlightsCount}
+                />
+                <WeeklyKPICard
+                  label="Pedidos con ruta asignada"
+                  value={ordersWithRoute}
+                />
+                <WeeklyKPICard
+                  label="Pedidos entregados"
+                  value={deliveredOrdersFromDb + kpi.deliveredOrders}
+                />
+                <WeeklyKPICard
+                  label="Uso actual de capacidad"
+                  value={kpi.avgCapacityUsage.toFixed(1) + "%"}
+                />
+                {/* Si quieres, puedes cambiar alguno por:
+                    <WeeklyKPICard
+                      label="Tasa de asignación"
+                      value={kpi.assignmentRate.toFixed(1) + "%"}
+                    />
+                */}
               </KPIContainer>
             </KPIPanel>
 
@@ -1618,7 +1689,8 @@ export function WeeklySimulationPage() {
                 <AirportDetailsModal
                   airport={selectedAirport}
                   onClose={() => setSelectedAirport(null)}
-                  readOnly
+                  flightInstances={flightInstances}
+                  instanceHasProducts={instanceHasProducts}
                 />
             )}
 

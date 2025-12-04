@@ -442,7 +442,8 @@ export const simulationService = {
     flights: FlightStatus[],
     startTime: Date,
     durationHours: number,
-    airports: any[]
+    airports: any[],
+    options?: { baseDay?: number }      // 👈 NUEVO
   ): FlightInstance[] => {
     const instances: FlightInstance[] = []
 
@@ -459,6 +460,7 @@ export const simulationService = {
 
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
     const durationDays = Math.ceil(durationHours / 24)
+    const baseDay = options?.baseDay ?? 1  // 👈 por defecto arranca en 1
 
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
     const parseTimeString = (timeStr: string | undefined): { hours: number; minutes: number } | null => {
@@ -545,10 +547,14 @@ export const simulationService = {
           // Use the scheduled hours/minutes from flights.txt (depTime), not the Date object
           const instanceHours = hasRealTimes ? depTime.hours : 0
           const instanceMinutes = hasRealTimes ? depTime.minutes : 0
-          const instanceId = `FL-${flight.id}-DAY-${day}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
+
+          // Día global de simulación (1-based)
+          const globalDayNumber = baseDay + day
+          const instanceId = `FL-${flight.id}-DAY-${globalDayNumber}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
+
           
           instances.push({
-            id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
+            id: `${flight.code}-D${globalDayNumber}-${departureDateTime.getTime()}`,
             flightId: flight.id,
             flightCode: flight.code,
             departureTime: departureDateTime.toISOString(),
@@ -599,7 +605,7 @@ export const simulationService = {
     flights: FlightStatus[],
     currentInstances: FlightInstance[],
     simulationStartTime: Date,
-    currentDay: number,
+    currentDay: number,  // 👈 0-based: 0=day1, 1=day2, etc.
     airports: any[]
   ): FlightInstance[] => {
     // Validate inputs
@@ -623,7 +629,8 @@ export const simulationService = {
       flights,
       nextDayStart,
       24,
-      airports
+      airports,
+      { baseDay: currentDay + 2 }   // 👈 si currentDay=0 → DAY-2; si=1 → DAY-3, etc.
     )
 
     // Clean up old instances (more than 1 day old)

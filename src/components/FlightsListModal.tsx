@@ -2,6 +2,8 @@ import { useState } from 'react'
 import styled from 'styled-components'
 import type { FlightSchema } from '../types'
 import { FlightPackagesModal } from './FlightPackagesModal'
+// 👇 importa el tipo de instancia
+import type { FlightInstance } from '../api/simulationService'
 
 const Overlay = styled.div`
   position: fixed;
@@ -225,12 +227,38 @@ interface FlightsListModalProps {
   airportName: string
   flights: FlightSchema[]
   onClose: () => void
+  // 👇 iguales que en AirportDetailsModal / FlightDrawer
+  flightInstances: FlightInstance[]
+  instanceHasProducts: Record<string, number>
 }
 
-export function FlightsListModal({ airportName, flights, onClose }: FlightsListModalProps) {
+export function FlightsListModal({
+  airportName,
+  flights,
+  onClose,
+  flightInstances,
+  instanceHasProducts,
+}: FlightsListModalProps) {
   const scheduledCount = flights.length
   const activeCount = flights.filter((f) => f.status === 'EN_VUELO').length
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+
+  // 🔢 suma de paquetes por vuelo base (id de vuelo)
+  const getProductsForFlight = (flightId?: number) => {
+    if (!flightId) return 0
+
+    return flightInstances
+      .filter((fi) => fi.flightId === flightId)
+      .reduce((sum, fi) => sum + (instanceHasProducts[fi.instanceId] ?? 0), 0)
+  }
+
+  // 👇 lista de vuelos + cantidad de productos, ordenada desc
+  const flightsSorted = flights
+    .map((flight) => ({
+      flight,
+      productsOnFlight: getProductsForFlight(flight.id),
+    }))
+    .sort((a, b) => b.productsOnFlight - a.productsOnFlight)
 
   return (
     <>
@@ -256,27 +284,30 @@ export function FlightsListModal({ airportName, flights, onClose }: FlightsListM
               </SummaryChip>
             </SummaryRow>
 
-            {flights.length === 0 ? (
+            {flightsSorted.length === 0 ? (
               <EmptyState>No hay vuelos programados para este aeropuerto.</EmptyState>
             ) : (
               <FlightsList>
-                {flights.map((flight) => (
+                {flightsSorted.map(({ flight, productsOnFlight }) => (
                   <FlightItem key={flight.id}>
                     <FlightInfo>
                       <FlightCode>{flight.code || `Vuelo #${flight.id}`}</FlightCode>
                       <FlightRoute>
                         {flight.originAirportCode} → {flight.destinationAirportCode}
-                        {flight.assignedProducts !== undefined && (
-                          <span style={{ 
-                            marginLeft: '8px',
-                            padding: '2px 6px',
-                            background: flight.assignedProducts > 0 ? '#d1fae5' : '#f3f4f6',
-                            color: flight.assignedProducts > 0 ? '#065f46' : '#6b7280',
-                            borderRadius: '999px',
-                            fontSize: '11px',
-                            fontWeight: 600
-                          }}>
-                            {flight.assignedProducts} {flight.assignedProducts === 1 ? 'producto' : 'productos'}
+                        {productsOnFlight > 0 && (
+                          <span
+                            style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              background: '#d1fae5',
+                              color: '#065f46',
+                              borderRadius: '999px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {productsOnFlight}{' '}
+                            {productsOnFlight === 1 ? 'producto' : 'productos'}
                           </span>
                         )}
                       </FlightRoute>
