@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from 'react-leaflet'
 import L, { type LatLngTuple } from 'leaflet'
 import { useAirports } from '../../hooks/api/useAirports'
-import { simulationService, type CollapseSimulationResult } from '../../api/simulationService'
+import { simulationService, type CollapseSimulationResult, type AffectedAirport } from '../../api/simulationService'
 import { toast } from 'react-toastify'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import type { Continent } from '../../types/Continent'
@@ -90,7 +90,7 @@ const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'collapsed' | 'su
   }};
 `
 
-const ControlButton = styled.button<{ $variant?: 'play' | 'stop' | 'warning' }>`
+const ControlButton = styled.button<{ $variant?: 'play' | 'stop' | 'warning' | 'demo' }>`
   padding: 10px 18px;
   border-radius: 999px;
   border: none;
@@ -104,6 +104,7 @@ const ControlButton = styled.button<{ $variant?: 'play' | 'stop' | 'warning' }>`
     if (p.$variant === 'play') return '#10b981'
     if (p.$variant === 'stop') return '#ef4444'
     if (p.$variant === 'warning') return '#f59e0b'
+    if (p.$variant === 'demo') return '#8b5cf6'
     return '#6b7280'
   }};
   color: #ffffff;
@@ -580,11 +581,246 @@ const ReasonBadge = styled.div`
   box-sizing: border-box;
 `
 
+// ====================== Affected Airports Section ======================
+const AffectedAirportsSection = styled.div`
+  margin-top: 8px;
+`
+
+const AffectedAirportsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+`
+
+const AffectedAirportCard = styled.div<{ $severity: 'critical' | 'high' | 'medium' | 'low' }>`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: ${p => {
+    switch(p.$severity) {
+      case 'critical': return '#fef2f2'
+      case 'high': return '#fff7ed'
+      case 'medium': return '#fefce8'
+      case 'low': return '#f0fdf4'
+      default: return '#f9fafb'
+    }
+  }};
+  border: 1px solid ${p => {
+    switch(p.$severity) {
+      case 'critical': return '#fecaca'
+      case 'high': return '#fed7aa'
+      case 'medium': return '#fef08a'
+      case 'low': return '#bbf7d0'
+      default: return '#e5e7eb'
+    }
+  }};
+  border-radius: 8px;
+  transition: all 0.2s;
+
+  &:hover {
+    transform: translateX(4px);
+  }
+`
+
+const SeverityDot = styled.div<{ $severity: 'critical' | 'high' | 'medium' | 'low' }>`
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: ${p => {
+    switch(p.$severity) {
+      case 'critical': return '#dc2626'
+      case 'high': return '#ea580c'
+      case 'medium': return '#ca8a04'
+      case 'low': return '#16a34a'
+      default: return '#6b7280'
+    }
+  }};
+`
+
+const AirportInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`
+
+const AirportName = styled.div`
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`
+
+const AirportDetail = styled.div`
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+`
+
+const AirportStats = styled.div`
+  text-align: right;
+  flex-shrink: 0;
+`
+
+const AirportStatValue = styled.div`
+  font-size: 14px;
+  font-weight: 700;
+  color: #dc2626;
+`
+
+const AirportStatLabel = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+`
+
+const ViewMapButton = styled.button`
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #fecaca;
+  }
+`
+
 const ResultFooter = styled.div`
   padding: 16px 24px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   gap: 12px;
+`
+
+// ====================== Map Legend ======================
+const MapLegend = styled.div`
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 1000;
+  min-width: 180px;
+`
+
+const LegendTitle = styled.div`
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`
+
+const LegendItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #374151;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`
+
+const LegendDot = styled.div<{ $color: string }>`
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: ${p => p.$color};
+  border: 2px solid ${p => p.$color}80;
+`
+
+const CollapseInfoPanel = styled.div`
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 2px solid #fecaca;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+  z-index: 1000;
+  max-width: 280px;
+`
+
+const CollapseInfoTitle = styled.div`
+  font-size: 14px;
+  font-weight: 700;
+  color: #991b1b;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
+const CollapseInfoText = styled.div`
+  font-size: 12px;
+  color: #7f1d1d;
+  line-height: 1.5;
+`
+
+const CollapseInfoStats = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+`
+
+const CollapseInfoStat = styled.div`
+  background: white;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+`
+
+const CollapseInfoStatValue = styled.div`
+  font-size: 18px;
+  font-weight: 700;
+  color: #dc2626;
+`
+
+const CollapseInfoStatLabel = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 2px;
+`
+
+const ShowReportButton = styled.button`
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  background: #dc2626;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #b91c1c;
+  }
 `
 
 // ====================== Helpers ======================
@@ -625,7 +861,7 @@ export function CollapseSimulationPage() {
   const { simulationStartDate, hasValidConfig } = useSimulationStore()
 
   // State
-  const [showConfigModal, setShowConfigModal] = useState(true)
+  const [showConfigModal, setShowConfigModal] = useState(false)
   const [showResultModal, setShowResultModal] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [result, setResult] = useState<CollapseSimulationResult | null>(null)
@@ -777,6 +1013,93 @@ export function CollapseSimulationPage() {
     setShowResultModal(false)
     setResult(null)
     setShowConfigModal(true)
+  }, [])
+
+  // Demo preview with dummy data
+  const handleDemoPreview = useCallback(() => {
+    const dummyResult: CollapseSimulationResult = {
+      hasCollapsed: true,
+      collapseDay: 12,
+      collapseReason: 'SLA_BREACH',
+      totalDaysSimulated: 12,
+      totalOrdersProcessed: 847,
+      assignedProducts: 2341,
+      unassignedProducts: 186,
+      unassignedPercentage: 7.4,
+      executionTimeSeconds: 342.7,
+      slaCompliancePercentage: 88.2,
+      slaViolationPercentage: 11.8,
+      productsOnTime: 2065,
+      productsLate: 276,
+      continentalSlaCompliance: 92.5,
+      intercontinentalSlaCompliance: 81.3,
+      continentalOrdersOnTime: 1542,
+      continentalOrdersTotal: 1667,
+      intercontinentalOrdersOnTime: 523,
+      intercontinentalOrdersTotal: 643,
+      slaThresholdUsed: 5,
+      // NEW: Affected airports for map visualization
+      affectedAirports: [
+        {
+          airportCode: 'SEQM',
+          airportName: 'Mariscal Sucre International',
+          cityName: 'Quito',
+          latitude: -0.1807,
+          longitude: -78.4678,
+          unassignedProducts: 67,
+          affectedOrders: 23,
+          severity: 'critical',
+          reason: 'Capacidad de vuelos excedida'
+        },
+        {
+          airportCode: 'SKCL',
+          airportName: 'Alfonso Bonilla Aragón',
+          cityName: 'Cali',
+          latitude: 3.5432,
+          longitude: -76.3816,
+          unassignedProducts: 45,
+          affectedOrders: 15,
+          severity: 'high',
+          reason: 'Sin vuelos disponibles en horario'
+        },
+        {
+          airportCode: 'MPTO',
+          airportName: 'Tocumen International',
+          cityName: 'Panamá',
+          latitude: 9.0714,
+          longitude: -79.3835,
+          unassignedProducts: 38,
+          affectedOrders: 12,
+          severity: 'high',
+          reason: 'Capacidad de almacén excedida'
+        },
+        {
+          airportCode: 'SKBO',
+          airportName: 'El Dorado International',
+          cityName: 'Bogotá',
+          latitude: 4.7016,
+          longitude: -74.1469,
+          unassignedProducts: 24,
+          affectedOrders: 8,
+          severity: 'medium',
+          reason: 'Conexiones insuficientes'
+        },
+        {
+          airportCode: 'SEGU',
+          airportName: 'José Joaquín de Olmedo',
+          cityName: 'Guayaquil',
+          latitude: -2.1574,
+          longitude: -79.8837,
+          unassignedProducts: 12,
+          affectedOrders: 4,
+          severity: 'low',
+          reason: 'Retraso en conexiones'
+        }
+      ]
+    }
+    setResult(dummyResult)
+    setShowResultModal(true)
+    setShowConfigModal(false)
   }, [])
 
   // Get status
@@ -982,14 +1305,47 @@ export function CollapseSimulationPage() {
                     </ResultCard>
                   </ResultGrid>
                 </ResultSection>
+
+                {/* Affected Airports Section - Only show if collapsed */}
+                {result.hasCollapsed && result.affectedAirports && result.affectedAirports.length > 0 && (
+                  <ResultSection>
+                    <ResultSectionTitle>
+                      Aeropuertos Afectados ({result.affectedAirports.length})
+                    </ResultSectionTitle>
+                    <AffectedAirportsSection>
+                      <AffectedAirportsList>
+                        {result.affectedAirports
+                          .sort((a, b) => b.unassignedProducts - a.unassignedProducts)
+                          .map((airport, index) => (
+                            <AffectedAirportCard key={index} $severity={airport.severity}>
+                              <SeverityDot $severity={airport.severity} />
+                              <AirportInfo>
+                                <AirportName>
+                                  {airport.cityName} ({airport.airportCode})
+                                </AirportName>
+                                <AirportDetail>{airport.reason}</AirportDetail>
+                              </AirportInfo>
+                              <AirportStats>
+                                <AirportStatValue>{airport.unassignedProducts}</AirportStatValue>
+                                <AirportStatLabel>productos</AirportStatLabel>
+                              </AirportStats>
+                            </AffectedAirportCard>
+                          ))}
+                      </AffectedAirportsList>
+                      <ViewMapButton onClick={() => setShowResultModal(false)}>
+                        Ver en el mapa
+                      </ViewMapButton>
+                    </AffectedAirportsSection>
+                  </ResultSection>
+                )}
               </ResultBody>
 
               <ResultFooter>
                 <ModalButton onClick={handleReset}>
                   Nueva Simulación
                 </ModalButton>
-                <ModalButton $primary onClick={() => navigate('/reportes')}>
-                  Ver Reportes
+                <ModalButton $primary onClick={() => setShowResultModal(false)}>
+                  Ver Mapa
                 </ModalButton>
               </ResultFooter>
             </>
@@ -1015,9 +1371,14 @@ export function CollapseSimulationPage() {
               Detener
             </ControlButton>
           ) : (
-            <ControlButton $variant="play" onClick={() => setShowConfigModal(true)}>
-              Configurar
-            </ControlButton>
+            <>
+              <ControlButton $variant="demo" onClick={handleDemoPreview}>
+                Vista Previa (Demo)
+              </ControlButton>
+              <ControlButton $variant="play" onClick={() => setShowConfigModal(true)}>
+                Configurar
+              </ControlButton>
+            </>
           )}
         </HeaderRight>
       </Header>
@@ -1134,6 +1495,63 @@ export function CollapseSimulationPage() {
           </SimulationControls>
         )}
 
+        {/* Map Legend - Show when there's a result */}
+        {!isRunning && result && (
+          <MapLegend>
+            <LegendTitle>Leyenda del Mapa</LegendTitle>
+            <LegendItem>
+              <LegendDot $color="#f6b53b" />
+              <span>Hub principal (cap. ilimitada)</span>
+            </LegendItem>
+            <LegendItem>
+              <LegendDot $color="#14b8a6" />
+              <span>Aeropuerto normal</span>
+            </LegendItem>
+            {result.hasCollapsed && result.affectedAirports && result.affectedAirports.length > 0 && (
+              <>
+                <LegendItem>
+                  <LegendDot $color="#dc2626" />
+                  <span>Crítico (mayor impacto)</span>
+                </LegendItem>
+                <LegendItem>
+                  <LegendDot $color="#ea580c" />
+                  <span>Alto impacto</span>
+                </LegendItem>
+                <LegendItem>
+                  <LegendDot $color="#ca8a04" />
+                  <span>Impacto medio</span>
+                </LegendItem>
+              </>
+            )}
+          </MapLegend>
+        )}
+
+        {/* Collapse Info Panel - Show when collapsed and not viewing modal */}
+        {!isRunning && result?.hasCollapsed && !showResultModal && (
+          <CollapseInfoPanel>
+            <CollapseInfoTitle>
+              Punto de Quiebre Detectado
+            </CollapseInfoTitle>
+            <CollapseInfoText>
+              El sistema no pudo cumplir con los SLA de entrega en el <strong>día {result.collapseDay}</strong>.
+              Los aeropuertos marcados en rojo muestran dónde ocurrieron los problemas.
+            </CollapseInfoText>
+            <CollapseInfoStats>
+              <CollapseInfoStat>
+                <CollapseInfoStatValue>{result.affectedAirports?.length ?? 0}</CollapseInfoStatValue>
+                <CollapseInfoStatLabel>Aeropuertos afectados</CollapseInfoStatLabel>
+              </CollapseInfoStat>
+              <CollapseInfoStat>
+                <CollapseInfoStatValue>{result.unassignedProducts}</CollapseInfoStatValue>
+                <CollapseInfoStatLabel>Productos sin asignar</CollapseInfoStatLabel>
+              </CollapseInfoStat>
+            </CollapseInfoStats>
+            <ShowReportButton onClick={() => setShowResultModal(true)}>
+              Ver Reporte Completo
+            </ShowReportButton>
+          </CollapseInfoPanel>
+        )}
+
         <MapContainer
           bounds={bounds}
           scrollWheelZoom={true}
@@ -1146,6 +1564,7 @@ export function CollapseSimulationPage() {
         >
           <Pane name="airports" style={{ zIndex: 500 }} />
           <Pane name="main-hubs" style={{ zIndex: 600 }} />
+          <Pane name="affected-airports" style={{ zIndex: 700 }} />
 
           <TileLayer 
             attribution={tileAttribution} 
@@ -1189,30 +1608,108 @@ export function CollapseSimulationPage() {
           })}
 
           {/* Regular airports */}
-          {airports.map((airport: any) => (
-            <CircleMarker
-              key={airport.id}
-              center={[parseFloat(airport.latitude), parseFloat(airport.longitude)]}
-              radius={6}
-              color="#14b8a6"
-              fillColor="#14b8a6"
-              fillOpacity={0.8}
-              weight={2}
-              pane="airports"
-              eventHandlers={{
-                click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -8]} opacity={1}>
-                <div>
-                  <strong>{airport.cityName}</strong>
-                  <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                    {airport.codeIATA || airport.alias}
+          {airports.map((airport: any) => {
+            // Check if this airport is affected
+            const affectedInfo = result?.affectedAirports?.find(
+              (a) => a.airportCode === airport.codeIATA || a.airportCode === airport.alias
+            )
+            
+            // Skip if it's an affected airport (rendered separately)
+            if (affectedInfo) return null
+            
+            return (
+              <CircleMarker
+                key={airport.id}
+                center={[parseFloat(airport.latitude), parseFloat(airport.longitude)]}
+                radius={6}
+                color="#14b8a6"
+                fillColor="#14b8a6"
+                fillOpacity={0.8}
+                weight={2}
+                pane="airports"
+                eventHandlers={{
+                  click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                  <div>
+                    <strong>{airport.cityName}</strong>
+                    <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                      {airport.codeIATA || airport.alias}
+                    </div>
                   </div>
-                </div>
-              </Tooltip>
-            </CircleMarker>
-          ))}
+                </Tooltip>
+              </CircleMarker>
+            )
+          })}
+
+          {/* AFFECTED AIRPORTS - Rendered with red/orange colors based on severity */}
+          {result?.hasCollapsed && result?.affectedAirports?.map((affected, index) => {
+            const getSeverityColor = (severity: string) => {
+              switch(severity) {
+                case 'critical': return { fill: '#dc2626', stroke: '#991b1b' }
+                case 'high': return { fill: '#ea580c', stroke: '#c2410c' }
+                case 'medium': return { fill: '#ca8a04', stroke: '#a16207' }
+                case 'low': return { fill: '#16a34a', stroke: '#15803d' }
+                default: return { fill: '#dc2626', stroke: '#991b1b' }
+              }
+            }
+            const colors = getSeverityColor(affected.severity)
+            const radius = affected.severity === 'critical' ? 14 : 
+                          affected.severity === 'high' ? 12 : 10
+
+            return (
+              <CircleMarker
+                key={`affected-${index}`}
+                center={[affected.latitude, affected.longitude]}
+                radius={radius}
+                color={colors.stroke}
+                fillColor={colors.fill}
+                fillOpacity={0.9}
+                weight={3}
+                pane="affected-airports"
+              >
+                <Tooltip direction="top" offset={[0, -12]} opacity={1} permanent={affected.severity === 'critical'}>
+                  <div style={{ textAlign: 'center', minWidth: '150px' }}>
+                    <div style={{ 
+                      background: colors.fill, 
+                      color: 'white', 
+                      padding: '4px 8px', 
+                      borderRadius: '4px 4px 0 0',
+                      fontWeight: 700,
+                      fontSize: '12px'
+                    }}>
+                      PUNTO DE QUIEBRE
+                    </div>
+                    <div style={{ padding: '8px', background: 'white' }}>
+                      <strong style={{ fontSize: '13px' }}>{affected.cityName}</strong>
+                      <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                        {affected.airportCode}
+                      </div>
+                      <div style={{ 
+                        marginTop: '6px', 
+                        padding: '4px', 
+                        background: '#fef2f2', 
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        color: '#991b1b'
+                      }}>
+                        <strong>{affected.unassignedProducts}</strong> productos sin asignar
+                      </div>
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '10px', 
+                        color: '#6b7280',
+                        fontStyle: 'italic'
+                      }}>
+                        {affected.reason}
+                      </div>
+                    </div>
+                  </div>
+                </Tooltip>
+              </CircleMarker>
+            )
+          })}
         </MapContainer>
       </MapWrapper>
 

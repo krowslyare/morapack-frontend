@@ -267,7 +267,7 @@ export function FlightPackagesModal({
                       <th>ID</th>
                       <th>Orden</th>
                       <th>Nombre de orden</th>
-                      <th>Origen</th>        {/* 👈 nueva columna */}
+                      <th>Origen</th>
                       <th>Destino</th>
                       <th>Cliente</th>
                       <th>Estado</th>
@@ -281,7 +281,7 @@ export function FlightPackagesModal({
                         <td>{p.id}</td>
                         <td>{p.order?.id ?? '—'}</td>
                         <td>{p.order?.name ?? '—'}</td>
-                        <td>{p.order?.origin ?? '—'}</td>          {/* 👈 aquí el origen */}
+                        <td>{p.order?.origin ?? '—'}</td>
                         <td>{p.order?.destination ?? '—'}</td>
                         <td>{p.order?.customer ?? '—'}</td>
                         <td>
