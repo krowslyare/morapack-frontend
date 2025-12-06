@@ -16,9 +16,9 @@ interface AirportDetailsModalProps {
   onClose: () => void
   readOnly?: boolean
 
-  // 👇 igual que en FlightDrawer
-  flightInstances: FlightInstance[]
-  instanceHasProducts: Record<string, number>
+  // 👇 igual que en FlightDrawer (opcionales para compatibilidad)
+  flightInstances?: FlightInstance[]
+  instanceHasProducts?: Record<string, number>
 }
 
 
@@ -341,8 +341,8 @@ export function AirportDetailsModal({
   airport,
   onClose,
   readOnly = false,
-  flightInstances,
-  instanceHasProducts,
+  flightInstances = [],
+  instanceHasProducts = {},
 }: AirportDetailsModalProps) {
   const [showFlightsList, setShowFlightsList] = useState(false)
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code?: string } | null>(null)

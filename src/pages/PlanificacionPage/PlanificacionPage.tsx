@@ -1058,7 +1058,7 @@ export function PlanificacionPage() {
 
           {simulationMode === 'daily' && (
             <InfoBox $variant="info">
-              <strong>⚡ Modo diario:</strong>
+              <strong>Modo diario:</strong>
               <br />
               1. Selecciona la fecha y hora inicial de la operación.
               <br />

@@ -16,6 +16,9 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
+        // Aumentar timeout para operaciones largas (algoritmo ALNS puede tardar 30-90 min)
+        timeout: 5400000, // 90 minutos (igual que apiLongRunning en client.ts)
+        proxyTimeout: 5400000,
       },
     },
   },

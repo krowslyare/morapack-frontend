@@ -1901,6 +1901,8 @@ export function DailySimulationPage() {
         <AirportDetailsModal
           airport={selectedAirport}
           onClose={() => setSelectedAirport(null)}
+          flightInstances={flightInstances}
+          instanceHasProducts={instanceHasProducts}
         />
       )}
     </Wrapper>
