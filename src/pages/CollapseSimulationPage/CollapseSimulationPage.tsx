@@ -75,6 +75,42 @@ const MapWrapper = styled.div`
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `
 
+const LoadingOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  gap: 16px;
+`
+
+const Spinner = styled.div`
+  width: 48px;
+  height: 48px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #ef4444;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`
+
+const LoadingText = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+`
+
 const SimulationControls = styled.div`
   position: absolute;
   top: 12px;
@@ -648,10 +684,8 @@ function formatCollapseReason(reason: string): string {
 
 // Speed options in minutes per second
 const SPEED_OPTIONS = [
+  { label: '1m/s', value: 1 },
   { label: '15m/s', value: 15 },
-  { label: '30m/s', value: 30 },
-  { label: '1h/s', value: 60 },
-  { label: '2h/s', value: 120 },
 ]
 
 // Collapse thresholds
@@ -790,12 +824,14 @@ export function CollapseSimulationPage() {
 
   // Simulation state
   const [isRunning, setIsRunning] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(false)
   const [simulationStartDate, setSimulationStartDate] = useState<Date | null>(null)
   const [currentSimTime, setCurrentSimTime] = useState<Date | null>(null)
   const [dayCount, setDayCount] = useState(0)
 
   // Speed control (minutes per real second)
-  const [playbackSpeed, setPlaybackSpeed] = useState(15) // 15 min per second (fastest for collapse)
+  // 1 = real time (1 min sim = 1 min real), 15 = 15x faster
+  const [playbackSpeed, setPlaybackSpeed] = useState(1) // Default: real time like Daily
 
   // Algorithm state
   const [algorithmRunning, setAlgorithmRunning] = useState(false)
@@ -933,7 +969,7 @@ export function CollapseSimulationPage() {
         )
         console.log('Simulation time:', simTime.toISOString())
 
-        // Format sim time as LOCAL time
+        // Format sim time as LOCAL time for algorithm
         const year = simTime.getFullYear()
         const month = String(simTime.getMonth() + 1).padStart(2, '0')
         const day = String(simTime.getDate()).padStart(2, '0')
@@ -942,7 +978,18 @@ export function CollapseSimulationPage() {
         const seconds = String(simTime.getSeconds()).padStart(2, '0')
         const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
 
-        // Execute algorithm (24 hour window for collapse scenario)
+        // STEP 1: Refresh orders from files for this day
+        console.log('📦 Refreshing orders for day', dayNumber + 1)
+        try {
+          const refreshResponse = await simulationService.refreshOrdersForDaily(localTimeString)
+          if (refreshResponse.success) {
+            console.log(`✅ Orders refreshed: ${refreshResponse.statistics.ordersCreated} new`)
+          }
+        } catch (refreshErr) {
+          console.warn('⚠️ Could not refresh orders:', refreshErr)
+        }
+
+        // STEP 2: Execute algorithm (24 hour window for collapse scenario)
         const response = await simulationService.executeDaily({
           simulationStartTime: localTimeString,
           simulationDurationHours: 24,
@@ -973,29 +1020,13 @@ export function CollapseSimulationPage() {
           ordersLate: (kpi.ordersLate || 0) + ordersLate,
         })
 
-        // Check collapse conditions - collapse as soon as 1 order violates SLA
+        // TODO: Real collapse detection disabled for now - just simulate days continuously
+        // The demo button shows how a real collapse would look
         if (ordersLate > 0) {
-          console.log(`💥 COLLAPSE: ${ordersLate} order(s) violated SLA`)
-          setHasCollapsed(true)
-          setCollapseDay(dayNumber + 1)
-          setCollapseReason('SLA_BREACH')
-          setShowResultModal(true)
-          setIsRunning(false)
-          toast.error(`Sistema colapsó en el día ${dayNumber + 1}: ${ordersLate} orden(es) fuera de SLA`)
-          return
+          console.log(`⚠️ ${ordersLate} order(s) violated SLA (collapse detection disabled)`)
         }
-
         if (unassignedRatio >= MAX_UNASSIGNED_RATIO) {
-          console.log(
-            `💥 COLLAPSE: Unassigned ratio ${(unassignedRatio * 100).toFixed(1)}% >= ${MAX_UNASSIGNED_RATIO * 100}%`
-          )
-          setHasCollapsed(true)
-          setCollapseDay(dayNumber + 1)
-          setCollapseReason('UNASSIGNED_ORDERS')
-          setShowResultModal(true)
-          setIsRunning(false)
-          toast.error(`Sistema colapsó en el día ${dayNumber + 1}: Órdenes acumuladas`)
-          return
+          console.log(`⚠️ Unassigned ratio ${(unassignedRatio * 100).toFixed(1)}% >= ${MAX_UNASSIGNED_RATIO * 100}% (collapse detection disabled)`)
         }
 
         // Load flight instances for next day
@@ -1083,20 +1114,18 @@ export function CollapseSimulationPage() {
     }
   }, [isRunning, tick, hasCollapsed])
 
-  // Handle start
+  // Handle start - uses selected date from modal
   const handleStart = useCallback(async () => {
+    // Use the date selected in the modal
     const startDate = new Date(configStartDate)
 
     setShowConfigModal(false)
-    setIsRunning(true)
+    setIsInitializing(true)
     setHasCollapsed(false)
     setCollapseDay(null)
     setCollapseReason('')
-    setSimulationStartDate(startDate)
-    setCurrentSimTime(startDate)
     setDayCount(0)
     lastAlgorithmDayRef.current = -1
-    startRealTimeRef.current = Date.now()
 
     // Reset KPIs
     setKpi({
@@ -1114,12 +1143,58 @@ export function CollapseSimulationPage() {
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}
 
-    // Load initial flight instances (day 0)
-    const initialInstances = await generateFlightInstancesForDay(0, startDate)
-    setFlightInstances(initialInstances)
+    try {
+      // STEP 1: Load orders from files to database using Daily endpoint
+      // This uses 10-min window but we'll load more with each algorithm run
+      console.log('📦 Loading initial orders for Collapse Simulation...')
+      toast.info('Cargando datos de órdenes en BD...')
 
-    toast.info('Simulación de colapso iniciada')
-  }, [configStartDate, generateFlightInstancesForDay])
+      // Format date as local time
+      const year = startDate.getFullYear()
+      const month = String(startDate.getMonth() + 1).padStart(2, '0')
+      const day = String(startDate.getDate()).padStart(2, '0')
+      const hours = String(startDate.getHours()).padStart(2, '0')
+      const minutes = String(startDate.getMinutes()).padStart(2, '0')
+      const seconds = String(startDate.getSeconds()).padStart(2, '0')
+      const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+
+      console.log('Local time string:', localTimeString)
+
+      // Use loadForDailySimulation to load initial orders
+      const loadResponse = await simulationService.loadForDailySimulation(localTimeString)
+
+      if (!loadResponse.success) {
+        throw new Error(loadResponse.message || 'Failed to load orders')
+      }
+
+      console.log('✅ Initial orders loaded:', loadResponse.statistics.ordersCreated)
+      toast.success(`Cargados: ${loadResponse.statistics.ordersCreated} órdenes iniciales`)
+
+      // STEP 2: Load initial flight instances
+      console.log('✈️ Loading flight data...')
+      const initialInstances = await generateFlightInstancesForDay(0, startDate)
+      setFlightInstances(initialInstances)
+
+      // STEP 3: Set simulation state and start
+      setSimulationStartDate(startDate)
+      setCurrentSimTime(startDate)
+      startRealTimeRef.current = Date.now()
+      setIsRunning(true)
+
+      // STEP 4: Run first algorithm immediately (day 0)
+      console.log('🚀 Running initial algorithm for day 0...')
+      lastAlgorithmDayRef.current = 0
+      await runCollapseAlgorithm(startDate, 0)
+
+      console.log('✅ Collapse Simulation started successfully')
+    } catch (error) {
+      console.error('Error starting simulation:', error)
+      toast.error('Error al iniciar: ' + (error as Error).message)
+      setIsRunning(false)
+    } finally {
+      setIsInitializing(false)
+    }
+  }, [configStartDate, generateFlightInstancesForDay, runCollapseAlgorithm])
 
   // Handle stop
   const handleStop = useCallback(() => {
@@ -1281,14 +1356,17 @@ export function CollapseSimulationPage() {
           </FormGroup>
 
           <InfoBox>
-            La simulación corre el algoritmo completo día a día, acumulando órdenes no asignadas
-            como en la realidad.
+            El algoritmo corre día a día, acumulando órdenes no asignadas como en la realidad.
+            <br /><br />
+            <strong>Velocidades:</strong> 1min/s (tiempo real) o 15min/s (acelerado)
           </InfoBox>
 
           <ButtonRow>
-            <ModalButton onClick={() => navigate('/simulacion/semanal')}>Cancelar</ModalButton>
-            <ModalButton $primary onClick={handleStart}>
-              Iniciar Simulación
+            <ModalButton onClick={() => navigate('/simulacion/semanal')} disabled={isInitializing}>
+              Cancelar
+            </ModalButton>
+            <ModalButton $primary onClick={handleStart} disabled={isInitializing}>
+              {isInitializing ? 'Cargando...' : 'Iniciar Simulación'}
             </ModalButton>
           </ButtonRow>
         </ModalContent>
@@ -1388,6 +1466,16 @@ export function CollapseSimulationPage() {
       </Header>
 
       <MapWrapper>
+        {/* Loading overlay */}
+        {isInitializing && (
+          <LoadingOverlay>
+            <Spinner />
+            <LoadingText>
+              {algorithmRunning ? 'Ejecutando algoritmo inicial...' : 'Cargando datos...'}
+            </LoadingText>
+          </LoadingOverlay>
+        )}
+
         {/* Simulation Controls - when running or has result */}
         {(isRunning || dayCount > 0) && currentSimTime && (
           <SimulationControls>
