@@ -23,11 +23,12 @@ const Value = styled.div`
 interface WeeklyKPICardProps {
   label: string
   value: string | number
+  title?: string
 }
 
-export function WeeklyKPICard({ label, value }: WeeklyKPICardProps) {
+export function WeeklyKPICard({ label, value, title }: WeeklyKPICardProps) {
   return (
-    <Card>
+    <Card title={title}>
       <Label>{label}</Label>
       <Value>{value}</Value>
     </Card>

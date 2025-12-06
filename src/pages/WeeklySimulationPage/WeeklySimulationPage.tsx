@@ -819,14 +819,7 @@ export function WeeklySimulationPage() {
       [ordersByStatus]
     )
 
-    // Si para ti "con ruta asignada" = todo lo que NO está pendiente:
-    const ordersWithRoute = useMemo(
-      () =>
-        ordersByStatus.IN_TRANSIT +
-        ordersByStatus.ARRIVED +
-        ordersByStatus.DELIVERED,
-      [ordersByStatus]
-    )
+    // Nota: se usa la tasa de asignación calculada por el algoritmo
 
     // Entregados desde BD (por estado)
     const deliveredOrdersFromDb = useMemo(
@@ -1564,6 +1557,8 @@ export function WeeklySimulationPage() {
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
 
+    // Mostrar solo el conteo autoritativo desde la BD en la tarjeta de entregados
+
     return (
         <Wrapper>
 
@@ -1618,10 +1613,6 @@ export function WeeklySimulationPage() {
                 <WeeklyKPICard
                   label="Vuelos activos"
                   value={activeFlightsCount}
-                />
-                <WeeklyKPICard
-                  label="Pedidos con ruta asignada"
-                  value={ordersWithRoute}
                 />
                 <WeeklyKPICard
                   label="Pedidos entregados"
