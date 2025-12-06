@@ -1,0 +1,63 @@
+/* Estilo base para todos los aviones */
+.plane-icon img {
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+}
+
+/* Avión SIN paquetes */
+.plane-icon--empty img {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+/* Avión CON paquetes */
+.plane-icon--loaded img {
+  opacity: 1;
+  filter: none;
+}
+
+/* Estilos para iconos de avión en texto (emoji) */
+.plane-marker-collapse .plane-icon {
+  font-size: 20px;
+  transition: transform 0.3s ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.plane-marker-collapse {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Overlay para durante la simulación */
+.blocking-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+
+.dialog {
+  background: white;
+  padding: 24px 32px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 12px auto;
+  border: 3px solid #ccc;
+  border-top-color: #10b981;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

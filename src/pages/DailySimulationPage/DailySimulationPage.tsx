@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
-import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane } from 'react-leaflet'
 import L, { type LatLngTuple, DivIcon, Marker } from 'leaflet'
 import gsap from 'gsap'
@@ -10,11 +9,13 @@ import { useAirports } from '../../hooks/api/useAirports'
 import { useOrders } from '../../hooks/api/useOrders'
 import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightDrawer } from '../WeeklySimulationPage/FlightDrawer'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import type { Continent } from '../../types/Continent'
+import type { OrderSchema } from '../../types'
 import '../WeeklySimulationPage/index.css'
 
 const Wrapper = styled.div`
@@ -134,60 +135,6 @@ const StatLine = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-`
-
-const Modal = styled.div<{ $show: boolean }>`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: ${(p) => (p.$show ? 'flex' : 'none')};
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-`
-
-const ModalContent = styled.div`
-  background: white;
-  padding: 32px;
-  border-radius: 16px;
-  max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  text-align: center;
-`
-
-const ModalTitle = styled.h3`
-  margin: 0 0 16px;
-  color: #111827;
-  font-size: 24px;
-  font-weight: 700;
-`
-
-const ModalText = styled.p`
-  margin: 0 0 24px;
-  color: #6b7280;
-  font-size: 15px;
-  line-height: 1.5;
-`
-
-const ModalButton = styled.button`
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  background: #14b8a6;
-  color: white;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: #0d9488;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
 `
 
 const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'paused' }>`
@@ -750,10 +697,9 @@ function AnimatedFlights({
 }
 
 export function DailySimulationPage() {
-  const navigate = useNavigate()
   const {
-    hasValidConfig,
     simulationStartDate,
+    setSimulationStartDate,
     isDailyRunning,
     dailyCurrentSimTime,
     dailyPlaybackSpeed,
@@ -781,6 +727,7 @@ export function DailySimulationPage() {
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
   const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
   
   // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
   const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
@@ -1222,12 +1169,13 @@ export function DailySimulationPage() {
     }, 1000) // Every real second
   }, [updateDailySimTime])  // ✅ Minimal stable dependencies
 
-  // Start simulation
+  // Start simulation - uses current local time as start
   const handleStart = useCallback(async () => {
-    if (!hasValidConfig() || !simulationStartDate) {
-      toast.error('Debes configurar la fecha en Planificación primero')
-      return
-    }
+    // Use current local time as simulation start
+    const now = new Date()
+    
+    // Update the store with the current time as simulation start
+    setSimulationStartDate(now)
 
     // Clear previous state to ensure clean start
     processedIdsRef.current.clear()
@@ -1256,12 +1204,12 @@ export function DailySimulationPage() {
 
       // Format date as local time (NOT UTC) to match file data format
       // Files have orders in local time format (YYYYMMDD-HH-MM)
-      const year = simulationStartDate.getFullYear()
-      const month = String(simulationStartDate.getMonth() + 1).padStart(2, '0')
-      const day = String(simulationStartDate.getDate()).padStart(2, '0')
-      const hours = String(simulationStartDate.getHours()).padStart(2, '0')
-      const minutes = String(simulationStartDate.getMinutes()).padStart(2, '0')
-      const seconds = String(simulationStartDate.getSeconds()).padStart(2, '0')
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
 
       const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
       console.log('Local time string:', localTimeString)
@@ -1287,12 +1235,12 @@ export function DailySimulationPage() {
       console.log('✈️ Loading flight data...')
       await loadFlightData()
 
-      // STEP 3: Run first algorithm with simulation start time (existing)
+      // STEP 3: Run first algorithm with current time (existing)
       console.log('🚀 Running initial algorithm...')
-      await runDailyAlgorithm(simulationStartDate)
+      await runDailyAlgorithm(now)
 
       // STEP 4: Start simulation in global store (existing)
-      startDailySimulation(simulationStartDate, playbackSpeed)
+      startDailySimulation(now, playbackSpeed)
 
       // STEP 5: Start the clock (existing)
       startSimulationClock()
@@ -1304,7 +1252,7 @@ export function DailySimulationPage() {
     } finally {
       setIsInitializing(false)
     }
-  }, [hasValidConfig, simulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock, playbackSpeed, startDailySimulation])
+  }, [setSimulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock, playbackSpeed, startDailySimulation])
 
   // Pause simulation (keeps running in background)
   const handlePause = () => {
@@ -1549,17 +1497,6 @@ export function DailySimulationPage() {
 
   return (
     <Wrapper>
-      {/* Config check modal */}
-      <Modal $show={!hasValidConfig()}>
-        <ModalContent>
-          <ModalTitle>⚠️ Configuración Requerida</ModalTitle>
-          <ModalText>
-            Debes configurar la fecha de simulación en la página de Planificación antes de continuar.
-          </ModalText>
-          <ModalButton onClick={() => navigate('/planificacion')}>Ir a Planificación</ModalButton>
-        </ModalContent>
-      </Modal>
-
       <Header>
         <div>
           <Title>Simulación Diaria</Title>
@@ -1679,18 +1616,13 @@ export function DailySimulationPage() {
                 Iniciando...
               </ControlButton>
             ) : (
-              <>
-                <ControlButton $variant="pause" onClick={handlePause}>
-                  ⏸ Pausar
-                </ControlButton>
-                <ControlButton
-                  $variant="danger"
-                  onClick={handleStop}
-                  disabled={!isRunning && !currentSimTime}
-                >
-                  Detener
-                </ControlButton>
-              </>
+              <ControlButton
+                $variant="danger"
+                onClick={handleStop}
+                disabled={!isRunning && !currentSimTime}
+              >
+                ⏹ Detener Simulación
+              </ControlButton>
             )}
           </div>
           
@@ -1863,12 +1795,11 @@ export function DailySimulationPage() {
             />
           )}
         </MapContainer>
-      </MapWrapper>
 
-      {/* Flight Drawer Panel - same as WeeklySimulationPage */}
-      {simulationStartDate && (
-        <FlightDrawer
-          isOpen={panelOpen}
+        {/* Flight Drawer Panel - inside MapWrapper for proper positioning */}
+        {simulationStartDate && (
+          <FlightDrawer
+            isOpen={panelOpen}
           onToggle={() => setPanelOpen(!panelOpen)}
           panelTab={panelTab}
           onTabChange={setPanelTab}
@@ -1882,10 +1813,12 @@ export function DailySimulationPage() {
             return currentSimTime >= dept && currentSimTime <= arr
           }).length}
           onFlightClick={(f) => handleFlightClick(f)}
+          onOrderClick={(order) => setSelectedOrder(order)}
           orders={orders}
           loadingOrders={loadingOrders}
         />
       )}
+      </MapWrapper>
 
       {/* Flight packages modal */}
       {selectedFlight && (
@@ -1903,6 +1836,14 @@ export function DailySimulationPage() {
           onClose={() => setSelectedAirport(null)}
           flightInstances={flightInstances}
           instanceHasProducts={instanceHasProducts}
+        />
+      )}
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <OrderDetailsModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
         />
       )}
     </Wrapper>

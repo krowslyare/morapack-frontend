@@ -14,6 +14,7 @@ interface FlightDrawerProps {
   simulationStartTime: Date
   activeFlightsCount: number
   onFlightClick: (flight: FlightInstance) => void
+  onOrderClick?: (order: OrderSchema) => void  // NEW: callback for order click
   orders: OrderSchema[]
   loadingOrders: boolean
 }
@@ -417,6 +418,7 @@ export const FlightDrawer = memo(function FlightDrawer({
   simulationStartTime,
   activeFlightsCount,
   onFlightClick,
+  onOrderClick,
   orders,
   loadingOrders,
 }: FlightDrawerProps) {
@@ -649,7 +651,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 ) : (
                 <DrawerGrid>
                     {filteredOrders.map(order => (
-                    <OrderCard key={order.id}>
+                    <OrderCard key={order.id} onClick={() => onOrderClick?.(order)}>
                         <OrderCardHeader>
                         <OrderCode>
                             <strong>{order.name}</strong>

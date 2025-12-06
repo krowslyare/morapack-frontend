@@ -10,10 +10,12 @@ import { toast } from "react-toastify"
 import { useMap } from "react-leaflet"
 import { useSimulationStore } from "../../store/useSimulationStore"
 import type { Continent } from '../../types/Continent'
+import type { OrderSchema } from '../../types'
 
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import './index.css' 
 import { FlightDrawer } from './FlightDrawer'
 import { useOrders } from '../../hooks/api/useOrders'
@@ -720,6 +722,7 @@ export function WeeklySimulationPage() {
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
     const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+    const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
 
     const handleFlightClick = (flight: FlightInstance) => {
         setSelectedFlight({
@@ -1682,6 +1685,7 @@ export function WeeklySimulationPage() {
                 simulationStartTime={startTime}
                 activeFlightsCount={activeFlightsCount}
                 onFlightClick={handleFlightClick}
+                onOrderClick={(order) => setSelectedOrder(order)}
                 orders={orders}
                 loadingOrders={loadingOrders}
               />
@@ -1706,8 +1710,12 @@ export function WeeklySimulationPage() {
                 />
             )}
 
-            
-            
+            {selectedOrder && (
+                <OrderDetailsModal
+                  order={selectedOrder}
+                  onClose={() => setSelectedOrder(null)}
+                />
+            )}
 
 
         </Wrapper>
