@@ -1,4 +1,5 @@
 import { api, apiLongRunning } from './client'
+import type { ProductSchema } from '../types'
 
 // ===== Types =====
 
@@ -7,6 +8,7 @@ export interface DailyAlgorithmRequest {
   simulationDurationHours: number
   useDatabase: boolean
   simulationSpeed?: number // Optional: 1 = normal, 60 = 60x faster, etc.
+  persist?: boolean // Optional: If false, don't save assignments to DB (for collapse simulation)
 }
 
 export interface DailyAlgorithmResponse {
@@ -25,6 +27,8 @@ export interface DailyAlgorithmResponse {
   unassignedProducts: number
   score: number
   productRoutes: null // null because we query DB directly
+  slaViolationPercentage?: number // Percentage of orders violating SLA
+  ordersLate?: number // Number of orders that violated SLA (delivered after deadline)
 }
 
 export interface UpdateStatesRequest {
@@ -265,13 +269,25 @@ export interface CollapseDayStatistics {
   assignmentRate: number
 }
 
+export interface AffectedAirport {
+  airportCode: string
+  airportName: string
+  cityName: string
+  latitude: number
+  longitude: number
+  unassignedProducts: number
+  affectedOrders: number
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  reason: string
+}
+
 export interface CollapseSimulationResult {
   success: boolean
   message: string
   hasCollapsed: boolean
   collapseDay: number
   collapseTime: string | null
-  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE'
+  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE' | 'SLA_BREACH'
   executionStartTime: string
   executionEndTime: string
   executionTimeSeconds: number
@@ -283,6 +299,14 @@ export interface CollapseSimulationResult {
   unassignedProducts: number
   unassignedPercentage: number
   dailyStatistics?: CollapseDayStatistics[]
+  // For demo visualization
+  slaCompliancePercentage?: number
+  slaViolationPercentage?: number
+  productsOnTime?: number
+  productsLate?: number
+  continentalSlaCompliance?: number
+  intercontinentalSlaCompliance?: number
+  affectedAirports?: AffectedAirport[]
 }
 
 // ===== Service =====
@@ -339,6 +363,14 @@ export const simulationService = {
   }> => {
     const { data } = await api.get('/query/flights/instances/assigned')
     return data
+  },
+
+  /**
+   * Get products for a specific order (includes assignedFlightInstance)
+   */
+  getProductsByOrderId: async (orderId: number): Promise<ProductSchema[]> => {
+    const { data } = await api.get<{ success: boolean; products: ProductSchema[] }>(`/query/products/${orderId}`)
+    return data.products || []
   },
 
   /**

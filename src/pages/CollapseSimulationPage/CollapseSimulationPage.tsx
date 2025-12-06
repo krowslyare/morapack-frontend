@@ -1,45 +1,42 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import styled, { keyframes } from 'styled-components'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import styled from 'styled-components'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane } from 'react-leaflet'
+import L, { type LatLngTuple, DivIcon, Marker } from 'leaflet'
+import gsap from 'gsap'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from 'react-leaflet'
-import L, { type LatLngTuple } from 'leaflet'
+import { simulationService, type FlightStatus, type FlightInstance, type CollapseSimulationResult, type AffectedAirport } from '../../api/simulationService'
 import { useAirports } from '../../hooks/api/useAirports'
-import { simulationService, type CollapseSimulationResult, type AffectedAirport } from '../../api/simulationService'
 import { toast } from 'react-toastify'
-import { useSimulationStore } from '../../store/useSimulationStore'
-import type { Continent } from '../../types/Continent'
-import type { SimAirport } from '../../hooks/useFlightSimulation'
+import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import { FlightDrawer } from '../WeeklySimulationPage/FlightDrawer'
+import type { SimAirport } from '../../hooks/useFlightSimulation'
+import type { Continent } from '../../types/Continent'
+import type { OrderSchema } from '../../types'
+import '../WeeklySimulationPage/index.css'
+import './index.css'
 
-// ====================== Animations ======================
-const spin = keyframes`
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-`
-
-const pulse = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-`
-
-// ====================== Styled Components (Mismo estilo que Weekly/Daily) ======================
+// ====================== Styled Components ======================
 const Wrapper = styled.div`
-  padding: 16px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-height: 100vh;
   background: #f9fafb;
 `
 
 const Header = styled.div`
-  background: #ffffff;
+  background: white;
   border-radius: 12px;
-  padding: 16px 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+  padding: 20px 30px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
   flex-wrap: wrap;
+  gap: 16px;
 `
 
 const TitleBlock = styled.div`
@@ -50,9 +47,9 @@ const TitleBlock = styled.div`
 
 const Title = styled.h2`
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
   color: #111827;
+  font-size: 24px;
+  font-weight: 700;
 `
 
 const Subtitle = styled.p`
@@ -66,72 +63,16 @@ const HeaderRight = styled.div`
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  justify-content: flex-end;
-`
-
-const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'collapsed' | 'success' }>`
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: ${(p) => {
-    if (p.$status === 'running') return '#d1fae5'
-    if (p.$status === 'collapsed') return '#fee2e2'
-    if (p.$status === 'success') return '#dbeafe'
-    return '#f3f4f6'
-  }};
-  color: ${(p) => {
-    if (p.$status === 'running') return '#065f46'
-    if (p.$status === 'collapsed') return '#991b1b'
-    if (p.$status === 'success') return '#1e40af'
-    return '#6b7280'
-  }};
-`
-
-const ControlButton = styled.button<{ $variant?: 'play' | 'stop' | 'warning' | 'demo' }>`
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: none;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: ${(p) => {
-    if (p.$variant === 'play') return '#10b981'
-    if (p.$variant === 'stop') return '#ef4444'
-    if (p.$variant === 'warning') return '#f59e0b'
-    if (p.$variant === 'demo') return '#8b5cf6'
-    return '#6b7280'
-  }};
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-
-  &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.2);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
-  }
 `
 
 const MapWrapper = styled.div`
   width: 100%;
   height: 70vh;
   position: relative;
-  background: #ffffff;
+  background: white;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `
 
 const SimulationControls = styled.div`
@@ -146,40 +87,58 @@ const SimulationControls = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 260px;
+  min-width: 280px;
 `
 
-const ControlsLabel = styled.div`
+const Clock = styled.div`
+  font-size: 28px;
+  font-weight: 900;
+  color: #111827;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  padding: 12px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+`
+
+const ClockLabel = styled.div`
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #111827;
+  opacity: 0.9;
   margin-bottom: 4px;
 `
 
-const ProgressBox = styled.div`
-  padding: 12px;
-  background: linear-gradient(135deg, #14b8a6 0%, #10b981 100%);
-  border-radius: 8px;
+const ControlButton = styled.button<{ $variant?: 'play' | 'pause' | 'danger' | 'demo' }>`
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: ${(p) => {
+    if (p.$variant === 'play') return '#10b981'
+    if (p.$variant === 'pause') return '#f59e0b'
+    if (p.$variant === 'danger') return '#dc2626'
+    if (p.$variant === 'demo') return '#8b5cf6'
+    return '#6b7280'
+  }};
   color: white;
-  text-align: center;
-`
 
-const ProgressBoxDanger = styled(ProgressBox)`
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-`
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
 
-const ProgressValue = styled.div`
-  font-size: 28px;
-  font-weight: 900;
-  font-family: 'Courier New', monospace;
-`
-
-const ProgressLabel = styled.div`
-  font-size: 11px;
-  opacity: 0.9;
-  margin-top: 2px;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
 `
 
 const StatsRow = styled.div`
@@ -198,179 +157,79 @@ const StatLine = styled.div`
   align-items: center;
 `
 
-const StatValue = styled.strong<{ $danger?: boolean }>`
-  color: ${p => p.$danger ? '#ef4444' : '#111827'};
-`
-
-// ====================== Loading Overlay ======================
-const LoadingOverlay = styled.div`
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(4px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  border-radius: 12px;
-`
-
-const LoadingContent = styled.div`
-  text-align: center;
-  max-width: 420px;
-  padding: 40px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-`
-
-const LoadingTitle = styled.h3`
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 4px;
-`
-
-const LoadingSubtitle = styled.p`
-  font-size: 13px;
-  color: #6b7280;
-  margin: 0 0 28px;
-  line-height: 1.4;
-`
-
-const SpinnerContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 24px;
-`
-
-const Spinner = styled.div`
-  width: 48px;
-  height: 48px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #14b8a6;
-  border-radius: 50%;
-  animation: ${spin} 1s linear infinite;
-`
-
-const ProgressBar = styled.div`
-  width: 100%;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 20px;
-`
-
-const ProgressFill = styled.div<{ $percent: number; $danger?: boolean }>`
-  width: ${p => Math.min(p.$percent, 100)}%;
-  height: 100%;
-  background: ${p => p.$danger ? '#f59e0b' : '#14b8a6'};
-  border-radius: 2px;
-  transition: width 0.5s ease;
-`
-
-const LoadingStats = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  padding: 16px 0;
-  border-top: 1px solid #f3f4f6;
-`
-
-const LoadingStat = styled.div`
-  text-align: center;
-`
-
-const LoadingStatValue = styled.div<{ $danger?: boolean }>`
-  font-size: 24px;
-  font-weight: 600;
-  color: ${p => p.$danger ? '#ef4444' : '#111827'};
-  font-family: 'SF Mono', 'Consolas', monospace;
-`
-
-const LoadingStatLabel = styled.div`
+const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'collapsed' | 'success' }>`
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
   font-size: 11px;
-  color: #9ca3af;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 4px;
+  background: ${(p) => {
+    if (p.$status === 'running') return '#d1fae5'
+    if (p.$status === 'collapsed') return '#fee2e2'
+    if (p.$status === 'success') return '#dbeafe'
+    return '#f3f4f6'
+  }};
+  color: ${(p) => {
+    if (p.$status === 'running') return '#065f46'
+    if (p.$status === 'collapsed') return '#991b1b'
+    if (p.$status === 'success') return '#1e40af'
+    return '#6b7280'
+  }};
 `
 
-const ElapsedTimer = styled.div`
-  font-size: 14px;
-  font-weight: 500;
-  color: #6b7280;
-  text-align: center;
-  margin-bottom: 4px;
-
-  span {
-    font-family: 'SF Mono', 'Consolas', monospace;
-    color: #111827;
-    font-weight: 600;
-  }
-`
-
-const StatusMessage = styled.div`
+const SpeedControl = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  font-size: 13px;
-  color: #374151;
-  margin-bottom: 24px;
-`
-
-const PulseDot = styled.div`
-  width: 8px;
-  height: 8px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: ${pulse} 1.5s ease-in-out infinite;
-`
-
-const LoadingPhase = styled.div`
-  font-size: 13px;
-  color: #6b7280;
-  text-align: center;
-  margin-bottom: 20px;
-`
-
-const ProgressInfo = styled.div`
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: right;
-  margin-bottom: 6px;
-`
-
-const FooterNote = styled.div`
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: center;
-`
-
-const CancelButton = styled.button`
-  margin-top: 20px;
-  padding: 8px 20px;
-  background: transparent;
-  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  background: #f3f4f6;
   border-radius: 6px;
+`
+
+const SpeedLabel = styled.span`
+  font-size: 11px;
+  font-weight: 600;
   color: #6b7280;
-  font-weight: 500;
-  font-size: 13px;
+`
+
+const SpeedToggle = styled.button<{ $active?: boolean }>`
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  background: ${(p) => (p.$active ? '#ef4444' : '#e5e7eb')};
+  color: ${(p) => (p.$active ? 'white' : '#374151')};
+  transition: all 0.2s;
 
   &:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
-    color: #374151;
+    background: ${(p) => (p.$active ? '#dc2626' : '#d1d5db')};
   }
+`
+
+const WarningBadge = styled.div`
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #991b1b;
+  text-align: center;
+`
+
+const DayBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fef2f2;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #dc2626;
 `
 
 // ====================== Modal Styles ======================
@@ -428,22 +287,21 @@ const Input = styled.input`
   color: #111827;
   background-color: #ffffff;
   color-scheme: light;
-  transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #14b8a6;
-    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
   }
 `
 
 const InfoBox = styled.div`
   padding: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   border-radius: 8px;
   font-size: 13px;
-  color: #166534;
+  color: #991b1b;
 `
 
 const ButtonRow = styled.div`
@@ -456,16 +314,16 @@ const ModalButton = styled.button<{ $primary?: boolean }>`
   flex: 1;
   padding: 12px 20px;
   border-radius: 8px;
-  border: ${p => p.$primary ? 'none' : '1px solid #d1d5db'};
+  border: ${(p) => (p.$primary ? 'none' : '1px solid #d1d5db')};
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  background: ${p => p.$primary ? '#14b8a6' : 'white'};
-  color: ${p => p.$primary ? 'white' : '#374151'};
+  background: ${(p) => (p.$primary ? '#ef4444' : 'white')};
+  color: ${(p) => (p.$primary ? 'white' : '#374151')};
   transition: all 0.2s;
 
   &:hover {
-    background: ${p => p.$primary ? '#0d9488' : '#f9fafb'};
+    background: ${(p) => (p.$primary ? '#dc2626' : '#f9fafb')};
   }
 `
 
@@ -484,10 +342,10 @@ const ResultModal = styled.div`
 const ResultHeader = styled.div<{ $collapsed: boolean }>`
   text-align: center;
   padding: 28px 24px;
-  background: ${p => p.$collapsed 
-    ? 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)'
-    : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'};
-  border-bottom: 1px solid ${p => p.$collapsed ? '#fecaca' : '#bbf7d0'};
+  background: ${(p) =>
+    p.$collapsed
+      ? 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)'
+      : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'};
 `
 
 const ResultIcon = styled.div<{ $collapsed?: boolean }>`
@@ -500,8 +358,8 @@ const ResultIcon = styled.div<{ $collapsed?: boolean }>`
   border-radius: 50%;
   font-size: 28px;
   font-weight: 700;
-  background: ${p => p.$collapsed ? '#fecaca' : '#bbf7d0'};
-  color: ${p => p.$collapsed ? '#dc2626' : '#16a34a'};
+  background: ${(p) => (p.$collapsed ? '#fecaca' : '#bbf7d0')};
+  color: ${(p) => (p.$collapsed ? '#dc2626' : '#16a34a')};
 `
 
 const ResultTitle = styled.h2`
@@ -525,7 +383,6 @@ const ResultBody = styled.div`
 
 const ResultSection = styled.div`
   margin-bottom: 20px;
-
   &:last-child {
     margin-bottom: 0;
   }
@@ -548,8 +405,8 @@ const ResultGrid = styled.div`
 
 const ResultCard = styled.div<{ $highlight?: boolean }>`
   padding: 14px;
-  background: ${p => p.$highlight ? '#fef2f2' : '#f9fafb'};
-  border: 1px solid ${p => p.$highlight ? '#fecaca' : '#e5e7eb'};
+  background: ${(p) => (p.$highlight ? '#fef2f2' : '#f9fafb')};
+  border: 1px solid ${(p) => (p.$highlight ? '#fecaca' : '#e5e7eb')};
   border-radius: 10px;
   text-align: center;
 `
@@ -557,7 +414,7 @@ const ResultCard = styled.div<{ $highlight?: boolean }>`
 const ResultCardValue = styled.div<{ $danger?: boolean }>`
   font-size: 24px;
   font-weight: 700;
-  color: ${p => p.$danger ? '#dc2626' : '#111827'};
+  color: ${(p) => (p.$danger ? '#dc2626' : '#111827')};
 `
 
 const ResultCardLabel = styled.div`
@@ -581,124 +438,6 @@ const ReasonBadge = styled.div`
   box-sizing: border-box;
 `
 
-// ====================== Affected Airports Section ======================
-const AffectedAirportsSection = styled.div`
-  margin-top: 8px;
-`
-
-const AffectedAirportsList = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 200px;
-  overflow-y: auto;
-`
-
-const AffectedAirportCard = styled.div<{ $severity: 'critical' | 'high' | 'medium' | 'low' }>`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: ${p => {
-    switch(p.$severity) {
-      case 'critical': return '#fef2f2'
-      case 'high': return '#fff7ed'
-      case 'medium': return '#fefce8'
-      case 'low': return '#f0fdf4'
-      default: return '#f9fafb'
-    }
-  }};
-  border: 1px solid ${p => {
-    switch(p.$severity) {
-      case 'critical': return '#fecaca'
-      case 'high': return '#fed7aa'
-      case 'medium': return '#fef08a'
-      case 'low': return '#bbf7d0'
-      default: return '#e5e7eb'
-    }
-  }};
-  border-radius: 8px;
-  transition: all 0.2s;
-
-  &:hover {
-    transform: translateX(4px);
-  }
-`
-
-const SeverityDot = styled.div<{ $severity: 'critical' | 'high' | 'medium' | 'low' }>`
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: ${p => {
-    switch(p.$severity) {
-      case 'critical': return '#dc2626'
-      case 'high': return '#ea580c'
-      case 'medium': return '#ca8a04'
-      case 'low': return '#16a34a'
-      default: return '#6b7280'
-    }
-  }};
-`
-
-const AirportInfo = styled.div`
-  flex: 1;
-  min-width: 0;
-`
-
-const AirportName = styled.div`
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`
-
-const AirportDetail = styled.div`
-  font-size: 11px;
-  color: #6b7280;
-  margin-top: 2px;
-`
-
-const AirportStats = styled.div`
-  text-align: right;
-  flex-shrink: 0;
-`
-
-const AirportStatValue = styled.div`
-  font-size: 14px;
-  font-weight: 700;
-  color: #dc2626;
-`
-
-const AirportStatLabel = styled.div`
-  font-size: 10px;
-  color: #6b7280;
-`
-
-const ViewMapButton = styled.button`
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px;
-  background: #fee2e2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #b91c1c;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s;
-
-  &:hover {
-    background: #fecaca;
-  }
-`
-
 const ResultFooter = styled.div`
   padding: 16px 24px;
   border-top: 1px solid #e5e7eb;
@@ -714,9 +453,8 @@ const MapLegend = styled.div`
   background: white;
   padding: 12px 16px;
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  min-width: 180px;
 `
 
 const LegendTitle = styled.div`
@@ -724,9 +462,6 @@ const LegendTitle = styled.div`
   font-weight: 700;
   color: #111827;
   margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 `
 
 const LegendItem = styled.div`
@@ -736,7 +471,6 @@ const LegendItem = styled.div`
   margin-bottom: 6px;
   font-size: 11px;
   color: #374151;
-
   &:last-child {
     margin-bottom: 0;
   }
@@ -746,80 +480,141 @@ const LegendDot = styled.div<{ $color: string }>`
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: ${p => p.$color};
-  border: 2px solid ${p => p.$color}80;
+  background: ${(p) => p.$color};
 `
 
-const CollapseInfoPanel = styled.div`
+// Affected airports panel
+const AffectedPanel = styled.div`
   position: absolute;
   top: 20px;
   right: 20px;
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border: 2px solid #fecaca;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
-  z-index: 1000;
-  max-width: 280px;
-`
-
-const CollapseInfoTitle = styled.div`
-  font-size: 14px;
-  font-weight: 700;
-  color: #991b1b;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`
-
-const CollapseInfoText = styled.div`
-  font-size: 12px;
-  color: #7f1d1d;
-  line-height: 1.5;
-`
-
-const CollapseInfoStats = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 12px;
-`
-
-const CollapseInfoStat = styled.div`
+  width: 300px;
+  max-height: calc(100% - 40px);
   background: white;
-  padding: 8px;
-  border-radius: 6px;
-  text-align: center;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 `
 
-const CollapseInfoStatValue = styled.div`
-  font-size: 18px;
+const AffectedPanelHeader = styled.div`
+  padding: 16px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+`
+
+const AffectedPanelTitle = styled.h3`
+  margin: 0 0 4px 0;
+  font-size: 16px;
   font-weight: 700;
-  color: #dc2626;
 `
 
-const CollapseInfoStatLabel = styled.div`
+const AffectedPanelSubtitle = styled.p`
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.9;
+`
+
+const AffectedPanelBody = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+`
+
+const AffectedAirportCard = styled.div<{ $severity: string }>`
+  background: ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return 'rgba(220, 38, 38, 0.08)'
+      case 'high': return 'rgba(234, 88, 12, 0.08)'
+      case 'medium': return 'rgba(202, 138, 4, 0.08)'
+      default: return 'rgba(22, 163, 74, 0.08)'
+    }
+  }};
+  border-left: 4px solid ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return '#dc2626'
+      case 'high': return '#ea580c'
+      case 'medium': return '#ca8a04'
+      default: return '#16a34a'
+    }
+  }};
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`
+
+const AffectedAirportName = styled.div`
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+  margin-bottom: 4px;
+`
+
+const AffectedAirportCode = styled.span`
+  font-weight: 700;
+  font-size: 11px;
+  color: #6b7280;
+  margin-left: 6px;
+`
+
+const AffectedAirportStats = styled.div`
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #374151;
+  margin-bottom: 4px;
+`
+
+const AffectedAirportReason = styled.div`
   font-size: 10px;
   color: #6b7280;
-  margin-top: 2px;
+  font-style: italic;
 `
 
-const ShowReportButton = styled.button`
-  width: 100%;
-  margin-top: 12px;
-  padding: 8px;
-  background: #dc2626;
-  border: none;
-  border-radius: 6px;
-  color: white;
-  font-size: 12px;
+const SeverityBadge = styled.span<{ $severity: string }>`
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  text-transform: uppercase;
+  background: ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return '#dc2626'
+      case 'high': return '#ea580c'
+      case 'medium': return '#ca8a04'
+      default: return '#16a34a'
+    }
+  }};
+  color: white;
+  margin-left: 8px;
+`
 
+const CloseAffectedPanelButton = styled.button`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.2s;
+  
   &:hover {
-    background: #b91c1c;
+    background: rgba(255, 255, 255, 0.3);
   }
 `
 
@@ -839,102 +634,218 @@ function mapAirportToSimAirport(a: any): SimAirport {
 function formatCollapseReason(reason: string): string {
   switch (reason) {
     case 'SLA_BREACH':
-      return 'Incumplimiento de SLA (entregas fuera de tiempo)'
+      return 'Incumplimiento de SLA'
     case 'CAPACITY_EXHAUSTED':
-      return 'Capacidad agotada (productos sin asignar)'
+      return 'Capacidad agotada'
     case 'UNASSIGNED_ORDERS':
-      return 'Órdenes sin asignar'
+      return 'Órdenes sin asignar acumuladas'
     case 'WAREHOUSE_SATURATED':
       return 'Almacén saturado'
-    case 'NO_FLIGHTS':
-      return 'Sin vuelos disponibles'
-    case 'NO_COLLAPSE':
-      return 'Sin colapso'
     default:
-      return 'Desconocido'
+      return reason
   }
 }
 
-// ====================== Component ======================
+// Speed options in minutes per second
+const SPEED_OPTIONS = [
+  { label: '15m/s', value: 15 },
+  { label: '30m/s', value: 30 },
+  { label: '1h/s', value: 60 },
+  { label: '2h/s', value: 120 },
+]
+
+// Collapse thresholds
+// Collapse as soon as 1 order violates SLA
+const MAX_UNASSIGNED_RATIO = 0.3 // 30% unassigned ratio = collapse
+
+// ====================== Animated Planes Component ======================
+function AnimatedPlanes({
+  flightInstances,
+  currentTime,
+  airports,
+}: {
+  flightInstances: FlightInstance[]
+  currentTime: Date | null
+  airports: any[]
+}) {
+  const map = useMap()
+  const markersRef = useRef<Map<string, L.Marker>>(new Map())
+
+  useEffect(() => {
+    if (!currentTime || !map) return
+
+    const activeFlights = flightInstances.filter((f) => {
+      const dept = new Date(f.departureTime)
+      const arr = new Date(f.arrivalTime)
+      return currentTime >= dept && currentTime <= arr
+    })
+
+    // Clean up old markers
+    markersRef.current.forEach((marker, id) => {
+      if (!activeFlights.find((f) => f.instanceId === id)) {
+        map.removeLayer(marker)
+        markersRef.current.delete(id)
+      }
+    })
+
+    // Update or create markers for active flights
+    activeFlights.forEach((flight) => {
+      const origin = airports.find(
+        (a) => a.id === flight.originAirport?.id || a.codeIATA === flight.originAirport?.codeIATA
+      )
+      const dest = airports.find(
+        (a) =>
+          a.id === flight.destinationAirport?.id ||
+          a.codeIATA === flight.destinationAirport?.codeIATA
+      )
+
+      if (!origin || !dest) return
+
+      const dept = new Date(flight.departureTime).getTime()
+      const arr = new Date(flight.arrivalTime).getTime()
+      const now = currentTime.getTime()
+      const progress = Math.min(Math.max((now - dept) / (arr - dept), 0), 1)
+
+      const startLat = parseFloat(origin.latitude)
+      const startLng = parseFloat(origin.longitude)
+      const endLat = parseFloat(dest.latitude)
+      const endLng = parseFloat(dest.longitude)
+
+      const currentLat = startLat + (endLat - startLat) * progress
+      const currentLng = startLng + (endLng - startLng) * progress
+
+      const angle = (Math.atan2(endLng - startLng, endLat - startLat) * 180) / Math.PI
+
+      let marker = markersRef.current.get(flight.instanceId)
+
+      if (!marker) {
+        const icon = new DivIcon({
+          className: 'plane-marker-collapse',
+          html: `<div class="plane-icon" style="transform: rotate(${angle}deg)">✈</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        })
+        marker = new Marker([currentLat, currentLng], { icon, pane: 'flights' })
+        marker.addTo(map)
+        markersRef.current.set(flight.instanceId, marker)
+      } else {
+        marker.setLatLng([currentLat, currentLng])
+        const iconEl = marker.getElement()?.querySelector('.plane-icon') as HTMLElement
+        if (iconEl) {
+          iconEl.style.transform = `rotate(${angle}deg)`
+        }
+      }
+    })
+
+    return () => {}
+  }, [currentTime, flightInstances, airports, map])
+
+  // Render flight paths
+  return (
+    <>
+      {flightInstances
+        .filter((f) => {
+          if (!currentTime) return false
+          const dept = new Date(f.departureTime)
+          const arr = new Date(f.arrivalTime)
+          return currentTime >= dept && currentTime <= arr
+        })
+        .map((flight) => {
+          const origin = airports.find(
+            (a) =>
+              a.id === flight.originAirport?.id || a.codeIATA === flight.originAirport?.codeIATA
+          )
+          const dest = airports.find(
+            (a) =>
+              a.id === flight.destinationAirport?.id ||
+              a.codeIATA === flight.destinationAirport?.codeIATA
+          )
+          if (!origin || !dest) return null
+
+          return (
+            <Polyline
+              key={`path-${flight.instanceId}`}
+              positions={[
+                [parseFloat(origin.latitude), parseFloat(origin.longitude)],
+                [parseFloat(dest.latitude), parseFloat(dest.longitude)],
+              ]}
+              color="#ef4444"
+              weight={1.5}
+              opacity={0.4}
+              dashArray="5,10"
+            />
+          )
+        })}
+    </>
+  )
+}
+
+// ====================== Main Component ======================
 export function CollapseSimulationPage() {
   const navigate = useNavigate()
-  const { simulationStartDate, hasValidConfig } = useSimulationStore()
 
-  // State
-  const [showConfigModal, setShowConfigModal] = useState(false)
-  const [showResultModal, setShowResultModal] = useState(false)
+  // Config modal
+  const [showConfigModal, setShowConfigModal] = useState(true)
+  const [configStartDate, setConfigStartDate] = useState(new Date().toISOString().slice(0, 16))
+
+  // Simulation state
   const [isRunning, setIsRunning] = useState(false)
-  const [result, setResult] = useState<CollapseSimulationResult | null>(null)
+  const [simulationStartDate, setSimulationStartDate] = useState<Date | null>(null)
+  const [currentSimTime, setCurrentSimTime] = useState<Date | null>(null)
+  const [dayCount, setDayCount] = useState(0)
+
+  // Speed control (minutes per real second)
+  const [playbackSpeed, setPlaybackSpeed] = useState(15) // 15 min per second (fastest for collapse)
+
+  // Algorithm state
+  const [algorithmRunning, setAlgorithmRunning] = useState(false)
+  const algorithmRunningRef = useRef(false)
+  const lastAlgorithmDayRef = useRef(-1)
+
+  // Collapse detection
+  const [hasCollapsed, setHasCollapsed] = useState(false)
+  const [collapseDay, setCollapseDay] = useState<number | null>(null)
+  const [collapseReason, setCollapseReason] = useState<string>('')
+  const [showResultModal, setShowResultModal] = useState(false)
+
+  // KPIs accumulated
+  const [kpi, setKpi] = useState({
+    totalOrders: 0,
+    assignedOrders: 0,
+    unassignedOrders: 0,
+    totalProducts: 0,
+    assignedProducts: 0,
+    unassignedProducts: 0,
+    slaViolationPercentage: 0,
+    ordersLate: 0, // Count of orders that violated SLA
+  })
+
+  // Flight visualization
+  const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
+  const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, boolean>>({})
+  const [orders, setOrders] = useState<OrderSchema[]>([])
+
+  // UI
+  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelTab, setPanelTab] = useState<'flights' | 'orders'>('flights')
+  const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
-  
-  // Config form
-  const [configStartDate, setConfigStartDate] = useState(
-    simulationStartDate 
-      ? simulationStartDate.toISOString().slice(0, 16) 
-      : new Date().toISOString().slice(0, 16)
-  )
 
-  // Loading state
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [currentPhase, setCurrentPhase] = useState(0)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const phaseRef = useRef<NodeJS.Timeout | null>(null)
+  // Demo affected airports
+  const [demoAffectedAirports, setDemoAffectedAirports] = useState<AffectedAirport[]>([])
+  const [showDemoOverlay, setShowDemoOverlay] = useState(false)
 
-  // Loading phases messages
-  const loadingPhases = [
-    'Inicializando parámetros del algoritmo...',
-    'Cargando datos de órdenes y productos...',
-    'Procesando rutas de vuelos disponibles...',
-    'Ejecutando asignación del día actual...',
-    'Calculando capacidad de almacenes...',
-    'Verificando restricciones de entrega...',
-    'Optimizando distribución de carga...',
-    'Analizando saturación del sistema...',
-    'Avanzando al siguiente día...',
-    'Recalculando estado del sistema...',
-  ]
+  // Refs
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const startRealTimeRef = useRef<number>(0)
+  const markersRef = useRef<Record<string, L.Marker>>({})
+  const currentSimTimeRef = useRef<Date | null>(null)
 
-  // Timer effect
+  // Keep currentSimTimeRef in sync
   useEffect(() => {
-    if (isRunning) {
-      setElapsedSeconds(0)
-      setCurrentPhase(0)
-      
-      // Elapsed time counter
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds(prev => prev + 1)
-      }, 1000)
-      
-      // Phase message rotator
-      phaseRef.current = setInterval(() => {
-        setCurrentPhase(prev => (prev + 1) % loadingPhases.length)
-      }, 3000)
-      
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current)
-        if (phaseRef.current) clearInterval(phaseRef.current)
-      }
-    }
-  }, [isRunning])
-
-  // Format elapsed time
-  const formatElapsedTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Estimate progress (fake but informative)
-  const getEstimatedProgress = () => {
-    // Asumimos que una simulación típica tarda ~2-5 minutos
-    // Mostramos un progreso que avanza lento pero constante
-    const baseProgress = Math.min(elapsedSeconds / 180 * 70, 70) // Máximo 70% en 3 min
-    const fluctuation = Math.sin(elapsedSeconds * 0.1) * 3 // Pequeña fluctuación
-    return Math.min(Math.max(baseProgress + fluctuation, 5), 85) // Entre 5% y 85%
-  }
-
-  // Abort controller
-  const abortControllerRef = useRef<AbortController | null>(null)
+    currentSimTimeRef.current = currentSimTime
+  }, [currentSimTime])
 
   // Load airports
   const { data: airportsData } = useAirports()
@@ -945,194 +856,423 @@ export function CollapseSimulationPage() {
     (airport: any) => airport.codeIATA && MAIN_HUB_CODES.includes(airport.codeIATA.toUpperCase())
   )
 
-  // Map bounds
-  const bounds = airports.length > 0
-    ? L.latLngBounds(
-        airports.map((a: any) => [parseFloat(a.latitude), parseFloat(a.longitude)] as LatLngTuple)
-      )
-    : L.latLngBounds([[-60, -180], [70, 180]])
+  const bounds =
+    airports.length > 0
+      ? L.latLngBounds(
+          airports.map(
+            (a: any) => [parseFloat(a.latitude), parseFloat(a.longitude)] as LatLngTuple
+          )
+        )
+      : L.latLngBounds([
+          [-60, -180],
+          [70, 180],
+        ])
 
   const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-  const tileAttribution = '&copy; OpenStreetMap & CARTO'
 
-  // Start simulation
-  const handleStart = useCallback(async () => {
-    if (!configStartDate || !hasValidConfig() || !simulationStartDate) {
-      toast.error('Debes configurar la simulación antes de iniciar')
+  // Generate flight instances for a given day
+  const generateFlightInstancesForDay = useCallback(
+    async (dayNumber: number, baseDate: Date) => {
+      try {
+        const response = await simulationService.getFlightStatuses()
+        const flightStatuses: FlightStatus[] = response.flights || []
+
+        const instances: FlightInstance[] = []
+        const dayStart = new Date(baseDate)
+        dayStart.setHours(0, 0, 0, 0)
+        dayStart.setDate(dayStart.getDate() + dayNumber)
+
+        for (const flight of flightStatuses) {
+          if (!flight.departureTime) continue
+
+          const [hours, minutes] = flight.departureTime.split(':').map(Number)
+
+          const departureTime = new Date(dayStart)
+          departureTime.setHours(hours, minutes, 0, 0)
+
+          const flightDuration = (flight.transportTimeDays || 0.1) * 24 * 60 * 60 * 1000
+          const arrivalTime = new Date(departureTime.getTime() + flightDuration)
+
+          const instanceId = `FL-${flight.id}-DAY-${dayNumber}-${String(hours).padStart(2, '0')}${String(minutes).padStart(2, '0')}`
+
+          instances.push({
+            instanceId,
+            flightId: flight.id,
+            flightCode: flight.code,
+            departureTime: departureTime.toISOString(),
+            arrivalTime: arrivalTime.toISOString(),
+            status: 'SCHEDULED',
+            originAirport: flight.originAirportSchema,
+            destinationAirport: flight.destinationAirportSchema,
+            maxCapacity: flight.maxCapacity,
+            usedCapacity: 0,
+          })
+        }
+
+        return instances
+      } catch (error) {
+        console.error('Error generating flight instances:', error)
+        return []
+      }
+    },
+    []
+  )
+
+  // Run algorithm for a specific day (without persisting)
+  const runCollapseAlgorithm = useCallback(
+    async (simTime: Date, dayNumber: number) => {
+      if (!simulationStartDate || algorithmRunningRef.current || hasCollapsed) return
+
+      setAlgorithmRunning(true)
+      algorithmRunningRef.current = true
+
+      try {
+        console.group(
+          `%c📊 Collapse Algorithm - Day ${dayNumber + 1}`,
+          'color: #ef4444; font-weight: bold; font-size: 14px'
+        )
+        console.log('Simulation time:', simTime.toISOString())
+
+        // Format sim time as LOCAL time
+        const year = simTime.getFullYear()
+        const month = String(simTime.getMonth() + 1).padStart(2, '0')
+        const day = String(simTime.getDate()).padStart(2, '0')
+        const hours = String(simTime.getHours()).padStart(2, '0')
+        const minutes = String(simTime.getMinutes()).padStart(2, '0')
+        const seconds = String(simTime.getSeconds()).padStart(2, '0')
+        const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+
+        // Execute algorithm (24 hour window for collapse scenario)
+        const response = await simulationService.executeDaily({
+          simulationStartTime: localTimeString,
+          simulationDurationHours: 24,
+          useDatabase: true,
+          simulationSpeed: playbackSpeed,
+          persist: true, // Persist to DB so unassigned orders accumulate for next day
+        })
+
+        console.log('Response:', response)
+        console.groupEnd()
+
+        // Update KPIs
+        const newTotalOrders = (kpi.totalOrders || 0) + (response.totalOrders || 0)
+        const newAssigned = (kpi.assignedOrders || 0) + (response.assignedOrders || 0)
+        const newUnassigned = (kpi.unassignedOrders || 0) + (response.unassignedOrders || 0)
+        const unassignedRatio = newTotalOrders > 0 ? newUnassigned / newTotalOrders : 0
+        const slaViolation = response.slaViolationPercentage || 0
+        const ordersLate = response.ordersLate || 0 // Number of orders that violated SLA
+
+        setKpi({
+          totalOrders: newTotalOrders,
+          assignedOrders: newAssigned,
+          unassignedOrders: newUnassigned,
+          totalProducts: (kpi.totalProducts || 0) + (response.totalProducts || 0),
+          assignedProducts: (kpi.assignedProducts || 0) + (response.assignedProducts || 0),
+          unassignedProducts: (kpi.unassignedProducts || 0) + (response.unassignedProducts || 0),
+          slaViolationPercentage: slaViolation,
+          ordersLate: (kpi.ordersLate || 0) + ordersLate,
+        })
+
+        // Check collapse conditions - collapse as soon as 1 order violates SLA
+        if (ordersLate > 0) {
+          console.log(`💥 COLLAPSE: ${ordersLate} order(s) violated SLA`)
+          setHasCollapsed(true)
+          setCollapseDay(dayNumber + 1)
+          setCollapseReason('SLA_BREACH')
+          setShowResultModal(true)
+          setIsRunning(false)
+          toast.error(`Sistema colapsó en el día ${dayNumber + 1}: ${ordersLate} orden(es) fuera de SLA`)
+          return
+        }
+
+        if (unassignedRatio >= MAX_UNASSIGNED_RATIO) {
+          console.log(
+            `💥 COLLAPSE: Unassigned ratio ${(unassignedRatio * 100).toFixed(1)}% >= ${MAX_UNASSIGNED_RATIO * 100}%`
+          )
+          setHasCollapsed(true)
+          setCollapseDay(dayNumber + 1)
+          setCollapseReason('UNASSIGNED_ORDERS')
+          setShowResultModal(true)
+          setIsRunning(false)
+          toast.error(`Sistema colapsó en el día ${dayNumber + 1}: Órdenes acumuladas`)
+          return
+        }
+
+        // Load flight instances for next day
+        const newInstances = await generateFlightInstancesForDay(dayNumber + 1, simulationStartDate)
+        setFlightInstances((prev) => [...prev, ...newInstances])
+
+        toast.success(`Día ${dayNumber + 1}: ${response.assignedOrders || 0} órdenes asignadas`)
+      } catch (error: any) {
+        console.error('Error running collapse algorithm:', error)
+        toast.error('Error durante la simulación')
+      } finally {
+        // Recalculate startRealTimeRef to avoid time jump after algorithm finishes
+        // We want the sim clock to continue from where it was (current simTime)
+        if (simulationStartDate && currentSimTimeRef.current) {
+          const simElapsed = currentSimTimeRef.current.getTime() - simulationStartDate.getTime()
+          const realSecondsNeeded = simElapsed / (playbackSpeed * 60 * 1000)
+          startRealTimeRef.current = Date.now() - realSecondsNeeded * 1000
+        }
+        
+        setAlgorithmRunning(false)
+        algorithmRunningRef.current = false
+      }
+    },
+    [simulationStartDate, hasCollapsed, kpi, playbackSpeed, generateFlightInstancesForDay]
+  )
+
+  // Reference for algorithm function
+  const runCollapseAlgorithmRef = useRef(runCollapseAlgorithm)
+  useEffect(() => {
+    runCollapseAlgorithmRef.current = runCollapseAlgorithm
+  }, [runCollapseAlgorithm])
+
+  // Simulation clock tick
+  const tick = useCallback(() => {
+    if (!simulationStartDate || hasCollapsed) return
+    
+    // BUFFER: Don't advance time while algorithm is running
+    if (algorithmRunningRef.current) {
       return
     }
 
+    const elapsedRealSeconds = (Date.now() - startRealTimeRef.current) / 1000
+    const simMinutesElapsed = elapsedRealSeconds * playbackSpeed
+    const newSimTime = new Date(simulationStartDate.getTime() + simMinutesElapsed * 60 * 1000)
+
+    setCurrentSimTime(newSimTime)
+
+    // Calculate current day
+    const currentDay = Math.floor(
+      (newSimTime.getTime() - simulationStartDate.getTime()) / (24 * 60 * 60 * 1000)
+    )
+    setDayCount(currentDay)
+
+    // Trigger algorithm at start of each new day (with buffer - wait for previous to finish)
+    if (currentDay > lastAlgorithmDayRef.current && !algorithmRunningRef.current) {
+      // Set last algorithm day immediately to prevent duplicate triggers
+      lastAlgorithmDayRef.current = currentDay
+      
+      // Calculate day start time
+      const dayStart = new Date(simulationStartDate)
+      dayStart.setDate(dayStart.getDate() + currentDay)
+      dayStart.setHours(0, 0, 0, 0)
+      
+      // Small delay to allow UI to update before heavy algorithm execution
+      setTimeout(() => {
+        runCollapseAlgorithmRef.current(dayStart, currentDay)
+      }, 50)
+    }
+  }, [simulationStartDate, playbackSpeed, hasCollapsed])
+
+  // Start/stop simulation clock
+  useEffect(() => {
+    if (isRunning && !hasCollapsed) {
+      intervalRef.current = setInterval(tick, 100) // 10 FPS for smooth animation
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [isRunning, tick, hasCollapsed])
+
+  // Handle start
+  const handleStart = useCallback(async () => {
+    const startDate = new Date(configStartDate)
+
     setShowConfigModal(false)
     setIsRunning(true)
-    setResult(null)
+    setHasCollapsed(false)
+    setCollapseDay(null)
+    setCollapseReason('')
+    setSimulationStartDate(startDate)
+    setCurrentSimTime(startDate)
+    setDayCount(0)
+    lastAlgorithmDayRef.current = -1
+    startRealTimeRef.current = Date.now()
 
-    const controller = new AbortController()
-    abortControllerRef.current = controller
+    // Reset KPIs
+    setKpi({
+      totalOrders: 0,
+      assignedOrders: 0,
+      unassignedOrders: 0,
+      totalProducts: 0,
+      assignedProducts: 0,
+      unassignedProducts: 0,
+      slaViolationPercentage: 0,
+      ordersLate: 0,
+    })
 
-    try {
-      toast.info('Iniciando simulación de colapso...')
+    // Clear old markers
+    Object.values(markersRef.current).forEach((m) => m.remove())
+    markersRef.current = {}
 
-      const simResult = await simulationService.runCollapseScenario(
-        {
-          simulationStartTime: new Date(configStartDate).toISOString(),
-          useDatabase: true,
-        },
-        { signal: controller.signal }
-      )
+    // Load initial flight instances (day 0)
+    const initialInstances = await generateFlightInstancesForDay(0, startDate)
+    setFlightInstances(initialInstances)
 
-      setResult(simResult)
-      setShowResultModal(true)
+    toast.info('Simulación de colapso iniciada')
+  }, [configStartDate, generateFlightInstancesForDay])
 
-      if (simResult.hasCollapsed) {
-        toast.warning(`Sistema colapsó en el día ${simResult.collapseDay}`)
-      } else {
-        toast.success('Simulación completada sin colapso')
-      }
-    } catch (error: any) {
-      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
-        toast.info('Simulación cancelada')
-      } else {
-        console.error('Error en simulación:', error)
-        toast.error('Error durante la simulación')
-      }
-    } finally {
-      setIsRunning(false)
-      abortControllerRef.current = null
-    }
-  }, [configStartDate, hasValidConfig, simulationStartDate])
-
-  // Stop simulation
+  // Handle stop
   const handleStop = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
+    setIsRunning(false)
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
-  }, [])
 
-  // Reset
-  const handleReset = useCallback(() => {
-    setShowResultModal(false)
-    setResult(null)
-    setShowConfigModal(true)
-  }, [])
-
-  // Demo preview with dummy data
-  const handleDemoPreview = useCallback(() => {
-    const dummyResult: CollapseSimulationResult = {
-      hasCollapsed: true,
-      collapseDay: 12,
-      collapseReason: 'SLA_BREACH',
-      totalDaysSimulated: 12,
-      totalOrdersProcessed: 847,
-      assignedProducts: 2341,
-      unassignedProducts: 186,
-      unassignedPercentage: 7.4,
-      executionTimeSeconds: 342.7,
-      slaCompliancePercentage: 88.2,
-      slaViolationPercentage: 11.8,
-      productsOnTime: 2065,
-      productsLate: 276,
-      continentalSlaCompliance: 92.5,
-      intercontinentalSlaCompliance: 81.3,
-      continentalOrdersOnTime: 1542,
-      continentalOrdersTotal: 1667,
-      intercontinentalOrdersOnTime: 523,
-      intercontinentalOrdersTotal: 643,
-      slaThresholdUsed: 5,
-      // NEW: Affected airports for map visualization
-      affectedAirports: [
-        {
-          airportCode: 'SEQM',
-          airportName: 'Mariscal Sucre International',
-          cityName: 'Quito',
-          latitude: -0.1807,
-          longitude: -78.4678,
-          unassignedProducts: 67,
-          affectedOrders: 23,
-          severity: 'critical',
-          reason: 'Capacidad de vuelos excedida'
-        },
-        {
-          airportCode: 'SKCL',
-          airportName: 'Alfonso Bonilla Aragón',
-          cityName: 'Cali',
-          latitude: 3.5432,
-          longitude: -76.3816,
-          unassignedProducts: 45,
-          affectedOrders: 15,
-          severity: 'high',
-          reason: 'Sin vuelos disponibles en horario'
-        },
-        {
-          airportCode: 'MPTO',
-          airportName: 'Tocumen International',
-          cityName: 'Panamá',
-          latitude: 9.0714,
-          longitude: -79.3835,
-          unassignedProducts: 38,
-          affectedOrders: 12,
-          severity: 'high',
-          reason: 'Capacidad de almacén excedida'
-        },
-        {
-          airportCode: 'SKBO',
-          airportName: 'El Dorado International',
-          cityName: 'Bogotá',
-          latitude: 4.7016,
-          longitude: -74.1469,
-          unassignedProducts: 24,
-          affectedOrders: 8,
-          severity: 'medium',
-          reason: 'Conexiones insuficientes'
-        },
-        {
-          airportCode: 'SEGU',
-          airportName: 'José Joaquín de Olmedo',
-          cityName: 'Guayaquil',
-          latitude: -2.1574,
-          longitude: -79.8837,
-          unassignedProducts: 12,
-          affectedOrders: 4,
-          severity: 'low',
-          reason: 'Retraso en conexiones'
-        }
-      ]
+    // If stopped manually without collapse, show success
+    if (!hasCollapsed && dayCount > 0) {
+      setShowResultModal(true)
     }
-    setResult(dummyResult)
-    setShowResultModal(true)
-    setShowConfigModal(false)
-  }, [])
+  }, [hasCollapsed, dayCount])
+
+  // Format time for display
+  const formatSimTime = (date: Date | null) => {
+    if (!date) return '--:--'
+    return date.toLocaleString('es-PE', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+
+  // Active flights count
+  const activeFlightsCount = useMemo(() => {
+    if (!currentSimTime) return 0
+    return flightInstances.filter((f) => {
+      const dept = new Date(f.departureTime)
+      const arr = new Date(f.arrivalTime)
+      return currentSimTime >= dept && currentSimTime <= arr
+    }).length
+  }, [currentSimTime, flightInstances])
 
   // Get status
   const getStatus = (): 'idle' | 'running' | 'collapsed' | 'success' => {
+    if (hasCollapsed) return 'collapsed'
     if (isRunning) return 'running'
-    if (result?.hasCollapsed) return 'collapsed'
-    if (result && !result.hasCollapsed) return 'success'
+    if (dayCount > 0 && !isRunning) return 'success'
     return 'idle'
   }
 
   const getStatusText = () => {
     const status = getStatus()
     if (status === 'running') return '● Ejecutando'
-    if (status === 'collapsed') return 'SLA Incumplido'
-    if (status === 'success') return 'SLA OK'
+    if (status === 'collapsed') return 'Colapsado'
+    if (status === 'success') return 'Completado'
     return '○ Detenido'
   }
+
+  // Demo preview with dummy data
+  const handleDemoPreview = useCallback(() => {
+    // Set demo data
+    setKpi({
+      totalOrders: 847,
+      assignedOrders: 661,
+      unassignedOrders: 186,
+      totalProducts: 2527,
+      assignedProducts: 2341,
+      unassignedProducts: 186,
+      slaViolationPercentage: 11.8,
+      ordersLate: 276,
+    })
+    setHasCollapsed(true)
+    setCollapseDay(12)
+    setCollapseReason('SLA_BREACH')
+    setDayCount(12)
+    
+    // Set demo affected airports - these show on the map
+    const demoAirports: AffectedAirport[] = [
+      {
+        airportCode: 'SPIM',
+        airportName: 'Jorge Chávez',
+        cityName: 'Lima',
+        latitude: -12.0219,
+        longitude: -77.1143,
+        unassignedProducts: 87,
+        affectedOrders: 42,
+        severity: 'critical',
+        reason: 'Capacidad excedida',
+      },
+      {
+        airportCode: 'EBCI',
+        airportName: 'Brussels-Charleroi',
+        cityName: 'Charleroi',
+        latitude: 50.4592,
+        longitude: 4.4538,
+        unassignedProducts: 45,
+        affectedOrders: 23,
+        severity: 'high',
+        reason: 'Vuelos saturados',
+      },
+      {
+        airportCode: 'UBBB',
+        airportName: 'Heydar Aliyev',
+        cityName: 'Baku',
+        latitude: 40.4675,
+        longitude: 50.0467,
+        unassignedProducts: 31,
+        affectedOrders: 18,
+        severity: 'medium',
+        reason: 'Demoras de conexión',
+      },
+      {
+        airportCode: 'SPJC',
+        airportName: 'Cajamarca',
+        cityName: 'Cajamarca',
+        latitude: -7.139,
+        longitude: -78.489,
+        unassignedProducts: 12,
+        affectedOrders: 8,
+        severity: 'low',
+        reason: 'Baja frecuencia',
+      },
+      {
+        airportCode: 'SPHY',
+        airportName: 'Andahuaylas',
+        cityName: 'Andahuaylas',
+        latitude: -13.706,
+        longitude: -73.350,
+        unassignedProducts: 11,
+        affectedOrders: 6,
+        severity: 'medium',
+        reason: 'Rutas limitadas',
+      },
+    ]
+    setDemoAffectedAirports(demoAirports)
+    setShowDemoOverlay(true)
+    setShowResultModal(true)
+    setShowConfigModal(false)
+    toast.info('Vista previa con datos de ejemplo')
+  }, [])
 
   return (
     <Wrapper>
       {/* Config Modal */}
       <ModalOverlay $show={showConfigModal && !isRunning}>
         <ModalContent>
-          <ModalTitle>Configurar Simulación de Colapso</ModalTitle>
+          <ModalTitle>Simulación de Colapso</ModalTitle>
           <ModalSubtitle>
-            La simulación ejecutará el algoritmo día a día y verificará el cumplimiento del SLA:
-            <br />• <strong>Continental:</strong> máximo 2 días (48 horas)
-            <br />• <strong>Intercontinental:</strong> máximo 3 días (72 horas)
-            <br />• <strong>Colapso:</strong> cuando más del 5% de productos no puedan asignarse durante 3 días consecutivos
+            Ejecuta el algoritmo día a día hasta detectar el punto de quiebre del sistema.
+            <br />
+            <br />
+            <strong>Criterios de colapso:</strong>
+            <br />• SLA: Al detectar 1 orden fuera de tiempo
+            <br />• Acumulación: &gt;{MAX_UNASSIGNED_RATIO * 100}% de órdenes sin asignar
           </ModalSubtitle>
 
           <FormGroup>
-            <Label>Fecha de inicio de simulación</Label>
+            <Label>Fecha de inicio</Label>
             <Input
               type="datetime-local"
               value={configStartDate}
@@ -1140,17 +1280,13 @@ export function CollapseSimulationPage() {
             />
           </FormGroup>
 
-          <FormGroup>
-            <Label>Aeropuertos principales (capacidad infinita)</Label>
-            <InfoBox>
-              SPIM (Lima) • EBCI (Bruselas) • UBBB (Bakú)
-            </InfoBox>
-          </FormGroup>
+          <InfoBox>
+            La simulación corre el algoritmo completo día a día, acumulando órdenes no asignadas
+            como en la realidad.
+          </InfoBox>
 
           <ButtonRow>
-            <ModalButton onClick={() => navigate('/planificacion')}>
-              Cancelar
-            </ModalButton>
+            <ModalButton onClick={() => navigate('/simulacion/semanal')}>Cancelar</ModalButton>
             <ModalButton $primary onClick={handleStart}>
               Iniciar Simulación
             </ModalButton>
@@ -1161,219 +1297,87 @@ export function CollapseSimulationPage() {
       {/* Result Modal */}
       <ModalOverlay $show={showResultModal}>
         <ResultModal>
-          {result && (
-            <>
-              <ResultHeader $collapsed={result.hasCollapsed}>
-                <ResultIcon $collapsed={result.hasCollapsed}>
-                  {result.hasCollapsed ? '✕' : '✓'}
-                </ResultIcon>
-                <ResultTitle>
-                  {result.hasCollapsed 
-                    ? (result.collapseReason === 'SLA_BREACH' ? 'SLA Incumplido' : 'Sistema Colapsado')
-                    : 'Simulación Completada'}
-                </ResultTitle>
-                <ResultSubtitle>
-                  {result.hasCollapsed 
-                    ? (result.collapseReason === 'SLA_BREACH' 
-                        ? `${result.productsLate ?? 0} productos (${result.slaViolationPercentage?.toFixed(1) ?? 0}%) no cumplen con el SLA de entrega`
-                        : `El sistema colapsó: ${result.unassignedProducts} productos sin asignar`)
-                    : `Todos los productos entregados dentro del SLA (${result.slaCompliancePercentage?.toFixed(1) ?? 100}% a tiempo)`}
-                </ResultSubtitle>
-              </ResultHeader>
+          <ResultHeader $collapsed={hasCollapsed}>
+            <ResultIcon $collapsed={hasCollapsed}>{hasCollapsed ? '✕' : '✓'}</ResultIcon>
+            <ResultTitle>{hasCollapsed ? 'Sistema Colapsó' : 'Sin Colapso'}</ResultTitle>
+            <ResultSubtitle>
+              {hasCollapsed
+                ? `Día ${collapseDay}: ${kpi.ordersLate} orden(es) fuera de SLA`
+                : `${dayCount} días simulados sin problemas`}
+            </ResultSubtitle>
+          </ResultHeader>
 
-              <ResultBody>
-                {result.hasCollapsed && (
-                  <ResultSection>
-                    <ResultSectionTitle>Razón del Colapso</ResultSectionTitle>
-                    <ReasonBadge>
-                      {formatCollapseReason(result.collapseReason)}
-                    </ReasonBadge>
-                  </ResultSection>
-                )}
+          <ResultBody>
+            {hasCollapsed && (
+              <ResultSection>
+                <ResultSectionTitle>Razón</ResultSectionTitle>
+                <ReasonBadge>{formatCollapseReason(collapseReason)}</ReasonBadge>
+              </ResultSection>
+            )}
 
-                {/* SLA Metrics Section */}
-                <ResultSection>
-                  <ResultSectionTitle>Cumplimiento SLA</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.slaCompliancePercentage?.toFixed(1) ?? '100.0'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>A tiempo</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard $highlight={(result.productsLate ?? 0) > 0}>
-                      <ResultCardValue $danger={(result.productsLate ?? 0) > 0}>
-                        {result.slaViolationPercentage?.toFixed(1) ?? '0.0'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>Fuera de SLA</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>{result.productsOnTime ?? result.assignedProducts}</ResultCardValue>
-                      <ResultCardLabel>Productos a tiempo</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard $highlight={(result.productsLate ?? 0) > 0}>
-                      <ResultCardValue $danger={(result.productsLate ?? 0) > 0}>
-                        {result.productsLate ?? 0}
-                      </ResultCardValue>
-                      <ResultCardLabel>Productos tarde</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
+            <ResultSection>
+              <ResultSectionTitle>Estadísticas</ResultSectionTitle>
+              <ResultGrid>
+                <ResultCard>
+                  <ResultCardValue>{kpi.totalOrders}</ResultCardValue>
+                  <ResultCardLabel>Órdenes totales</ResultCardLabel>
+                </ResultCard>
+                <ResultCard $highlight={kpi.unassignedOrders > 0}>
+                  <ResultCardValue $danger={kpi.unassignedOrders > 0}>
+                    {kpi.unassignedOrders}
+                  </ResultCardValue>
+                  <ResultCardLabel>Sin asignar</ResultCardLabel>
+                </ResultCard>
+                <ResultCard>
+                  <ResultCardValue>{dayCount}</ResultCardValue>
+                  <ResultCardLabel>Días simulados</ResultCardLabel>
+                </ResultCard>
+                <ResultCard>
+                  <ResultCardValue>
+                    {kpi.totalOrders > 0
+                      ? ((kpi.assignedOrders / kpi.totalOrders) * 100).toFixed(0)
+                      : 100}
+                    %
+                  </ResultCardValue>
+                  <ResultCardLabel>Asignación</ResultCardLabel>
+                </ResultCard>
+              </ResultGrid>
+            </ResultSection>
+          </ResultBody>
 
-                {/* Continental vs Intercontinental */}
-                <ResultSection>
-                  <ResultSectionTitle>Desglose por Tipo de Envío</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.continentalSlaCompliance?.toFixed(0) ?? '100'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>Continental (≤48h)</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.intercontinentalSlaCompliance?.toFixed(0) ?? '100'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>Intercontinental (≤72h)</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.continentalOrdersOnTime ?? 0}/{result.continentalOrdersTotal ?? 0}
-                      </ResultCardValue>
-                      <ResultCardLabel>Cont. a tiempo</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.intercontinentalOrdersOnTime ?? 0}/{result.intercontinentalOrdersTotal ?? 0}
-                      </ResultCardValue>
-                      <ResultCardLabel>Inter. a tiempo</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
-
-                {/* Original Statistics */}
-                <ResultSection>
-                  <ResultSectionTitle>Estadísticas Generales</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>{result.totalDaysSimulated}</ResultCardValue>
-                      <ResultCardLabel>Días simulados</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>{result.totalOrdersProcessed}</ResultCardValue>
-                      <ResultCardLabel>Órdenes procesadas</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>{result.assignedProducts}</ResultCardValue>
-                      <ResultCardLabel>Productos asignados</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard $highlight={(result.unassignedProducts || 0) > 0}>
-                      <ResultCardValue $danger={(result.unassignedProducts || 0) > 0}>
-                        {result.unassignedProducts}
-                      </ResultCardValue>
-                      <ResultCardLabel>Sin asignar</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
-
-                <ResultSection>
-                  <ResultSectionTitle>Rendimiento</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.unassignedPercentage?.toFixed(1) ?? '0.0'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>% Sin asignar</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.executionTimeSeconds >= 60 
-                          ? `${Math.floor(result.executionTimeSeconds / 60)}m ${Math.floor(result.executionTimeSeconds % 60)}s`
-                          : `${result.executionTimeSeconds.toFixed(1)}s`}
-                      </ResultCardValue>
-                      <ResultCardLabel>Tiempo ejecución</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.slaThresholdUsed ?? 5}%
-                      </ResultCardValue>
-                      <ResultCardLabel>Umbral diario</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>3</ResultCardValue>
-                      <ResultCardLabel>Días consecutivos</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
-
-                {/* Affected Airports Section - Only show if collapsed */}
-                {result.hasCollapsed && result.affectedAirports && result.affectedAirports.length > 0 && (
-                  <ResultSection>
-                    <ResultSectionTitle>
-                      Aeropuertos Afectados ({result.affectedAirports.length})
-                    </ResultSectionTitle>
-                    <AffectedAirportsSection>
-                      <AffectedAirportsList>
-                        {result.affectedAirports
-                          .sort((a, b) => b.unassignedProducts - a.unassignedProducts)
-                          .map((airport, index) => (
-                            <AffectedAirportCard key={index} $severity={airport.severity}>
-                              <SeverityDot $severity={airport.severity} />
-                              <AirportInfo>
-                                <AirportName>
-                                  {airport.cityName} ({airport.airportCode})
-                                </AirportName>
-                                <AirportDetail>{airport.reason}</AirportDetail>
-                              </AirportInfo>
-                              <AirportStats>
-                                <AirportStatValue>{airport.unassignedProducts}</AirportStatValue>
-                                <AirportStatLabel>productos</AirportStatLabel>
-                              </AirportStats>
-                            </AffectedAirportCard>
-                          ))}
-                      </AffectedAirportsList>
-                      <ViewMapButton onClick={() => setShowResultModal(false)}>
-                        Ver en el mapa
-                      </ViewMapButton>
-                    </AffectedAirportsSection>
-                  </ResultSection>
-                )}
-              </ResultBody>
-
-              <ResultFooter>
-                <ModalButton onClick={handleReset}>
-                  Nueva Simulación
-                </ModalButton>
-                <ModalButton $primary onClick={() => setShowResultModal(false)}>
-                  Ver Mapa
-                </ModalButton>
-              </ResultFooter>
-            </>
-          )}
+          <ResultFooter>
+            <ModalButton
+              onClick={() => {
+                setShowResultModal(false)
+                setShowConfigModal(true)
+              }}
+            >
+              Nueva Simulación
+            </ModalButton>
+            <ModalButton $primary onClick={() => setShowResultModal(false)}>
+              Ver Mapa
+            </ModalButton>
+          </ResultFooter>
         </ResultModal>
       </ModalOverlay>
 
       <Header>
         <TitleBlock>
           <Title>Simulación de Colapso</Title>
-          <Subtitle>
-            Detecta cuándo el sistema no puede cumplir con los SLA de entrega (≤48h continental / ≤72h intercontinental)
-          </Subtitle>
+          <Subtitle>Detecta el punto de quiebre ejecutando día a día</Subtitle>
         </TitleBlock>
 
         <HeaderRight>
-          <StatusBadge $status={getStatus()}>
-            {getStatusText()}
-          </StatusBadge>
-
+          <StatusBadge $status={getStatus()}>{getStatusText()}</StatusBadge>
+          {dayCount > 0 && <DayBadge>Día {dayCount + 1}</DayBadge>}
           {isRunning ? (
-            <ControlButton $variant="stop" onClick={handleStop}>
+            <ControlButton $variant="danger" onClick={handleStop}>
               Detener
             </ControlButton>
           ) : (
             <>
               <ControlButton $variant="demo" onClick={handleDemoPreview}>
-                Vista Previa (Demo)
+                Demo
               </ControlButton>
               <ControlButton $variant="play" onClick={() => setShowConfigModal(true)}>
                 Configurar
@@ -1384,342 +1388,271 @@ export function CollapseSimulationPage() {
       </Header>
 
       <MapWrapper>
-        {/* Loading Overlay */}
-        {isRunning && (
-          <LoadingOverlay>
-            <LoadingContent>
-              <SpinnerContainer>
-                <Spinner />
-              </SpinnerContainer>
-
-              <LoadingTitle>Ejecutando Simulación de Colapso</LoadingTitle>
-              <LoadingSubtitle>
-                El sistema está evaluando día a día hasta detectar el punto de saturación
-              </LoadingSubtitle>
-
-              <StatusMessage>
-                <PulseDot />
-                <span>En proceso</span>
-              </StatusMessage>
-
-              <LoadingPhase>{loadingPhases[currentPhase]}</LoadingPhase>
-
-              <ProgressInfo>{getEstimatedProgress().toFixed(0)}%</ProgressInfo>
-              <ProgressBar>
-                <ProgressFill 
-                  $percent={getEstimatedProgress()} 
-                  $danger={elapsedSeconds > 180}
-                />
-              </ProgressBar>
-
-              <LoadingStats>
-                <LoadingStat>
-                  <LoadingStatValue>{formatElapsedTime(elapsedSeconds)}</LoadingStatValue>
-                  <LoadingStatLabel>Tiempo</LoadingStatLabel>
-                </LoadingStat>
-                <LoadingStat>
-                  <LoadingStatValue>~{Math.floor(elapsedSeconds / 8) + 1}</LoadingStatValue>
-                  <LoadingStatLabel>Día</LoadingStatLabel>
-                </LoadingStat>
-                <LoadingStat>
-                  <LoadingStatValue>{(elapsedSeconds * 12).toLocaleString()}</LoadingStatValue>
-                  <LoadingStatLabel>Órdenes</LoadingStatLabel>
-                </LoadingStat>
-              </LoadingStats>
-
-              <FooterNote>
-                Esta operación puede tomar varios minutos según el volumen de datos
-              </FooterNote>
-
-              <CancelButton onClick={handleStop}>
-                Cancelar
-              </CancelButton>
-            </LoadingContent>
-          </LoadingOverlay>
-        )}
-
-        {/* Controls Panel */}
-        {!isRunning && result && (
+        {/* Simulation Controls - when running or has result */}
+        {(isRunning || dayCount > 0) && currentSimTime && (
           <SimulationControls>
-            <div>
-              <ControlsLabel>Resultado SLA</ControlsLabel>
-              {result?.hasCollapsed ? (
-                <ProgressBoxDanger>
-                  <ProgressValue>
-                    {result.collapseReason === 'SLA_BREACH' 
-                      ? `${result.slaViolationPercentage?.toFixed(1) ?? 0}%`
-                      : `${result.unassignedProducts}`}
-                  </ProgressValue>
-                  <ProgressLabel>
-                    {result.collapseReason === 'SLA_BREACH' 
-                      ? 'SLA Incumplido'
-                      : 'Sin asignar'}
-                  </ProgressLabel>
-                </ProgressBoxDanger>
-              ) : (
-                <ProgressBox>
-                  <ProgressValue>{result?.slaCompliancePercentage?.toFixed(0) ?? 100}%</ProgressValue>
-                  <ProgressLabel>SLA Cumplido</ProgressLabel>
-                </ProgressBox>
-              )}
-            </div>
+            <ClockLabel>Tiempo Simulación</ClockLabel>
+            <Clock>{formatSimTime(currentSimTime)}</Clock>
+
+            {/* Speed control */}
+            <SpeedControl>
+              <SpeedLabel>Velocidad:</SpeedLabel>
+              {SPEED_OPTIONS.map((opt) => (
+                <SpeedToggle
+                  key={opt.value}
+                  $active={playbackSpeed === opt.value}
+                  onClick={() => setPlaybackSpeed(opt.value)}
+                  disabled={!isRunning}
+                >
+                  {opt.label}
+                </SpeedToggle>
+              ))}
+            </SpeedControl>
 
             <StatsRow>
               <StatLine>
-                <span>A tiempo (SLA OK):</span>
-                <StatValue>{result?.productsOnTime ?? result?.assignedProducts ?? 0}</StatValue>
+                <span>Día:</span>
+                <strong>{dayCount + 1}</strong>
               </StatLine>
               <StatLine>
-                <span>Tarde (SLA violado):</span>
-                <StatValue $danger={(result?.productsLate ?? 0) > 0}>
-                  {result?.productsLate ?? 0}
-                </StatValue>
+                <span>Vuelos activos:</span>
+                <strong>{activeFlightsCount}</strong>
               </StatLine>
               <StatLine>
-                <span>Continental (≤48h):</span>
-                <StatValue>{result?.continentalSlaCompliance?.toFixed(0) ?? 100}%</StatValue>
+                <span>Órdenes:</span>
+                <strong>
+                  {kpi.assignedOrders}/{kpi.totalOrders}
+                </strong>
               </StatLine>
               <StatLine>
-                <span>Intercont. (≤72h):</span>
-                <StatValue>{result?.intercontinentalSlaCompliance?.toFixed(0) ?? 100}%</StatValue>
-              </StatLine>
-              <StatLine>
-                <span>Tiempo ejecución:</span>
-                <StatValue>
-                  {(result?.executionTimeSeconds ?? 0) >= 60 
-                    ? `${Math.floor((result?.executionTimeSeconds ?? 0) / 60)}m`
-                    : `${(result?.executionTimeSeconds ?? 0).toFixed(0)}s`}
-                </StatValue>
+                <span>Sin asignar:</span>
+                <strong style={{ color: kpi.unassignedOrders > 0 ? '#dc2626' : 'inherit' }}>
+                  {kpi.unassignedOrders}
+                </strong>
               </StatLine>
             </StatsRow>
+
+            {algorithmRunning && <WarningBadge>Ejecutando algoritmo...</WarningBadge>}
           </SimulationControls>
         )}
 
-        {/* Map Legend - Show when there's a result */}
-        {!isRunning && result && (
-          <MapLegend>
-            <LegendTitle>Leyenda del Mapa</LegendTitle>
-            <LegendItem>
-              <LegendDot $color="#f6b53b" />
-              <span>Hub principal (cap. ilimitada)</span>
-            </LegendItem>
-            <LegendItem>
-              <LegendDot $color="#14b8a6" />
-              <span>Aeropuerto normal</span>
-            </LegendItem>
-            {result.hasCollapsed && result.affectedAirports && result.affectedAirports.length > 0 && (
-              <>
-                <LegendItem>
-                  <LegendDot $color="#dc2626" />
-                  <span>Crítico (mayor impacto)</span>
-                </LegendItem>
-                <LegendItem>
-                  <LegendDot $color="#ea580c" />
-                  <span>Alto impacto</span>
-                </LegendItem>
-                <LegendItem>
-                  <LegendDot $color="#ca8a04" />
-                  <span>Impacto medio</span>
-                </LegendItem>
-              </>
-            )}
-          </MapLegend>
-        )}
-
-        {/* Collapse Info Panel - Show when collapsed and not viewing modal */}
-        {!isRunning && result?.hasCollapsed && !showResultModal && (
-          <CollapseInfoPanel>
-            <CollapseInfoTitle>
-              Punto de Quiebre Detectado
-            </CollapseInfoTitle>
-            <CollapseInfoText>
-              El sistema no pudo cumplir con los SLA de entrega en el <strong>día {result.collapseDay}</strong>.
-              Los aeropuertos marcados en rojo muestran dónde ocurrieron los problemas.
-            </CollapseInfoText>
-            <CollapseInfoStats>
-              <CollapseInfoStat>
-                <CollapseInfoStatValue>{result.affectedAirports?.length ?? 0}</CollapseInfoStatValue>
-                <CollapseInfoStatLabel>Aeropuertos afectados</CollapseInfoStatLabel>
-              </CollapseInfoStat>
-              <CollapseInfoStat>
-                <CollapseInfoStatValue>{result.unassignedProducts}</CollapseInfoStatValue>
-                <CollapseInfoStatLabel>Productos sin asignar</CollapseInfoStatLabel>
-              </CollapseInfoStat>
-            </CollapseInfoStats>
-            <ShowReportButton onClick={() => setShowResultModal(true)}>
-              Ver Reporte Completo
-            </ShowReportButton>
-          </CollapseInfoPanel>
+        {/* Flight Drawer */}
+        {(isRunning || dayCount > 0) && simulationStartDate && (
+          <FlightDrawer
+            isOpen={panelOpen}
+            onToggle={() => setPanelOpen(!panelOpen)}
+            panelTab={panelTab}
+            onTabChange={setPanelTab}
+            flightInstances={flightInstances}
+            instanceHasProducts={instanceHasProducts}
+            simulationStartTime={simulationStartDate}
+            activeFlightsCount={activeFlightsCount}
+            onFlightClick={(f) => setSelectedFlight({ id: f.flightId, code: f.flightCode })}
+            onOrderClick={(order) => setSelectedOrder(order)}
+            orders={orders}
+            loadingOrders={false}
+          />
         )}
 
         <MapContainer
           bounds={bounds}
           scrollWheelZoom={true}
           style={{ width: '100%', height: '100%' }}
-          worldCopyJump={false}
-          maxBounds={new L.LatLngBounds([[-90, -180], [90, 180]])}
-          maxBoundsViscosity={1.0}
           minZoom={2}
           maxZoom={8}
         >
           <Pane name="airports" style={{ zIndex: 500 }} />
           <Pane name="main-hubs" style={{ zIndex: 600 }} />
-          <Pane name="affected-airports" style={{ zIndex: 700 }} />
+          <Pane name="flights" style={{ zIndex: 700 }} />
+          <Pane name="affected-airports" style={{ zIndex: 800 }} />
 
-          <TileLayer 
-            attribution={tileAttribution} 
-            url={tileUrl} 
-            noWrap={true} 
-          />
+          <TileLayer url={tileUrl} noWrap={true} />
 
-          {/* Main warehouses */}
-          {mainWarehouses.map((airport: any) => {
-            const center: LatLngTuple = [
-              parseFloat(airport.latitude),
-              parseFloat(airport.longitude),
-            ]
-            const hubFill = '#f6b53b'
-            const hubStroke = '#ebc725'
+          {/* Animated planes */}
+          {(isRunning || dayCount > 0) && (
+            <AnimatedPlanes
+              flightInstances={flightInstances}
+              currentTime={currentSimTime}
+              airports={airports}
+            />
+          )}
 
-            return (
-              <CircleMarker
-                key={`hub-${airport.id}`}
-                center={center}
-                radius={10}
-                color={hubStroke}
-                fillColor={hubFill}
-                fillOpacity={0.95}
-                weight={2.5}
-                pane="main-hubs"
-                eventHandlers={{
-                  click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                  <div style={{ textAlign: 'center' }}>
-                    <strong>{airport.cityName}</strong>
-                    <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
-                      Hub principal ({airport.codeIATA || airport.alias})
-                    </div>
-                  </div>
-                </Tooltip>
-              </CircleMarker>
-            )
-          })}
+          {/* Main hubs */}
+          {mainWarehouses.map((airport: any) => (
+            <CircleMarker
+              key={`hub-${airport.id}`}
+              center={[parseFloat(airport.latitude), parseFloat(airport.longitude)]}
+              radius={10}
+              color="#ebc725"
+              fillColor="#f6b53b"
+              fillOpacity={0.95}
+              weight={2.5}
+              pane="main-hubs"
+              eventHandlers={{ click: () => setSelectedAirport(mapAirportToSimAirport(airport)) }}
+            >
+              <Tooltip direction="top" offset={[0, -10]}>
+                <strong>{airport.cityName}</strong> (Hub)
+              </Tooltip>
+            </CircleMarker>
+          ))}
 
           {/* Regular airports */}
-          {airports.map((airport: any) => {
-            // Check if this airport is affected
-            const affectedInfo = result?.affectedAirports?.find(
-              (a) => a.airportCode === airport.codeIATA || a.airportCode === airport.alias
-            )
-            
-            // Skip if it's an affected airport (rendered separately)
-            if (affectedInfo) return null
-            
-            return (
+          {airports
+            .filter((a) => !MAIN_HUB_CODES.includes(a.codeIATA?.toUpperCase()))
+            .map((airport: any) => (
               <CircleMarker
                 key={airport.id}
                 center={[parseFloat(airport.latitude), parseFloat(airport.longitude)]}
-                radius={6}
+                radius={5}
                 color="#14b8a6"
                 fillColor="#14b8a6"
-                fillOpacity={0.8}
-                weight={2}
+                fillOpacity={0.7}
+                weight={1.5}
                 pane="airports"
-                eventHandlers={{
-                  click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-                }}
+                eventHandlers={{ click: () => setSelectedAirport(mapAirportToSimAirport(airport)) }}
               >
-                <Tooltip direction="top" offset={[0, -8]} opacity={1}>
-                  <div>
-                    <strong>{airport.cityName}</strong>
-                    <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                      {airport.codeIATA || airport.alias}
-                    </div>
-                  </div>
+                <Tooltip direction="top" offset={[0, -8]}>
+                  {airport.cityName}
                 </Tooltip>
               </CircleMarker>
-            )
-          })}
+            ))}
 
-          {/* AFFECTED AIRPORTS - Rendered with red/orange colors based on severity */}
-          {result?.hasCollapsed && result?.affectedAirports?.map((affected, index) => {
-            const getSeverityColor = (severity: string) => {
-              switch(severity) {
-                case 'critical': return { fill: '#dc2626', stroke: '#991b1b' }
-                case 'high': return { fill: '#ea580c', stroke: '#c2410c' }
-                case 'medium': return { fill: '#ca8a04', stroke: '#a16207' }
-                case 'low': return { fill: '#16a34a', stroke: '#15803d' }
-                default: return { fill: '#dc2626', stroke: '#991b1b' }
-              }
+          {/* Affected airports from demo or collapse */}
+          {showDemoOverlay && demoAffectedAirports.map((affected) => {
+            const severityColors: Record<string, string> = {
+              critical: '#dc2626',
+              high: '#ea580c',
+              medium: '#ca8a04',
+              low: '#16a34a',
             }
-            const colors = getSeverityColor(affected.severity)
-            const radius = affected.severity === 'critical' ? 14 : 
-                          affected.severity === 'high' ? 12 : 10
-
+            const color = severityColors[affected.severity] || '#dc2626'
+            const radius = affected.severity === 'critical' ? 18 : affected.severity === 'high' ? 15 : 12
+            
             return (
               <CircleMarker
-                key={`affected-${index}`}
+                key={`affected-${affected.airportCode}`}
                 center={[affected.latitude, affected.longitude]}
                 radius={radius}
-                color={colors.stroke}
-                fillColor={colors.fill}
-                fillOpacity={0.9}
+                color={color}
+                fillColor={color}
+                fillOpacity={0.4}
                 weight={3}
                 pane="affected-airports"
               >
-                <Tooltip direction="top" offset={[0, -12]} opacity={1} permanent={affected.severity === 'critical'}>
-                  <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                    <div style={{ 
-                      background: colors.fill, 
-                      color: 'white', 
-                      padding: '4px 8px', 
-                      borderRadius: '4px 4px 0 0',
-                      fontWeight: 700,
-                      fontSize: '12px'
-                    }}>
-                      PUNTO DE QUIEBRE
-                    </div>
-                    <div style={{ padding: '8px', background: 'white' }}>
-                      <strong style={{ fontSize: '13px' }}>{affected.cityName}</strong>
-                      <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                        {affected.airportCode}
-                      </div>
-                      <div style={{ 
-                        marginTop: '6px', 
-                        padding: '4px', 
-                        background: '#fef2f2', 
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        color: '#991b1b'
-                      }}>
-                        <strong>{affected.unassignedProducts}</strong> productos sin asignar
-                      </div>
-                      <div style={{ 
-                        marginTop: '4px', 
-                        fontSize: '10px', 
-                        color: '#6b7280',
-                        fontStyle: 'italic'
-                      }}>
-                        {affected.reason}
-                      </div>
-                    </div>
+                <Tooltip direction="top" offset={[0, -10]} permanent={affected.severity === 'critical'}>
+                  <div style={{ textAlign: 'center' }}>
+                    <strong style={{ color }}>{affected.airportCode}</strong>
+                    <br />
+                    <span style={{ fontSize: '11px' }}>{affected.unassignedProducts} productos sin asignar</span>
+                    <br />
+                    <span style={{ fontSize: '10px', color: '#666' }}>{affected.reason}</span>
                   </div>
                 </Tooltip>
               </CircleMarker>
             )
           })}
         </MapContainer>
+
+        {/* Legend */}
+        <MapLegend>
+          <LegendTitle>Leyenda</LegendTitle>
+          <LegendItem>
+            <LegendDot $color="#f6b53b" />
+            <span>Hub principal</span>
+          </LegendItem>
+          <LegendItem>
+            <LegendDot $color="#14b8a6" />
+            <span>Aeropuerto</span>
+          </LegendItem>
+          <LegendItem>
+            <LegendDot $color="#ef4444" />
+            <span>Vuelo activo</span>
+          </LegendItem>
+          {showDemoOverlay && (
+            <>
+              <LegendItem>
+                <LegendDot $color="#dc2626" />
+                <span>Crítico</span>
+              </LegendItem>
+              <LegendItem>
+                <LegendDot $color="#ea580c" />
+                <span>Alto</span>
+              </LegendItem>
+              <LegendItem>
+                <LegendDot $color="#ca8a04" />
+                <span>Medio</span>
+              </LegendItem>
+              <LegendItem>
+                <LegendDot $color="#16a34a" />
+                <span>Bajo</span>
+              </LegendItem>
+            </>
+          )}
+        </MapLegend>
+
+        {/* Affected Airports Panel */}
+        {showDemoOverlay && demoAffectedAirports.length > 0 && (
+          <AffectedPanel>
+            <AffectedPanelHeader>
+              <CloseAffectedPanelButton onClick={() => {
+                setShowDemoOverlay(false)
+                setDemoAffectedAirports([])
+              }}>
+                ×
+              </CloseAffectedPanelButton>
+              <AffectedPanelTitle>⚠️ Aeropuertos Afectados</AffectedPanelTitle>
+              <AffectedPanelSubtitle>
+                {demoAffectedAirports.length} aeropuertos con problemas de capacidad
+              </AffectedPanelSubtitle>
+            </AffectedPanelHeader>
+            <AffectedPanelBody>
+              {demoAffectedAirports
+                .sort((a, b) => {
+                  const order = { critical: 0, high: 1, medium: 2, low: 3 }
+                  return order[a.severity] - order[b.severity]
+                })
+                .map((airport) => (
+                  <AffectedAirportCard key={airport.airportCode} $severity={airport.severity}>
+                    <AffectedAirportName>
+                      {airport.cityName}
+                      <AffectedAirportCode>{airport.airportCode}</AffectedAirportCode>
+                      <SeverityBadge $severity={airport.severity}>
+                        {airport.severity === 'critical' ? 'Crítico' : 
+                         airport.severity === 'high' ? 'Alto' :
+                         airport.severity === 'medium' ? 'Medio' : 'Bajo'}
+                      </SeverityBadge>
+                    </AffectedAirportName>
+                    <AffectedAirportStats>
+                      <span>📦 {airport.unassignedProducts} productos</span>
+                      <span>🧾 {airport.affectedOrders} órdenes</span>
+                    </AffectedAirportStats>
+                    <AffectedAirportReason>{airport.reason}</AffectedAirportReason>
+                  </AffectedAirportCard>
+                ))}
+            </AffectedPanelBody>
+          </AffectedPanel>
+        )}
       </MapWrapper>
 
-      {/* Airport Details Modal */}
+      {/* Modals */}
       {selectedAirport && (
         <AirportDetailsModal
           airport={selectedAirport}
           onClose={() => setSelectedAirport(null)}
           readOnly
         />
+      )}
+
+      {selectedFlight && (
+        <FlightPackagesModal
+          flightId={selectedFlight.id}
+          flightCode={selectedFlight.code}
+          onClose={() => setSelectedFlight(null)}
+        />
+      )}
+
+      {selectedOrder && (
+        <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
       )}
     </Wrapper>
   )
