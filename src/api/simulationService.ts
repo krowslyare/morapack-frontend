@@ -470,12 +470,17 @@ export const simulationService = {
    * Each flight operates once per day at its scheduled time from flights.txt
    * Handles midnight-crossing flights properly (e.g., departs 22:00, arrives 02:00 next day)
    */
+  /**
+ * Generate flight instances for a time window using REAL departure/arrival times
+ * Each flight operates once per day at its scheduled time from flights.txt
+ * Handles midnight-crossing flights properly (e.g., departs 22:00, arrives 02:00 next day)
+ */
   generateFlightInstances: (
     flights: FlightStatus[],
     startTime: Date,
     durationHours: number,
     airports: any[],
-    options?: { baseDay?: number }      // 👈 NUEVO
+    options?: { baseDay?: number }
   ): FlightInstance[] => {
     const instances: FlightInstance[] = []
 
@@ -492,23 +497,19 @@ export const simulationService = {
 
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
     const durationDays = Math.ceil(durationHours / 24)
-    const baseDay = options?.baseDay ?? 1  // 👈 por defecto arranca en 1
-
-    
+    const baseDay = options?.baseDay ?? 0  // ✅ Default is 0 for weekly simulation
 
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
-    const parseTimeString = (timeStr: string | undefined): { hours: number; minutes: number } | null => {
+    const parseTimeString = (timeStr?: string) => {
       if (!timeStr) return null
-      const parts = timeStr.split(':')
-      if (parts.length < 2) return null
-      const hours = parseInt(parts[0], 10)
-      const minutes = parseInt(parts[1], 10)
-      if (isNaN(hours) || isNaN(minutes)) return null
-      return { hours, minutes }
+      const [h, m] = timeStr.split(':')
+      return {
+        hours: Number(h),
+        minutes: Number(m),
+      }
     }
 
     flights.forEach((flight) => {
-
       // Find airport coordinates
       const originAirport = airports.find(
         (a: any) => a.cityName === flight.originAirport.city.name
@@ -519,19 +520,16 @@ export const simulationService = {
 
       if (!originAirport || !destAirport) return
 
-      // Parse real departure and arrival times from backend
+      if (!flight.departureTime) return
+
       const depTime = parseTimeString(flight.departureTime)
       const arrTime = parseTimeString(flight.arrivalTime)
 
-      
-
-      // If we have real times, use them; otherwise fall back to transport time
-      const hasRealTimes = depTime !== null && arrTime !== null
+      const hasRealTimes = flight.departureTime != null && flight.departureTime !== ""
 
       // Generate one instance per day (each flight operates once per day at its scheduled time)
       for (let day = 0; day < durationDays; day++) {
         // Get the start of this simulation day in UTC
-        // This matches the simulated time shown in the UI
         const dayStart = new Date(Date.UTC(
           startTime.getUTCFullYear(),
           startTime.getUTCMonth(),
@@ -544,12 +542,15 @@ export const simulationService = {
 
         if (hasRealTimes) {
           // 1) Salida: usa la hora real de la BD
+          const hours = depTime?.hours ?? 0
+          const minutes = depTime?.minutes ?? 0
+
           departureDateTime = new Date(Date.UTC(
             dayStart.getUTCFullYear(),
             dayStart.getUTCMonth(),
             dayStart.getUTCDate(),
-            depTime.hours,
-            depTime.minutes,
+            hours,
+            minutes,
             0, 0
           ))
 
@@ -560,42 +561,28 @@ export const simulationService = {
           // 3) Llegada = salida + duración
           arrivalDateTime = new Date(departureDateTime.getTime() + flightDurationMs)
 
-          if (flight.code === 'FL-1342') {
-            const diffMinutes =
-              (arrivalDateTime.getTime() - departureDateTime.getTime()) / (60 * 1000)
-
-            console.log(
-              `FL-1342 dep=${departureDateTime.toISOString()} arr=${arrivalDateTime.toISOString()} diffMinutes=${diffMinutes}`
-            )
-          }
-
         } else {
-          // Fallback: use transport time (spread flights evenly if multiple per day)
-          const frequency = flight.dailyFrequency || 1
-          const intervalHours = 24 / frequency
+          // Fallback: use transport time
           const flightDurationMs = (flight.transportTimeDays || 0.5) * 24 * 60 * 60 * 1000
-
-          // For fallback, just use midnight as departure
           departureDateTime = new Date(dayStart.getTime())
           arrivalDateTime = new Date(departureDateTime.getTime() + flightDurationMs)
         }
 
-        
-
         // Only include if departure is within simulation window
         if (departureDateTime >= startTime && departureDateTime < endTime) {
-          // Generate instanceId matching backend format: FL-{flightId}-DAY-{day}-{HHMM}
-          // Use the scheduled hours/minutes from flights.txt (depTime), not the Date object
-          const instanceHours = hasRealTimes ? depTime.hours : 0
-          const instanceMinutes = hasRealTimes ? depTime.minutes : 0
-
-          // Día global de simulación (1-based)
-          const globalDayNumber = baseDay + day
-          const instanceId = `FL-${flight.id}-DAY-${globalDayNumber}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
-
+          // ✅ CRITICAL FIX: Backend usa day 1-based (DAY-1, DAY-2, ...)
+          // El loop itera day=0,1,2... así que sumamos baseDay+1
+          const backendDayNumber = baseDay + day 
           
+          const instanceHours = depTime ? depTime.hours : 0
+          const instanceMinutes = depTime ? depTime.minutes : 0
+
+          // ✅ Generate instanceId matching backend format EXACTLY
+          const instanceId =
+            `FL-${flight.id}-DAY-${backendDayNumber}-${String(instanceHours).padStart(2,'0')}${String(instanceMinutes).padStart(2,'0')}`
+
           instances.push({
-            id: `${flight.code}-D${globalDayNumber}-${departureDateTime.getTime()}`,
+            id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
             flightId: flight.id,
             flightCode: flight.code,
             departureTime: departureDateTime.toISOString(),
@@ -671,7 +658,7 @@ export const simulationService = {
       nextDayStart,
       24,
       airports,
-      { baseDay: currentDay + 2 }   // 👈 si currentDay=0 → DAY-2; si=1 → DAY-3, etc.
+      { baseDay: currentDay + 1 }   // 👈 si currentDay=0 → DAY-2; si=1 → DAY-3, etc.
     )
 
     // Clean up old instances (more than 1 day old)

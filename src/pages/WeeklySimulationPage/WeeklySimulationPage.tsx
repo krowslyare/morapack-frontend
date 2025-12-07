@@ -307,6 +307,52 @@ const KPIContainer = styled.div`
   gap: 8px;
 `
 
+const LoadingOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  border-radius: 12px;
+`
+
+const Spinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #14b8a6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`
+
+const LoadingText = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+`
+
+const AlgorithmBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  border-radius: 6px;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 600;
+`
+
 // ============= AnimatedFlights (sin cambios) =============
 import { bezierPoint, bezierTangent, computeControlPoint, calculateBearing } from "../../components/ui/bezierUtils"
 
@@ -338,7 +384,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
   } = props
 
   const map = useMap()
-  const markersRef = useRef<Partial<Record<string, Marker>>>({})
+  const markersRef = useRef<Record<string, { marker: Marker; origin: LatLngTuple; dest: LatLngTuple; ctrl: LatLngTuple }>>({})
   const flightAnimationsRef = useRef<Partial<Record<string, gsap.core.Tween>>>({})
   const departureTimesRef = useRef<Partial<Record<string, number>>>({})
   const arrivalTimesRef = useRef<Partial<Record<string, number>>>({})
@@ -353,7 +399,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         if (t) t.kill()
       })
       Object.values(markersRef.current).forEach(m => {
-        if (m) m.remove()
+        if (m && m.marker) m.marker.remove()
       })
       markersRef.current = {}
       flightAnimationsRef.current = {}
@@ -382,7 +428,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (showOnlyWithProducts && !hasProducts) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id]?.remove()
+          markersRef.current[f.id].marker.remove()
           delete markersRef.current[f.id]
         }
         const tween = flightAnimationsRef.current[f.id]
@@ -400,7 +446,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // ==========================================
       if (now > arrMs) {
         if (markersRef.current[f.id]) {
-          markersRef.current[f.id]?.remove()
+          markersRef.current[f.id].marker.remove()
           delete markersRef.current[f.id]
         }
         const tween = flightAnimationsRef.current[f.id]
@@ -461,7 +507,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       const marker = L.marker(startPos, { icon }).addTo(map)
       marker.setOpacity(1)
 
-      markersRef.current[f.id] = marker
+      markersRef.current[f.id] = { marker, origin, dest, ctrl }
       departureTimesRef.current[f.id] = depMs
       arrivalTimesRef.current[f.id] = arrMs
 
@@ -498,7 +544,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
           // Eliminar al llegar
           const m = markersRef.current[f.id]
           if (m) {
-            m.remove()
+            m.marker.remove()
             delete markersRef.current[f.id]
           }
           delete flightAnimationsRef.current[f.id]
@@ -511,6 +557,68 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     })
 
   }, [flightInstances, currentSimTime, map, isPlaying, instanceHasProducts, showOnlyWithProducts, onFlightClick, onFlightHover])
+
+  // Sincronizar la posición de los marcadores con el tiempo de simulación exacto.
+  useEffect(() => {
+    if (!currentSimTime) return
+
+    const now = currentSimTime.getTime()
+
+    Object.keys(departureTimesRef.current).forEach(id => {
+      const depMs = departureTimesRef.current[id]
+      const arrMs = arrivalTimesRef.current[id]
+      if (depMs === undefined || arrMs === undefined) return
+
+      const duration = arrMs - depMs
+      if (duration <= 0) return
+
+      const rawProgress = (now - depMs) / duration
+      const progress = Math.max(0, Math.min(1, rawProgress))
+
+      const markerObj = markersRef.current[id]
+      const tween = flightAnimationsRef.current[id]
+
+      if (!markerObj) return
+
+      if (tween) {
+        try {
+          tween.totalProgress(progress)
+        } catch (e) {
+          // fall back a setting manual si algo falla
+          const pos = bezierPoint(progress, markerObj.origin, markerObj.ctrl, markerObj.dest)
+          markerObj.marker.setLatLng(pos)
+          const tan = bezierTangent(progress, markerObj.origin, markerObj.ctrl, markerObj.dest)
+          const angle = (Math.atan2(tan[1], tan[0]) * 180) / Math.PI
+          const adj = (angle + 90) % 360
+          const img = markerObj.marker.getElement()?.querySelector('img') as HTMLImageElement | null
+          if (img) img.style.transform = `rotate(${adj}deg)`
+        }
+      } else {
+        const pos = bezierPoint(progress, markerObj.origin, markerObj.ctrl, markerObj.dest)
+        markerObj.marker.setLatLng(pos)
+        const tan = bezierTangent(progress, markerObj.origin, markerObj.ctrl, markerObj.dest)
+        const angle = (Math.atan2(tan[1], tan[0]) * 180) / Math.PI
+        const adj = (angle + 90) % 360
+        const img = markerObj.marker.getElement()?.querySelector('img') as HTMLImageElement | null
+        if (img) img.style.transform = `rotate(${adj}deg)`
+      }
+
+      if (progress >= 1) {
+        // asegurar limpieza cuando el tiempo simulado pasó el arrival
+        try {
+          markerObj.marker.remove()
+        } catch (e) {}
+        delete markersRef.current[id]
+        const t = flightAnimationsRef.current[id]
+        if (t) {
+          t.kill()
+          delete flightAnimationsRef.current[id]
+        }
+        delete departureTimesRef.current[id]
+        delete arrivalTimesRef.current[id]
+      }
+    })
+  }, [currentSimTime])
 
   // Control de play/pause y velocidad - transición suave
   useEffect(() => {
@@ -541,9 +649,11 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       if (arrMs === undefined) return
 
       if (now > arrMs + 5000) {
-        const marker = markersRef.current[id]
-        if (marker) {
-          marker.remove()
+        const markerObj = markersRef.current[id]
+        if (markerObj && markerObj.marker) {
+          try {
+            markerObj.marker.remove()
+          } catch (e) {}
           delete markersRef.current[id]
         }
 
@@ -625,6 +735,25 @@ export function WeeklySimulationPage() {
 
     const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
 
+    // Overlay for algorithm / long ops
+    const [showAlgorithmOverlay, setShowAlgorithmOverlay] = useState(false)
+    const [overlayMessage, setOverlayMessage] = useState('')
+    const overlayCountRef = useRef(0)
+
+    const pushOverlay = useCallback((message: string) => {
+      overlayCountRef.current += 1
+      setOverlayMessage(message)
+      setShowAlgorithmOverlay(true)
+    }, [])
+
+    const popOverlay = useCallback(() => {
+      overlayCountRef.current = Math.max(0, overlayCountRef.current - 1)
+      if (overlayCountRef.current === 0) {
+        setShowAlgorithmOverlay(false)
+        setOverlayMessage('')
+      }
+    }, [])
+
     const TOTAL_DAYS = 7
     const SPEED_SLOW = 60      // 10 min simulados por segundo real
     const SPEED_FAST = 600    // 1 hora simulada por segundo real
@@ -692,14 +821,7 @@ export function WeeklySimulationPage() {
       [ordersByStatus]
     )
 
-    // Si para ti "con ruta asignada" = todo lo que NO está pendiente:
-    const ordersWithRoute = useMemo(
-      () =>
-        ordersByStatus.IN_TRANSIT +
-        ordersByStatus.ARRIVED +
-        ordersByStatus.DELIVERED,
-      [ordersByStatus]
-    )
+    // Nota: se usa la tasa de asignación calculada por el algoritmo
 
     // Entregados desde BD (por estado)
     const deliveredOrdersFromDb = useMemo(
@@ -761,106 +883,131 @@ export function WeeklySimulationPage() {
     const [kpi, setKpi] = useState(INITIAL_KPI)
 
     const loadWeeklyFlights = useCallback(async () => {
-        try {
-            // Cargar vuelos y sus instancias asignadas en paralelo
-            const [flightResponse, instancesResponse] = await Promise.all([
-              simulationService.getFlightStatuses(),
-              simulationService.getAssignedFlightInstances()
-            ])
+      try {
+          // Cargar vuelos y sus instancias asignadas en paralelo
+          const [flightResponse, instancesResponse] = await Promise.all([
+            simulationService.getFlightStatuses(),
+            simulationService.getAssignedFlightInstances()
+          ])
 
-            if (!airports || airports.length === 0) {
-              toast.error("No hay aeropuertos cargados")
-              return
-            }
+          if (!airports || airports.length === 0) {
+            toast.error("No hay aeropuertos cargados")
+            return
+          }
 
-            const inst = simulationService.generateFlightInstances(
-              flightResponse.flights,
-              startTime,
-              168,
-              airports,
-              { baseDay: 1 }   // 👈 día 1..7
+          // ✅ Generar instancias para TODOS los vuelos (168 horas = 7 días completos)
+          const inst = simulationService.generateFlightInstances(
+            flightResponse.flights,  // ← TODOS los vuelos
+            startTime,
+            168,  // ← 7 días completos
+            airports,
+            { baseDay: 0 }
+          )
+
+          setFlightInstances(inst)
+
+          // ✅ Usar instancias reales del algoritmo (solo las que tienen productos)
+          setInstanceHasProducts(instancesResponse.instances ?? {})
+          
+          // ✅ Validación: Solo validar contra las que SÍ tienen productos
+          const backendInstances = new Set(Object.keys(instancesResponse.instances ?? {}))
+          
+          // Filtrar instancias del frontend que coinciden con backend
+          const matchingInstances = inst.filter(f => backendInstances.has(f.instanceId))
+          
+          const matches = matchingInstances.length
+          const matchRate = backendInstances.size > 0 
+            ? (matches / backendInstances.size * 100).toFixed(1) 
+            : '0.0'
+          
+          console.group('🔍 Validación de instanceIds')
+          console.log(`Total vuelos en sistema: ${flightResponse.flights.length}`)
+          console.log(`Total instancias generadas (7 días): ${inst.length}`)
+          console.log(`Backend: ${backendInstances.size} instancias con productos`)
+          console.log(`✅ ${matches} instancias con productos detectadas en frontend`)
+          console.log(`📊 Detection rate: ${matchRate}%`)
+          
+          if (matches < backendInstances.size) {
+            const missingInFrontend = Array.from(backendInstances).filter(id => 
+              !inst.some(i => i.instanceId === id)
             )
-
-            setFlightInstances(inst)
-
-            // ✅ Usar instancias reales del algoritmo (no vuelos base)
-            // instancesResponse.instances = { "FL-123-DAY-0-0800": 5, ... }
-            setInstanceHasProducts(instancesResponse.instances ?? {})
+            console.warn(`⚠️ ${missingInFrontend.length} instancias con productos NO se generaron en frontend:`)
+            console.log(missingInFrontend.slice(0, 10))
             
-            console.log(`📦 Instancias con productos: ${Object.keys(instancesResponse.instances ?? {}).length}`)
-            
-            // DEBUG: Mostrar primeras instancias del backend vs frontend
-            const backendInstances = Object.keys(instancesResponse.instances ?? {}).slice(0, 5)
-            console.log('🔍 Backend instanceIds (primeros 5):', backendInstances)
-            
-            // DEBUG: Mostrar instanceIds generados por el frontend
-            if (inst.length > 0) {
-              const frontendInstanceIds = inst.slice(0, 5).map(f => f.instanceId)
-              console.log('🔍 Frontend instanceIds (primeros 5):', frontendInstanceIds)
-              
-              // Verificar cuántos coinciden
-              const backendSet = new Set(Object.keys(instancesResponse.instances ?? {}))
-              const matches = inst.filter(f => backendSet.has(f.instanceId)).length
-              console.log(`✅ Vuelos con productos asignados detectados: ${matches} de ${backendSet.size}`)
-            }
-
-            // KPIs
-            const flightsByAirport: Record<string, number> = {}
-
-            inst.forEach((f) => {
-                const rawCode =
-                    f.originAirport.codeIATA ??
-                    (typeof f.originAirport.city === 'string'
-                      ? f.originAirport.city
-                      : f.originAirport.city?.name)
-
-                if (!rawCode) return
-
-                const code = String(rawCode)
-                flightsByAirport[code] = (flightsByAirport[code] ?? 0) + 1
-            })
-
-            let busiestAirport = "-"
-            let maxFlightsAirport = 0
-
-            Object.entries(flightsByAirport).forEach(([code, count]) => {
-                if (count > maxFlightsAirport) {
-                    maxFlightsAirport = count
-                    busiestAirport = `${code} (${count} vuelos)`
-                }
-            })
-
-            const flightsByDay = Array(TOTAL_DAYS).fill(0)
-
-            inst.forEach(f => {
-              const dep = new Date(f.departureTime)
-              const d = Math.floor(
-                  (dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
-              )
-              if (d >= 0 && d < TOTAL_DAYS) {
-                  flightsByDay[d] += 1
+            // DEBUG: Analizar por qué faltan
+            missingInFrontend.slice(0, 3).forEach(instanceId => {
+              const match = instanceId.match(/^FL-(\d+)-DAY-(\d+)-(\d{4})$/)
+              if (match) {
+                const flightId = parseInt(match[1])
+                const day = parseInt(match[2])
+                const time = match[3]
+                const flight = flightResponse.flights.find(f => f.id === flightId)
+                console.log(`  ${instanceId}:`)
+                console.log(`    Flight exists: ${!!flight}`)
+                console.log(`    departureTime: ${flight?.departureTime || 'NULL'}`)
+                console.log(`    Expected: DAY ${day} at ${time}`)
               }
             })
+          }
+          
+          // Mostrar ejemplos
+          if (matchingInstances.length > 0) {
+            console.log('✅ Instancias con productos (primeras 5):')
+            matchingInstances.slice(0, 5).forEach(i => {
+              console.log(`  ${i.instanceId} (${instanceHasProducts[i.instanceId]} productos)`)
+            })
+          }
+          
+          console.groupEnd()
 
-            let busiestDay = "-"
-            let maxFlightsDay = 0
-            for (let i = 0; i < TOTAL_DAYS; i++) {
-              if (flightsByDay[i] > maxFlightsDay) {
-                  maxFlightsDay = flightsByDay[i]
-                  busiestDay = `Día ${i + 1} (${flightsByDay[i]} vuelos)`
-              }
+          // ✅ KPIs
+          const flightsByAirport: Record<string, number> = {}
+
+          inst.forEach((f) => {
+              const rawCode =
+                  f.originAirport.codeIATA ??
+                  (typeof f.originAirport.city === 'string'
+                    ? f.originAirport.city
+                    : f.originAirport.city?.name)
+
+              if (!rawCode) return
+
+              const code = String(rawCode)
+              flightsByAirport[code] = (flightsByAirport[code] ?? 0) + 1
+          })
+
+          const flightsByDay = Array(TOTAL_DAYS).fill(0)
+
+          inst.forEach(f => {
+            const dep = new Date(f.departureTime)
+            const d = Math.floor(
+                (dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
+            )
+            if (d >= 0 && d < TOTAL_DAYS) {
+                flightsByDay[d] += 1
             }
+          })
 
-            setKpi(prev => ({
-              ...prev,
-              totalFlights: inst.length,
-            }))
+          setKpi(prev => ({
+            ...prev,
+            totalFlights: inst.length,
+          }))
 
-        } catch (error) {
-            console.error('Error cargando vuelos semanales:', error)
-            toast.error("Error cargando vuelos semanales")
-        }
-    }, [airports, startTime])
+          // ✅ Mensaje final
+          if (parseFloat(matchRate) === 100) {
+            toast.success(`✅ ${matches} vuelos con carga detectados correctamente`)
+          } else if (parseFloat(matchRate) >= 90) {
+            toast.success(`✅ ${matches}/${backendInstances.size} vuelos con carga (${matchRate}%)`)
+          } else {
+            toast.warning(`⚠️ Solo ${matchRate}% de vuelos con carga detectados - revisa consola`)
+          }
+
+      } catch (error) {
+          console.error('Error cargando vuelos semanales:', error)
+          toast.error("Error cargando vuelos semanales")
+      }
+  }, [airports, startTime])
+
 
     // Helper para crear peticiones cancelables
     const createCancelableRequest = useCallback((requestFn: (signal: AbortSignal) => Promise<any>) => {
@@ -882,13 +1029,13 @@ export function WeeklySimulationPage() {
     const runDailyAlgorithm = useCallback(
       async (dayStart: Date, dayNumber: number) => {
         if (!simulationStartDate) return
-
         console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
-
         console.log('📅 Day Start (UTC):', dayStart.toISOString())
-        console.log('📅 Day Start (local):', dayStart.toLocaleString('es-PE', { hour12: false }))
+        // Mostrar overlay mientras backend ejecuta el algoritmo
+        try {
+          pushOverlay(`Ejecutando algoritmo día ${dayNumber + 1}...`)
+        } catch (e) {}
         
-        // ✅ Formatear como Python: solo fecha + T00:00:00
         const year = dayStart.getUTCFullYear()
         const month = String(dayStart.getUTCMonth() + 1).padStart(2, '0')
         const day = String(dayStart.getUTCDate()).padStart(2, '0')
@@ -897,14 +1044,12 @@ export function WeeklySimulationPage() {
         console.log('📅 Sending to backend:', dateTimeStr)
 
         try {
-
-          // ✅ Usar petición cancelable
           const response = await createCancelableRequest(async (signal) => {
             return await simulationService.executeDaily({
               simulationStartTime: dateTimeStr,
               simulationDurationHours: 24,
               useDatabase: true,
-            }, signal)  // ⚠️ Asegúrate que tu service acepte signal
+            }, signal)
           })
           
           // ✅ Refrescar pedidos después de ejecutar el algoritmo
@@ -947,13 +1092,22 @@ export function WeeklySimulationPage() {
               assignedOrdersWeek: newAssignedOrdersWeek,
               totalOrdersWeek: newTotalOrdersWeek,
               assignmentRate: Number(rate.toFixed(2)),
-              // ❌ NO tocamos deliveredOrders / deliveredProducts aquí
             }
           })
           
+          // ✅ CRÍTICO: Recargar instancias con productos DESPUÉS del algoritmo
+          try {
+            console.log('🔄 Recargando instancias con productos...')
+            const instancesResponse = await simulationService.getAssignedFlightInstances()
+            setInstanceHasProducts(instancesResponse.instances ?? {})
+            console.log(`✅ Actualizadas ${Object.keys(instancesResponse.instances ?? {}).length} instancias con productos`)
+          } catch (error) {
+            console.error('❌ Error recargando instancias:', error)
+          }
+          
           console.groupEnd()
 
-          // ✅ Solo toast si hay algo asignado ese día
+          // ✅ Toast solo si hay algo asignado ese día
           if (assignedProducts > 0 || assignedOrders > 0) {
             const partes: string[] = []
 
@@ -972,18 +1126,19 @@ export function WeeklySimulationPage() {
           }
 
         } catch (error: any) {
-
-          // ✅ Ignorar errores de cancelación
           if (error.name === 'AbortError') {
             console.log('❌ Petición cancelada por el usuario')
             console.groupEnd()
             return
           }
 
-
           console.error('❌ Error ejecutando algoritmo:', error)
           console.groupEnd()
           toast.error('Error al ejecutar el algoritmo diario')
+        }
+        finally {
+          // Ocultar overlay
+          try { popOverlay() } catch (e) {}
         }
       },
       [simulationStartDate, createCancelableRequest, queryClient]
@@ -991,15 +1146,10 @@ export function WeeklySimulationPage() {
 
     // 🐍 PYTHON REPLICA: Update states
     const runUpdateStates = useCallback(async (simTime: Date) => {
-      
       updatesInProgressRef.current += 1;
       setIsBackgroundProcessing(true)
 
       try {
-        console.group('%c🐍 update-states', 'color:#0ea5e9;font-weight:bold;')
-        console.log('⏰ Current Time (UTC):', simTime.toISOString())
-
-        // ✅ También formatear correctamente
         const year = simTime.getUTCFullYear()
         const month = String(simTime.getUTCMonth() + 1).padStart(2, '0')
         const day = String(simTime.getUTCDate()).padStart(2, '0')
@@ -1007,21 +1157,16 @@ export function WeeklySimulationPage() {
         const minutes = String(simTime.getUTCMinutes()).padStart(2, '0')
         const seconds = String(simTime.getUTCSeconds()).padStart(2, '0')
         const dateTimeStr = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
-
-        console.log('⏰ Current Time (sending):', dateTimeStr)
         
-        // ✅ Con signal
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
         
         const response = await simulationService.updateStates({
           currentTime: dateTimeStr,
-        }, controller.signal)  // ✅ Pasar signal
+        }, controller.signal)
 
         const transitions = response?.transitions ?? 0
-        console.log('✅ Transitions:', transitions)
 
-        // 👇👇 AQUI invalidas los pedidos para que el drawer se refresque
         queryClient.invalidateQueries({ queryKey: orderKeys.all })
 
         if (response.capacityStats) {
@@ -1031,40 +1176,43 @@ export function WeeklySimulationPage() {
 
           setKpi(prev => ({
             ...prev,
-            avgCapacityUsage: Number(percent.toFixed(2)), // uso actual de capacidad
+            avgCapacityUsage: Number(percent.toFixed(2)),
           }))
         }
         
-        // 👉 Lo que se entregó en este paso (productos / pedidos, según tu modelo)
         const deliveredThisStep = Number(response.transitions?.arrivedToDelivered ?? 0)
 
-       if (deliveredThisStep > 0) {
-        setKpi(prev => ({
-          ...prev,
-          deliveredOrders:
-            (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0) +
-            deliveredThisStep,
-        }))
-      }
+        if (deliveredThisStep > 0) {
+          setKpi(prev => ({
+            ...prev,
+            deliveredOrders:
+              (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0) +
+              deliveredThisStep,
+          }))
+        }
 
-
-        console.groupEnd()
+        // ✅ NUEVO: Recargar instancias cada cierto número de updates
+        // Para evitar hacer demasiadas peticiones, solo actualiza cada 4 updates
+        if (updatesInProgressRef.current % 4 === 0) {
+          try {
+            const instancesResponse = await simulationService.getAssignedFlightInstances()
+            setInstanceHasProducts(instancesResponse.instances ?? {})
+            console.log(`🔄 Instancias actualizadas: ${Object.keys(instancesResponse.instances ?? {}).length}`)
+          } catch (error) {
+            console.error('Error actualizando instancias:', error)
+          }
+        }
         
       } catch (error: any) {
-
-        // ✅ Manejar cancelación de Axios
         if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
           console.log('❌ update-states cancelado')
-          console.groupEnd()
           return
         }
 
         console.error('❌ Error en update-states:', error)
-        console.groupEnd()
       } finally {
         updatesInProgressRef.current -= 1;
 
-        // 🔥 Se oculta solo cuando realmente NO hay trabajos en curso
         if (updatesInProgressRef.current === 0) {
           setIsBackgroundProcessing(false);
         }
@@ -1171,7 +1319,7 @@ export function WeeklySimulationPage() {
           
           if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
             lastUpdateHoursRef.current = currentStepHours
-            console.log(`🔄 Update-states en hora ${currentStepHours}`)
+            //console.log(`🔄 Update-states en hora ${currentStepHours}`)
             void runUpdateStates(next)
           }
 
@@ -1202,11 +1350,21 @@ export function WeeklySimulationPage() {
       pausedRef.current = false
 
       try {
+        // 1️⃣ PRIMERO: Ejecutar algoritmo (backend procesa vuelos)
         console.log('🔄 Ejecutando algoritmo día 1...')
         await runDailyAlgorithm(startTime, 0)
         lastAlgorithmDayRef.current = 0
-
-        await loadWeeklyFlights()
+        
+        // 2️⃣ DESPUÉS: Cargar vuelos Y instancias asignadas
+        // Esto debe obtener los MISMOS vuelos que el backend procesó
+        try {
+          pushOverlay('Cargando vuelos e instancias...')
+        } catch (e) {}
+        try {
+          await loadWeeklyFlights()
+        } finally {
+          try { popOverlay() } catch (e) {}
+        }
         
         console.log('✅ Setup completado')
         console.groupEnd()
@@ -1402,6 +1560,8 @@ export function WeeklySimulationPage() {
         ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
         : L.latLngBounds([[-60, -180], [60, 180]])
 
+    // Mostrar solo el conteo autoritativo desde la BD en la tarjeta de entregados
+
     return (
         <Wrapper>
 
@@ -1458,12 +1618,8 @@ export function WeeklySimulationPage() {
                   value={activeFlightsCount}
                 />
                 <WeeklyKPICard
-                  label="Pedidos con ruta asignada"
-                  value={ordersWithRoute}
-                />
-                <WeeklyKPICard
                   label="Pedidos entregados"
-                  value={deliveredOrdersFromDb + kpi.deliveredOrders}
+                  value={deliveredOrdersFromDb}
                 />
                 <WeeklyKPICard
                   label="Uso actual de capacidad"
@@ -1556,6 +1712,15 @@ export function WeeklySimulationPage() {
                     </ToggleHint>
                   </ToggleContainer>
               </SimulationControls>
+
+              {showAlgorithmOverlay && (
+                <LoadingOverlay>
+                  <Spinner />
+                  <LoadingText>{overlayMessage || 'Procesando...'}</LoadingText>
+                  <div style={{ height: 8 }} />
+                  <AlgorithmBadge>Algoritmo en ejecución</AlgorithmBadge>
+                </LoadingOverlay>
+              )}
 
               <MapContainer 
                   bounds={bounds} 
