@@ -15,6 +15,14 @@
   filter: none;
 }
 
+/* Highlighted plane (when searching an order) */
+.plane-icon--highlight {
+  /* This class may be applied to the <img> element */
+  transform: scale(1.5) !important;
+  filter: drop-shadow(0 6px 10px rgba(16,185,129,0.45));
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+
 .blocking-overlay {
   position: fixed;
   inset: 0;

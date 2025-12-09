@@ -510,13 +510,29 @@ export const simulationService = {
     }
 
     flights.forEach((flight) => {
-      // Find airport coordinates
-      const originAirport = airports.find(
-        (a: any) => a.cityName === flight.originAirport.city.name
-      )
-      const destAirport = airports.find(
-        (a: any) => a.cityName === flight.destinationAirport.city.name
-      )
+      // Find airport coordinates: prefer matching by IATA code (más fiable),
+      // fallback a cityName por compatibilidad con datos antiguos
+      const originAirport = airports.find((a: any) => {
+        try {
+          if (a.codeIATA && flight.originAirport?.codeIATA) {
+            return String(a.codeIATA).toUpperCase() === String(flight.originAirport.codeIATA).toUpperCase()
+          }
+        } catch (e) {
+          /* ignore and fallback */
+        }
+        return a.cityName === flight.originAirport.city.name
+      })
+
+      const destAirport = airports.find((a: any) => {
+        try {
+          if (a.codeIATA && flight.destinationAirport?.codeIATA) {
+            return String(a.codeIATA).toUpperCase() === String(flight.destinationAirport.codeIATA).toUpperCase()
+          }
+        } catch (e) {
+          /* ignore and fallback */
+        }
+        return a.cityName === flight.destinationAirport.city.name
+      })
 
       if (!originAirport || !destAirport) return
 

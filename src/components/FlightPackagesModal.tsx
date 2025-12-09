@@ -272,7 +272,7 @@ export function FlightPackagesModal({
                       <th>Cliente</th>
                       <th>Estado</th>
                       <th>Instancia asignada</th>
-                      <th>Creado</th>
+                          <th>Entregado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -288,7 +288,15 @@ export function FlightPackagesModal({
                           {p.status ? <StatusBadge>{p.status}</StatusBadge> : '—'}
                         </td>
                         <td>{p.assignedFlightInstance ?? '—'}</td>
-                        <td>{p.createdAt ? formatter.format(new Date(p.createdAt)) : '—'}</td>
+                        <td>
+                          {(
+                            p.deliveredDate ?? p.delivered_date ?? p.deliveredAt ?? p.delivered_at ?? p.createdAt
+                          )
+                            ? formatter.format(new Date(
+                                (p.deliveredDate ?? p.delivered_date ?? p.deliveredAt ?? p.delivered_at ?? p.createdAt) as string
+                              ))
+                            : '—'}
+                        </td>
                       </tr>
                     ))}
 

@@ -7,6 +7,10 @@ export interface FlightPackageProduct {
   status?: string
   assignedFlightInstance?: string
   createdAt?: string
+  deliveredDate?: string
+  delivered_date?: string
+  deliveredAt?: string
+  delivered_at?: string
   order?: {
     id?: number
     name?: string

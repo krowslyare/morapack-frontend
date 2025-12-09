@@ -339,6 +339,9 @@ function mapAirportToSimAirport(a: any): SimAirport {
     latitude: Number(a.latitude ?? 0),
     longitude: Number(a.longitude ?? 0),
     capacityPercent: Number(a.capacityPercent ?? 0),
+    codeIATA: a.codeIATA ?? a.code_iata ?? a.alias ?? undefined,
+    maxCapacity: a.maxCapacity ?? a.capacity ?? undefined,
+    currentUsedCapacity: a.currentUsedCapacity ?? a.usedCapacity ?? 0,
   }
 }
 

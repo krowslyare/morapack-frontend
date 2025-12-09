@@ -1,3 +1,4 @@
+import { ordersService } from '../../api/ordersService'
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import styled from "styled-components"
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane, Polyline } from "react-leaflet"
@@ -366,6 +367,7 @@ interface AnimatedFlightsProps {
   onFlightClick: (flight: FlightInstance) => void
   onFlightHover: (flight: FlightInstance | null) => void
   instanceHasProducts: Record<string, number>  // instanceId -> productCount (from algorithm)
+  highlightMarkerId?: string | null
   showOnlyWithProducts: boolean
 }
 
@@ -381,6 +383,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     onFlightHover,
     instanceHasProducts,
     showOnlyWithProducts,
+    highlightMarkerId,
   } = props
 
   const map = useMap()
@@ -620,6 +623,36 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     })
   }, [currentSimTime])
 
+  // Highlight a specific marker (pan + visual) when parent indicates an id
+  useEffect(() => {
+    if (!map || !highlightMarkerId) return
+
+    const markerObj = markersRef.current[highlightMarkerId]
+    if (!markerObj) return
+
+    const el = markerObj.marker.getElement()
+    // marker icon contains an <img> (DivIcon) — add class to that img
+    const img = el ? (el.querySelector('img') as HTMLElement) : null
+    if (img) {
+      img.classList.add('plane-icon--highlight')
+    }
+
+    try {
+      // Pan/zoom to marker
+      const latlng = markerObj.marker.getLatLng()
+      map.setView(latlng, Math.max(map.getZoom(), 5), { animate: true })
+    } catch (e) {
+      console.warn('Failed to pan to marker', e)
+    }
+
+    // Remove highlight after 8s
+    const t = setTimeout(() => {
+      if (img) img.classList.remove('plane-icon--highlight')
+    }, 8000)
+
+    return () => clearTimeout(t)
+  }, [highlightMarkerId, map])
+
   // Control de play/pause y velocidad - transición suave
   useEffect(() => {
     Object.values(flightAnimationsRef.current).forEach(tween => {
@@ -681,6 +714,10 @@ function mapAirportToSimAirport(a: any): SimAirport {
     latitude: Number(a.latitude ?? 0),
     longitude: Number(a.longitude ?? 0),
     capacityPercent: Number(a.capacityPercent ?? 0),
+    // Optional fields from API
+    codeIATA: a.codeIATA ?? a.code_iata ?? a.alias ?? undefined,
+    maxCapacity: a.maxCapacity ?? a.capacity ?? undefined,
+    currentUsedCapacity: a.currentUsedCapacity ?? a.usedCapacity ?? 0,
   }
 }
 
