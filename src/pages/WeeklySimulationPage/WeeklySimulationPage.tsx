@@ -631,26 +631,27 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
     if (!markerObj) return
 
     const el = markerObj.marker.getElement()
-    // marker icon contains an <img> (DivIcon) — add class to that img
     const img = el ? (el.querySelector('img') as HTMLElement) : null
     if (img) {
       img.classList.add('plane-icon--highlight')
     }
 
     try {
-      // Pan/zoom to marker
       const latlng = markerObj.marker.getLatLng()
       map.setView(latlng, Math.max(map.getZoom(), 5), { animate: true })
     } catch (e) {
       console.warn('Failed to pan to marker', e)
     }
 
-    // Remove highlight after 8s
+    // Remove highlight after 5s
     const t = setTimeout(() => {
       if (img) img.classList.remove('plane-icon--highlight')
-    }, 8000)
+    }, 5000)
 
-    return () => clearTimeout(t)
+    return () => {
+      clearTimeout(t)
+      if (img) img.classList.remove('plane-icon--highlight')
+    }
   }, [highlightMarkerId, map])
 
   // Control de play/pause y velocidad - transición suave
@@ -882,6 +883,7 @@ export function WeeklySimulationPage() {
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
     const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
     const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
+    const [highlightMarkerId, setHighlightMarkerId] = useState<string | null>(null)
 
     const handleFlightClick = (flight: FlightInstance) => {
         setSelectedFlight({
@@ -889,6 +891,8 @@ export function WeeklySimulationPage() {
           code: flight.flightCode,
         })
     }
+
+
 
     const { data: airports } = useAirports()
     const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
@@ -1585,6 +1589,50 @@ export function WeeklySimulationPage() {
       })
     }, [flightInstances, currentTime])
 
+    // When an order is selected from the drawer, try to find the flight instance
+    // that carries its products and highlight / pan to that plane on the map.
+    const handleOrderSelect = useCallback(async (order: OrderSchema) => {
+      if (!order) return
+
+      // Ensure the drawer/tab is visible so user sees context
+      setPanelTab('flights')
+      setPanelOpen(true)
+
+      // Collect assigned instance ids from the order's products (if present)
+      const assignedIds = new Set<string>()
+      if (order.productSchemas && order.productSchemas.length > 0) {
+        order.productSchemas.forEach(p => {
+          if (p.assignedFlightInstance) assignedIds.add(p.assignedFlightInstance)
+        })
+      }
+
+      // If none found locally, query the simulation service for products by order id
+      if (assignedIds.size === 0 && order.id) {
+        try {
+          const products = await simulationService.getProductsByOrderId(order.id)
+          products.forEach(p => {
+            if (p.assignedFlightInstance) assignedIds.add(p.assignedFlightInstance)
+          })
+        } catch (e) {
+          console.warn('Failed to fetch products for order', order.id, e)
+        }
+      }
+
+      // Try to find a visible/active flight that matches any of the assigned instance ids
+      const matched = Array.from(assignedIds).map(id => {
+        return activeFlights.find(f => f.instanceId === id)
+      }).find(Boolean) as FlightInstance | undefined
+
+      // Set the selected order (opens details modal) and highlight the flight if found
+      setSelectedOrder(order)
+
+      if (matched) {
+        setHighlightMarkerId(matched.id)
+        // Clear after 5s (AnimatedFlights effect will also remove CSS)
+        setTimeout(() => setHighlightMarkerId(null), 5000)
+      }
+    }, [activeFlights])
+
     const flightsStartedSoFar = useMemo(() => {
       if (!currentTime) return 0
       const now = currentTime.getTime()
@@ -1872,6 +1920,7 @@ export function WeeklySimulationPage() {
                       onFlightHover={setHoveredFlight}
                       instanceHasProducts={instanceHasProducts}
                       showOnlyWithProducts={showOnlyWithProducts}
+                      highlightMarkerId={highlightMarkerId}
                     />
                   )}
               </MapContainer>
@@ -1887,7 +1936,7 @@ export function WeeklySimulationPage() {
                 simulationStartTime={startTime}
                 activeFlightsCount={activeFlightsCount}
                 onFlightClick={handleFlightClick}
-                onOrderClick={(order) => setSelectedOrder(order)}
+                onOrderClick={handleOrderSelect}
                 orders={orders}
                 loadingOrders={loadingOrders}
               />

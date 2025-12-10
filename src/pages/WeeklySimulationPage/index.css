@@ -16,11 +16,18 @@
 }
 
 /* Highlighted plane (when searching an order) */
+/* Apply a subtle bluish shadow only — do NOT change transform/size. */
 .plane-icon--highlight {
   /* This class may be applied to the <img> element */
-  transform: scale(1.5) !important;
-  filter: drop-shadow(0 6px 10px rgba(16,185,129,0.45));
-  transition: transform 0.25s ease, filter 0.25s ease;
+  /* Stronger, more visible blue glow without altering rotation/size */
+  filter:
+    drop-shadow(0 0 0 rgba(0,0,0,0))
+    drop-shadow(0 0 16px rgba(59,130,246,0.78));
+  box-shadow:
+    0 0 0 2px rgba(59,130,246,0.45),
+    0 0 18px 8px rgba(59,130,246,0.35);
+  opacity: 1;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
 }
 
 .blocking-overlay {
