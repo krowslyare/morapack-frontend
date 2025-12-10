@@ -1633,6 +1633,16 @@ export function WeeklySimulationPage() {
       }
     }, [activeFlights])
 
+    // When a flight card in the drawer is clicked, highlight/pan that plane
+    const handleDrawerFlightClick = useCallback((flight: FlightInstance) => {
+      if (!flight) return
+      setPanelTab('flights')
+      setPanelOpen(true)
+      setHighlightMarkerId(flight.id)
+      setTimeout(() => setHighlightMarkerId(null), 5000)
+      handleFlightClick(flight)  // keep existing behavior (open modal)
+    }, [handleFlightClick])
+
     const flightsStartedSoFar = useMemo(() => {
       if (!currentTime) return 0
       const now = currentTime.getTime()
@@ -1936,6 +1946,7 @@ export function WeeklySimulationPage() {
                 simulationStartTime={startTime}
                 activeFlightsCount={activeFlightsCount}
                 onFlightClick={handleFlightClick}
+                onFlightCardClick={handleDrawerFlightClick}
                 onOrderClick={handleOrderSelect}
                 orders={orders}
                 loadingOrders={loadingOrders}
