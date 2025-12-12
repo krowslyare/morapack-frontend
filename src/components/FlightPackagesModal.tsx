@@ -192,10 +192,14 @@ const LoadingText = styled.div`
 export function FlightPackagesModal({
   flightId,
   flightCode,
+  originCity,
+  destinationCity,
   onClose,
 }: {
   flightId: number
   flightCode?: string
+  originCity?: string
+  destinationCity?: string
   onClose: () => void
 }) {
   const { data, isLoading, isError } = useFlightPackages(flightCode)
@@ -225,6 +229,12 @@ export function FlightPackagesModal({
             <Title>Paquetes del vuelo</Title>
             <Subtitle>
               Código: <b>{flightCode ?? `#${flightId}`}</b>
+              {originCity && destinationCity && (
+                <>
+                  {' · '}
+                  <b>{originCity}</b> → <b>{destinationCity}</b>
+                </>
+              )}
             </Subtitle>
           </TitleBlock>
           <CloseBtn onClick={onClose}>✕</CloseBtn>

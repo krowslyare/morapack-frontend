@@ -881,7 +881,12 @@ export function WeeklySimulationPage() {
     const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
     const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
     const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
-    const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+    const [selectedFlight, setSelectedFlight] = useState<{
+      id: number;
+      code: string;
+      originCity: string;
+      destinationCity: string;
+    } | null>(null)
     const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
     const [highlightMarkerId, setHighlightMarkerId] = useState<string | null>(null)
 
@@ -889,6 +894,8 @@ export function WeeklySimulationPage() {
         setSelectedFlight({
           id: flight.flightId,
           code: flight.flightCode,
+          originCity: flight.originAirport.city,
+          destinationCity: flight.destinationAirport.city,
         })
     }
 
@@ -1968,6 +1975,8 @@ export function WeeklySimulationPage() {
                 <FlightPackagesModal
                   flightId={selectedFlight.id}
                   flightCode={selectedFlight.code}
+                  originCity={selectedFlight.originCity}
+                  destinationCity={selectedFlight.destinationCity}
                   onClose={() => setSelectedFlight(null)}
                 />
             )}
