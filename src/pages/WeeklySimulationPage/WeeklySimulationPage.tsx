@@ -19,7 +19,7 @@ import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import './index.css' 
 import { FlightDrawer } from './FlightDrawer'
-import { useOrders } from '../../hooks/api/useOrders'
+import { useOrders, useOrdersByStatus } from '../../hooks/api/useOrders'
 import { useQueryClient } from '@tanstack/react-query'
 import { orderKeys } from '../../hooks/api/useOrders'
 
@@ -838,6 +838,9 @@ export function WeeklySimulationPage() {
 
     // Query separada para obtener TODOS los pedidos entregados (sin filtro de fecha)
     const { data: allDeliveredOrders } = useOrdersByStatus('DELIVERED', !!simulationStartDate)
+    
+    // Query separada para obtener TODOS los pedidos pendientes (sin filtro de fecha)
+    const { data: allPendingOrders } = useOrdersByStatus('PENDING', !!simulationStartDate)
 
     // ✅ Extraer los pedidos del resultado
     const orders = useMemo(() => ordersData ?? [], [ordersData])
@@ -865,10 +868,10 @@ export function WeeklySimulationPage() {
 
     // Nota: se usa la tasa de asignación calculada por el algoritmo
 
-    // Entregados desde BD (por estado)
+    // Entregados desde BD (TODOS los pedidos con estado DELIVERED, sin filtro de fecha)
     const deliveredOrdersFromDb = useMemo(
-      () => ordersByStatus.DELIVERED,
-      [ordersByStatus]
+      () => allDeliveredOrders?.length ?? 0,
+      [allDeliveredOrders]
     )
     
 
@@ -1729,7 +1732,7 @@ export function WeeklySimulationPage() {
                 />
                 <WeeklyKPICard
                   label="Cantidad pedidos pendientes"
-                  value={ordersByStatus.PENDING}
+                  value={allPendingOrders?.length ?? 0}
                 />
                 {/* Si quieres, puedes cambiar alguno por:
                     <WeeklyKPICard
