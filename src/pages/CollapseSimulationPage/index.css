@@ -15,21 +15,19 @@
   filter: none;
 }
 
-/* Highlighted plane (when searching an order) */
-/* Apply a subtle bluish shadow only — do NOT change transform/size. */
-.plane-icon--highlight {
-  /* This class may be applied to the <img> element */
-  /* Stronger, more visible blue glow without altering rotation/size */
-  filter:
-    drop-shadow(0 0 0 rgba(0,0,0,0))
-    drop-shadow(0 0 16px rgba(59,130,246,0.78));
-  box-shadow:
-    0 0 0 2px rgba(59,130,246,0.45),
-    0 0 18px 8px rgba(59,130,246,0.35);
-  opacity: 1;
-  transition: filter 0.2s ease, box-shadow 0.2s ease;
+/* Estilos para iconos de avión en texto (emoji) */
+.plane-marker-collapse .plane-icon {
+  font-size: 20px;
+  transition: transform 0.3s ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
 }
 
+.plane-marker-collapse {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Overlay para durante la simulación */
 .blocking-overlay {
   position: fixed;
   inset: 0;

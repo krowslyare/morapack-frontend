@@ -1,5 +1,8 @@
+// src/components/OrderDetailsModal.tsx
+import { useState, useEffect } from 'react'
 import styled from 'styled-components'
-import type { OrderSchema } from '../types/OrderSchema'
+import type { OrderSchema } from '../types'
+import { simulationService } from '../api/simulationService'
 
 const Overlay = styled.div`
   position: fixed;
@@ -21,7 +24,7 @@ const Overlay = styled.div`
 const Modal = styled.div`
   background: #ffffff;
   border-radius: 18px;
-  width: min(600px, 90vw);
+  width: min(600px, 96vw);
   max-height: 90vh;
   overflow-y: auto;
   box-shadow:
@@ -38,6 +41,8 @@ const Header = styled.div`
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  border-radius: 18px 18px 0 0;
 `
 
 const TitleBlock = styled.div`
@@ -46,176 +51,369 @@ const TitleBlock = styled.div`
   gap: 4px;
 `
 
-const Title = styled.h2`
+const Title = styled.h3`
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #0f172a;
+  color: white;
 `
 
 const Subtitle = styled.div`
   font-size: 13px;
-  color: #64748b;
+  color: rgba(255, 255, 255, 0.85);
 `
 
-const CloseButton = styled.button`
-  background: transparent;
+const CloseBtn = styled.button`
+  background: rgba(255, 255, 255, 0.2);
   border: none;
-  font-size: 24px;
-  color: #94a3b8;
   cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  border-radius: 6px;
-  transition: all 0.2s;
+  padding: 6px;
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  transition: background 0.15s, transform 0.1s;
 
   &:hover {
-    background: #f1f5f9;
-    color: #ef4444;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
   }
 `
 
 const Content = styled.div`
-  padding: 24px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 `
 
 const Section = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 `
 
-const SectionTitle = styled.h3`
+const SectionTitle = styled.h4`
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `
 
 const InfoGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 `
 
 const InfoItem = styled.div`
-  background: #f8fafc;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 `
 
-const Label = styled.div`
-  font-size: 11px;
-  color: #64748b;
-  margin-bottom: 4px;
+const InfoLabel = styled.span`
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 `
 
-const Value = styled.div`
+const InfoValue = styled.span`
   font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
+  font-weight: 500;
+  color: #111827;
 `
 
 const StatusBadge = styled.span<{ $status: string }>`
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
-  background: ${p => {
-    switch (p.$status) {
-      case 'DELIVERED': return '#dcfce7';
-      case 'IN_TRANSIT': return '#dbeafe';
-      case 'PENDING': return '#fef9c3';
-      default: return '#f1f5f9';
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: ${({ $status }) => {
+    switch ($status) {
+      case 'DELIVERED': return '#d1fae5'
+      case 'IN_TRANSIT': return '#dbeafe'
+      case 'PENDING': return '#fef3c7'
+      case 'ASSIGNED': return '#e0e7ff'
+      case 'ARRIVED': return '#cffafe'
+      default: return '#f3f4f6'
     }
   }};
-  color: ${p => {
-    switch (p.$status) {
-      case 'DELIVERED': return '#166534';
-      case 'IN_TRANSIT': return '#1e40af';
-      case 'PENDING': return '#854d0e';
-      default: return '#475569';
+  color: ${({ $status }) => {
+    switch ($status) {
+      case 'DELIVERED': return '#065f46'
+      case 'IN_TRANSIT': return '#1e40af'
+      case 'PENDING': return '#92400e'
+      case 'ASSIGNED': return '#3730a3'
+      case 'ARRIVED': return '#0e7490'
+      default: return '#374151'
     }
   }};
 `
 
+const FlightCard = styled.div`
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`
+
+const FlightHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`
+
+const FlightCode = styled.span`
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+`
+
+const FlightRoute = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  flex-wrap: wrap;
+`
+
+const FlightCity = styled.span`
+  font-weight: 600;
+  color: #334155;
+`
+
+const FlightArrow = styled.span`
+  color: #14b8a6;
+  font-weight: 600;
+`
+
+const FlightTimes = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+`
+
+const FlightTime = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`
+
+const TimeLabel = styled.span`
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+`
+
+const TimeValue = styled.span`
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+`
+
+const NoFlights = styled.div`
+  text-align: center;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 14px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px dashed #e5e7eb;
+`
+
+const LoadingText = styled.div`
+  text-align: center;
+  padding: 20px;
+  color: #6b7280;
+  font-size: 14px;
+`
+
+// Tipo para vuelo (leg) de la ruta
+interface FlightLeg {
+  flightId: number
+  flightCode: string
+  originAirportCode: string
+  destinationAirportCode: string
+  sequenceOrder: number
+  departureTime?: string
+  arrivalTime?: string
+}
+
 interface OrderDetailsModalProps {
-  order: OrderSchema | null
+  order: OrderSchema
   onClose: () => void
 }
 
-export function OrderDetailsModal({ order, onClose }: OrderDetailsModalProps) {
-  if (!order) return null
+export function OrderDetailsModal({
+  order,
+  onClose,
+}: OrderDetailsModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [flightLegs, setFlightLegs] = useState<FlightLeg[]>([])
+
+  // Cargar datos de vuelos cuando se abre el modal
+  useEffect(() => {
+    const loadFlightData = async () => {
+      if (!order.id) {
+        setLoading(false)
+        return
+      }
+
+      try {
+        setLoading(true)
+
+        // Usar el nuevo endpoint que obtiene todos los vuelos de la ruta
+        const response = await simulationService.getOrderFlightLegs(order.id)
+
+        if (response.success && response.flightLegs.length > 0) {
+          setFlightLegs(response.flightLegs)
+        } else {
+          setFlightLegs([])
+        }
+      } catch (error) {
+        console.error('Error loading flight data for order:', order.id, error)
+        setFlightLegs([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadFlightData()
+  }, [order.id])
+
+  const formatDateTime = (dateStr: string) => {
+    return new Date(dateStr).toLocaleString('es-PE', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('es-PE', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  }
 
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={e => e.stopPropagation()}>
         <Header>
           <TitleBlock>
-            <Title>Orden #{order.id}</Title>
-            <Subtitle>Detalles del envío</Subtitle>
+            <Title>Pedido: {order.name}</Title>
+            <Subtitle>ID: {order.id}</Subtitle>
           </TitleBlock>
-          <CloseButton onClick={onClose}>&times;</CloseButton>
+          <CloseBtn onClick={onClose}>✕</CloseBtn>
         </Header>
 
         <Content>
+          {/* Información general */}
           <Section>
-            <SectionTitle>Estado</SectionTitle>
-            <div>
-              <StatusBadge $status={order.status}>{order.status}</StatusBadge>
-            </div>
-          </Section>
-
-          <Section>
-            <SectionTitle>Ruta</SectionTitle>
+            <SectionTitle>Información General</SectionTitle>
             <InfoGrid>
               <InfoItem>
-                <Label>Origen</Label>
-                <Value>{order.originCityName}</Value>
+                <InfoLabel>Estado</InfoLabel>
+                <StatusBadge $status={order.status}>{order.status}</StatusBadge>
               </InfoItem>
               <InfoItem>
-                <Label>Destino</Label>
-                <Value>{order.destinationCityName}</Value>
+                <InfoLabel>Origen</InfoLabel>
+                <InfoValue>{order.originCityName}</InfoValue>
               </InfoItem>
+              <InfoItem>
+                <InfoLabel>Destino</InfoLabel>
+                <InfoValue>{order.destinationCityName}</InfoValue>
+              </InfoItem>
+              <InfoItem>
+                <InfoLabel>Fecha de Entrega</InfoLabel>
+                <InfoValue>{formatDate(order.deliveryDate)}</InfoValue>
+              </InfoItem>
+              {order.customerSchema?.name && (
+                <InfoItem>
+                  <InfoLabel>Cliente</InfoLabel>
+                  <InfoValue>{order.customerSchema.name}</InfoValue>
+                </InfoItem>
+              )}
+              {order.priority && (
+                <InfoItem>
+                  <InfoLabel>Prioridad</InfoLabel>
+                  <InfoValue>{order.priority}</InfoValue>
+                </InfoItem>
+              )}
             </InfoGrid>
           </Section>
 
+          {/* Vuelos asignados */}
           <Section>
-            <SectionTitle>Fechas</SectionTitle>
-            <InfoGrid>
-              <InfoItem>
-                <Label>Creación</Label>
-                <Value>{order.creationDate ? new Date(order.creationDate).toLocaleString() : '-'}</Value>
-              </InfoItem>
-              <InfoItem>
-                <Label>Entrega Estimada</Label>
-                <Value>{order.deliveryDate ? new Date(order.deliveryDate).toLocaleString() : '-'}</Value>
-              </InfoItem>
-            </InfoGrid>
-          </Section>
+            <SectionTitle>
+              Vuelo(s) Asignado(s)
+              {flightLegs.length > 1 && (
+                <span style={{ fontWeight: 400, fontSize: 12, color: '#6b7280' }}>
+                  ({flightLegs.length} escalas)
+                </span>
+              )}
+            </SectionTitle>
 
-          {order.productSchemas && order.productSchemas.length > 0 && (
-            <Section>
-              <SectionTitle>Productos ({order.productSchemas.length})</SectionTitle>
-              <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {order.productSchemas.map((prod, idx) => (
-                  <InfoItem key={idx}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Value>{prod.name || `Producto ${idx + 1}`}</Value>
-                      <span style={{ fontSize: '12px', color: '#64748b' }}>{prod.weight}kg</span>
-                    </div>
-                  </InfoItem>
-                ))}
-              </div>
-            </Section>
-          )}
+            {loading ? (
+              <LoadingText>Cargando información de vuelos...</LoadingText>
+            ) : flightLegs.length === 0 ? (
+              <NoFlights>
+                No hay vuelos asignados a este pedido aún.
+                {order.status === 'PENDING' && ' El algoritmo asignará vuelos cuando se ejecute.'}
+              </NoFlights>
+            ) : (
+              flightLegs.map((leg, index) => (
+                <FlightCard key={`${leg.flightId}-${leg.sequenceOrder}`}>
+                  <FlightHeader>
+                    <FlightCode>
+                      {index + 1}. {leg.flightCode}
+                    </FlightCode>
+                    <StatusBadge $status="ACTIVE">
+                      ACTIVE
+                    </StatusBadge>
+                  </FlightHeader>
+
+                  <FlightRoute>
+                    <FlightCity>{leg.originAirportCode}</FlightCity>
+                    <FlightArrow>→</FlightArrow>
+                    <FlightCity>{leg.destinationAirportCode}</FlightCity>
+                  </FlightRoute>
+
+                  {(leg.departureTime || leg.arrivalTime) && (
+                    <FlightTimes>
+                      <FlightTime>
+                        <TimeLabel>Despegue</TimeLabel>
+                        <TimeValue>{leg.departureTime || '—'}</TimeValue>
+                      </FlightTime>
+                      <FlightTime>
+                        <TimeLabel>Llegada</TimeLabel>
+                        <TimeValue>{leg.arrivalTime || '—'}</TimeValue>
+                      </FlightTime>
+                    </FlightTimes>
+                  )}
+                </FlightCard>
+              ))
+            )}
+          </Section>
         </Content>
       </Modal>
     </Overlay>

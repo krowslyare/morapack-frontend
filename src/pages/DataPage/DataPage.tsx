@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 import {
   uploadAirports,
@@ -122,6 +123,12 @@ const UploadButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   }
 `
 
+const ActionsRow = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+`
+
 const Message = styled.div<{ $type: 'success' | 'error' | 'info' }>`
   margin-top: 12px;
   padding: 10px 12px;
@@ -220,6 +227,7 @@ interface DataStats {
 }
 
 export function DataPage() {
+  const navigate = useNavigate()
   const [airportsState, setAirportsState] = useState<UploadState>({ loading: false, result: null })
   const [flightsState, setFlightsState] = useState<UploadState>({ loading: false, result: null })
   const [clearState, setClearState] = useState<UploadState>({ loading: false, result: null })
@@ -427,6 +435,10 @@ export function DataPage() {
             </Message>
           )}
         </UploadSection>
+
+        <ActionsRow>
+          <UploadButton $variant="primary" onClick={() => navigate('/planificacion')}>Ir a Planificación</UploadButton>
+        </ActionsRow>
 
         <ModalOverlay
           $isOpen={showClearModal}

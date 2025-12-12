@@ -16,6 +16,7 @@ interface SimulationStore {
   dailyPlaybackSpeed: number
   lastAlgorithmRunTime: number | null  // When the algorithm last ran // CHANGED: Store as timestamp
   nextAlgorithmRunTime: number | null  // When the next run is scheduled // CHANGED: Store as timestamp
+  lastRealTimestamp: number | null  // Real-world timestamp when sim time was last updated (for background catch-up)
   dailyStats: {
     totalOrders: number
     assignedOrders: number
@@ -49,6 +50,9 @@ interface SimulationStore {
   stopDailySimulation: () => void
   setLastAlgorithmRunTime: (time: Date) => void
   setNextAlgorithmRunTime: (time: Date | null) => void
+  
+  // Get adjusted simulation time (accounts for time passed while away)
+  getAdjustedSimTime: () => number | null
   setDailyStats: (stats: {
     totalOrders: number
     assignedOrders: number
@@ -92,6 +96,7 @@ export const useSimulationStore = create<SimulationStore>()(
       dailyPlaybackSpeed: 1,
       lastAlgorithmRunTime: null,
       nextAlgorithmRunTime: null,
+      lastRealTimestamp: null,
       dailyStats: {
         totalOrders: 0,
         assignedOrders: 0,
@@ -131,6 +136,7 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyCurrentSimTime: null,
           lastAlgorithmRunTime: null,
           nextAlgorithmRunTime: null,
+          lastRealTimestamp: null,
         })
       },
 
@@ -152,6 +158,7 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyPlaybackSpeed: speed,
           lastAlgorithmRunTime: startTime.getTime(), // Store as timestamp
           nextAlgorithmRunTime: nextRun.getTime(), // Store as timestamp
+          lastRealTimestamp: Date.now(), // Track when we started
         })
       },
 
@@ -160,10 +167,16 @@ export const useSimulationStore = create<SimulationStore>()(
           // Updater function - get current state and apply function
           const currentTime = get().dailyCurrentSimTime
           const newTime = time(currentTime)
-          set({ dailyCurrentSimTime: newTime ? newTime.getTime() : null })
+          set({ 
+            dailyCurrentSimTime: newTime ? newTime.getTime() : null,
+            lastRealTimestamp: Date.now(), // Update real timestamp
+          })
         } else {
           // Direct value
-          set({ dailyCurrentSimTime: time.getTime() })
+          set({ 
+            dailyCurrentSimTime: time.getTime(),
+            lastRealTimestamp: Date.now(), // Update real timestamp
+          })
         }
       },
 
@@ -177,6 +190,7 @@ export const useSimulationStore = create<SimulationStore>()(
           dailyCurrentSimTime: null,
           lastAlgorithmRunTime: null,
           nextAlgorithmRunTime: null,
+          lastRealTimestamp: null,
           dailyStats: {
             totalOrders: 0,
             assignedOrders: 0,
@@ -198,11 +212,31 @@ export const useSimulationStore = create<SimulationStore>()(
         set({ nextAlgorithmRunTime: time ? time.getTime() : null }) // Store as timestamp
       },
 
+      // Get adjusted simulation time (accounts for time passed while away from the page)
+      getAdjustedSimTime: () => {
+        const state = get()
+        if (!state.isDailyRunning || !state.dailyCurrentSimTime || !state.lastRealTimestamp) {
+          return state.dailyCurrentSimTime
+        }
+
+        // Calculate how much real time passed since last update
+        const realTimeElapsed = Date.now() - state.lastRealTimestamp
+        
+        // Convert to simulation time based on playback speed
+        // speed=1 means 1 sim second = 1 real second
+        // speed=60 means 60 sim seconds = 1 real second
+        const simTimeElapsed = realTimeElapsed * state.dailyPlaybackSpeed
+        
+        // Return adjusted simulation time
+        return state.dailyCurrentSimTime + simTimeElapsed
+      },
+
       setDailyStats: (stats) => {
         set({ dailyStats: stats })
       },
 
       // Check if a new order is within the current 10-min window
+      // (Legacy - kept for backwards compatibility but not used for new orders)
       isOrderInCurrentWindow: (orderTime: Date) => {
         const state = get()
         if (!state.isDailyRunning || !state.lastAlgorithmRunTime) {
@@ -217,23 +251,97 @@ export const useSimulationStore = create<SimulationStore>()(
         return orderTime >= windowStart && orderTime <= windowEnd
       },
 
-      // Trigger immediate algorithm refresh if new order is in current window
-      triggerRefreshIfNeeded: (orderTime: Date) => {
+      // Trigger algorithm refresh when a new order is added during daily simulation
+      // Any new order while daily simulation is running should trigger a re-run
+      triggerRefreshIfNeeded: (_orderTime: Date) => {
         const state = get()
         if (!state.isDailyRunning || !state.dailyCurrentSimTime) {
-          return false // Simulation not running
+          return false // Simulation not running, no refresh needed
         }
 
-        // Check if order is in current window
-        if (state.isOrderInCurrentWindow(orderTime)) {
-          // Force next algorithm run sooner (in 2 minute buffer)
-          const currentTime = new Date(state.dailyCurrentSimTime)
-          const nextRun = new Date(currentTime.getTime() + ALGORITHM_BUFFER_MS)
-          set({ nextAlgorithmRunTime: nextRun.getTime() }) // Store as timestamp
-          return true // Will trigger refresh
-        }
+        // Force next algorithm run sooner (in 2 minute buffer)
+        // This ensures the new order gets processed and assigned to a flight
+        const currentTime = new Date(state.dailyCurrentSimTime)
+        const nextRun = new Date(currentTime.getTime() + ALGORITHM_BUFFER_MS)
+        set({ nextAlgorithmRunTime: nextRun.getTime() }) // Store as timestamp
+        return true // Will trigger refresh
+      },
 
-        return false // Order outside window, no refresh needed
+      // ==================== COLLAPSE VISUAL SIMULATION ACTIONS ====================
+
+      startCollapseVisual: (startTime: Date, speed: number = 30) => {
+        set({
+          collapseVisualStatus: 'running',
+          collapseVisualCurrentDay: 0,
+          collapseVisualSimStartTime: startTime.getTime(),
+          collapseVisualCurrentTime: startTime.getTime(),
+          collapseVisualSpeed: speed,
+          collapseVisualBacklog: 0,
+          collapseVisualProgress: 0,
+          collapseVisualStatusLabel: 'HEALTHY',
+          collapseVisualHasCollapsed: false,
+          collapseVisualCollapseReason: null,
+        })
+      },
+
+      updateCollapseVisualTime: (time: Date) => {
+        set({ collapseVisualCurrentTime: time.getTime() })
+      },
+
+      advanceCollapseVisualDay: (day: number) => {
+        const state = get()
+        if (state.collapseVisualSimStartTime) {
+          const dayStart = new Date(state.collapseVisualSimStartTime)
+          dayStart.setDate(dayStart.getDate() + (day - 1))
+          set({
+            collapseVisualCurrentDay: day,
+            collapseVisualCurrentTime: dayStart.getTime(),
+          })
+        }
+      },
+
+      setCollapseVisualSpeed: (speed: number) => {
+        set({ collapseVisualSpeed: speed })
+      },
+
+      setCollapseVisualProgress: (progress: number, statusLabel: string, backlog: number) => {
+        set({
+          collapseVisualProgress: progress,
+          collapseVisualStatusLabel: statusLabel,
+          collapseVisualBacklog: backlog,
+        })
+      },
+
+      setCollapseVisualCollapsed: (reason: string) => {
+        set({
+          collapseVisualStatus: 'collapsed',
+          collapseVisualHasCollapsed: true,
+          collapseVisualCollapseReason: reason,
+          collapseVisualStatusLabel: 'COLLAPSED',
+        })
+      },
+
+      pauseCollapseVisual: () => {
+        set({ collapseVisualStatus: 'paused' })
+      },
+
+      resumeCollapseVisual: () => {
+        set({ collapseVisualStatus: 'running' })
+      },
+
+      resetCollapseVisual: () => {
+        set({
+          collapseVisualStatus: 'idle',
+          collapseVisualCurrentDay: 0,
+          collapseVisualSimStartTime: null,
+          collapseVisualCurrentTime: null,
+          collapseVisualSpeed: 30,
+          collapseVisualBacklog: 0,
+          collapseVisualProgress: 0,
+          collapseVisualStatusLabel: 'IDLE',
+          collapseVisualHasCollapsed: false,
+          collapseVisualCollapseReason: null,
+        })
       },
 
       // ==================== COLLAPSE VISUAL SIMULATION ACTIONS ====================

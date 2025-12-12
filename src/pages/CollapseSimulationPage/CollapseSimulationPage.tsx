@@ -45,7 +45,12 @@ const collapseFlash = keyframes`
 `
 
 // ====================== Styled Components ======================
+// ====================== Styled Components ======================
 const Wrapper = styled.div`
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
@@ -56,6 +61,7 @@ const Wrapper = styled.div`
 
 const Header = styled.div`
   background: white;
+  background: white;
   border-radius: 12px;
   padding: 16px 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -63,6 +69,7 @@ const Header = styled.div`
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
+  gap: 16px;
   gap: 16px;
 `
 
@@ -153,6 +160,7 @@ const MapWrapper = styled.div<{ $collapsed?: boolean }>`
   height: 70vh;
   position: relative;
   background: white;
+  background: white;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -189,6 +197,7 @@ const ClockLabel = styled.div`
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
+  opacity: 0.9;
   opacity: 0.9;
   margin-bottom: 4px;
 `
@@ -1415,7 +1424,7 @@ export function CollapseSimulationPage() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
-  }, [])
+  }, [hasCollapsed, dayCount])
 
   // Get status for badge
   const getStatusLabel = (): 'idle' | 'running' | 'paused' | 'collapsed' | 'completed' => {
@@ -1436,11 +1445,95 @@ export function CollapseSimulationPage() {
     return '○ Detenido'
   }
 
+  // Demo preview with dummy data
+  const handleDemoPreview = useCallback(() => {
+    // Set demo data
+    setKpi({
+      totalOrders: 847,
+      assignedOrders: 661,
+      unassignedOrders: 186,
+      totalProducts: 2527,
+      assignedProducts: 2341,
+      unassignedProducts: 186,
+      slaViolationPercentage: 11.8,
+      ordersLate: 276,
+    })
+    setHasCollapsed(true)
+    setCollapseDay(12)
+    setCollapseReason('SLA_BREACH')
+    setDayCount(12)
+    
+    // Set demo affected airports - these show on the map
+    const demoAirports: AffectedAirport[] = [
+      {
+        airportCode: 'SPIM',
+        airportName: 'Jorge Chávez',
+        cityName: 'Lima',
+        latitude: -12.0219,
+        longitude: -77.1143,
+        unassignedProducts: 87,
+        affectedOrders: 42,
+        severity: 'critical',
+        reason: 'Capacidad excedida',
+      },
+      {
+        airportCode: 'EBCI',
+        airportName: 'Brussels-Charleroi',
+        cityName: 'Charleroi',
+        latitude: 50.4592,
+        longitude: 4.4538,
+        unassignedProducts: 45,
+        affectedOrders: 23,
+        severity: 'high',
+        reason: 'Vuelos saturados',
+      },
+      {
+        airportCode: 'UBBB',
+        airportName: 'Heydar Aliyev',
+        cityName: 'Baku',
+        latitude: 40.4675,
+        longitude: 50.0467,
+        unassignedProducts: 31,
+        affectedOrders: 18,
+        severity: 'medium',
+        reason: 'Demoras de conexión',
+      },
+      {
+        airportCode: 'SPJC',
+        airportName: 'Cajamarca',
+        cityName: 'Cajamarca',
+        latitude: -7.139,
+        longitude: -78.489,
+        unassignedProducts: 12,
+        affectedOrders: 8,
+        severity: 'low',
+        reason: 'Baja frecuencia',
+      },
+      {
+        airportCode: 'SPHY',
+        airportName: 'Andahuaylas',
+        cityName: 'Andahuaylas',
+        latitude: -13.706,
+        longitude: -73.350,
+        unassignedProducts: 11,
+        affectedOrders: 6,
+        severity: 'medium',
+        reason: 'Rutas limitadas',
+      },
+    ]
+    setDemoAffectedAirports(demoAirports)
+    setShowDemoOverlay(true)
+    setShowResultModal(true)
+    setShowConfigModal(false)
+    toast.info('Vista previa con datos de ejemplo')
+  }, [])
+
   return (
     <Wrapper>
       {/* Start Modal */}
       <ModalOverlay $show={showStartModal && !isDemoRunning && collapseVisualStatus === 'idle'}>
         <ModalContent>
+          <ModalTitle>Simulación de Colapso</ModalTitle>
           <ModalTitle>Simulación de Colapso</ModalTitle>
           <ModalSubtitle>
             Observa cómo el sistema acumula órdenes día a día hasta alcanzar el punto de colapso,
@@ -1812,6 +1905,7 @@ export function CollapseSimulationPage() {
         {/* Affected Airports Panel - Removed as it requires missing props */}
       </MapWrapper>
 
+      {/* Modals */}
       {/* Modals */}
       {selectedAirport && (
         <AirportDetailsModal

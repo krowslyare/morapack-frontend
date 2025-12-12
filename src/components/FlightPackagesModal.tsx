@@ -192,10 +192,14 @@ const LoadingText = styled.div`
 export function FlightPackagesModal({
   flightId,
   flightCode,
+  originCity,
+  destinationCity,
   onClose,
 }: {
   flightId: number
   flightCode?: string
+  originCity?: string
+  destinationCity?: string
   onClose: () => void
 }) {
   const { data, isLoading, isError } = useFlightPackages(flightCode)
@@ -225,6 +229,12 @@ export function FlightPackagesModal({
             <Title>Paquetes del vuelo</Title>
             <Subtitle>
               Código: <b>{flightCode ?? `#${flightId}`}</b>
+              {originCity && destinationCity && (
+                <>
+                  {' · '}
+                  <b>{originCity}</b> → <b>{destinationCity}</b>
+                </>
+              )}
             </Subtitle>
           </TitleBlock>
           <CloseBtn onClick={onClose}>✕</CloseBtn>
@@ -267,12 +277,12 @@ export function FlightPackagesModal({
                       <th>ID</th>
                       <th>Orden</th>
                       <th>Nombre de orden</th>
-                      <th>Origen</th>        {/* 👈 nueva columna */}
+                      <th>Origen</th>
                       <th>Destino</th>
                       <th>Cliente</th>
                       <th>Estado</th>
                       <th>Instancia asignada</th>
-                      <th>Creado</th>
+                          <th>Entregado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -281,14 +291,22 @@ export function FlightPackagesModal({
                         <td>{p.id}</td>
                         <td>{p.order?.id ?? '—'}</td>
                         <td>{p.order?.name ?? '—'}</td>
-                        <td>{p.order?.origin ?? '—'}</td>          {/* 👈 aquí el origen */}
+                        <td>{p.order?.origin ?? '—'}</td>
                         <td>{p.order?.destination ?? '—'}</td>
                         <td>{p.order?.customer ?? '—'}</td>
                         <td>
                           {p.status ? <StatusBadge>{p.status}</StatusBadge> : '—'}
                         </td>
                         <td>{p.assignedFlightInstance ?? '—'}</td>
-                        <td>{p.createdAt ? formatter.format(new Date(p.createdAt)) : '—'}</td>
+                        <td>
+                          {(
+                            p.deliveredDate ?? p.delivered_date ?? p.deliveredAt ?? p.delivered_at ?? p.createdAt
+                          )
+                            ? formatter.format(new Date(
+                                (p.deliveredDate ?? p.delivered_date ?? p.deliveredAt ?? p.delivered_at ?? p.createdAt) as string
+                              ))
+                            : '—'}
+                        </td>
                       </tr>
                     ))}
 

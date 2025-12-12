@@ -19,7 +19,7 @@ export default function RegisterOrderPage() {
 
   const createOrder = useCreateOrder()
   const updateOrder = useUpdateOrder()
-  const { triggerRefreshIfNeeded, isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
+  const { isDailyRunning, dailyCurrentSimTime } = useSimulationStore()
   const {
     data: existingOrder,
     isLoading: isOrderLoading,
@@ -102,6 +102,14 @@ export default function RegisterOrderPage() {
 
     try {
       const currentDate = getCurrentDate()
+      
+      // When creating a new order during simulation, add 10 min buffer to creationDate
+      // This ensures the order will be picked up by the next algorithm cycle
+      let orderCreationDate = currentDate
+      if (!isEditMode && isDailyRunning && dailyCurrentSimTime) {
+        orderCreationDate = new Date(currentDate.getTime() + 10 * 60 * 1000) // +10 minutes
+      }
+      
       const payload = {
         name: form.name.trim(),
         originCityId: parseId(form.originCityId, 'Ciudad origen (ID)'),
@@ -111,7 +119,7 @@ export default function RegisterOrderPage() {
         deliveryDate: toLocalDateTime(form.deliveryDate),
         status: form.status as PackageStatus,
         pickupTimeHours: form.pickupTimeHours ? Number(form.pickupTimeHours) : 0,
-        creationDate: existingOrder?.creationDate ?? toLocalDateTime(currentDate),
+        creationDate: existingOrder?.creationDate ?? toLocalDateTime(orderCreationDate),
         updatedAt: toLocalDateTime(currentDate),
         customerId: parseId(form.customerId, 'ID cliente'),
 
@@ -131,17 +139,11 @@ export default function RegisterOrderPage() {
       } else {
         await createOrder.mutateAsync(payload as any)
 
-        // NEW: Check if order is within current daily simulation window
-        // If yes, trigger algorithm refresh in 1 minute
-        if (payload.deliveryDate) {
-          const orderDeliveryTime = new Date(payload.deliveryDate)
-          const willRefresh = triggerRefreshIfNeeded(orderDeliveryTime)
-
-          if (willRefresh) {
-            toast.info('Nueva orden detectada en ventana activa. Algoritmo se ejecutará en 2 minutos.', {
-              autoClose: 5000,
-            })
-          }
+        // If Daily simulation is running, just show a message
+        // The simulation's normal flow will pick up the new order automatically
+        // We DON'T run the algorithm here to avoid incorrectly changing order states
+        if (isDailyRunning && dailyCurrentSimTime) {
+          toast.success('Pedido guardado. Se asignara en el proximo ciclo de la simulacion.', { autoClose: 3000 })
         }
       }
       navigate('/envios')

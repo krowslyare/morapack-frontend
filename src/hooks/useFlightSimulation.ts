@@ -11,7 +11,12 @@ export interface SimAirport {
   latitude: number
   longitude: number
   capacityPercent: number
+  // Optional fields populated when we map real API airports
+  codeIATA?: string
+  maxCapacity?: number
+  currentUsedCapacity?: number
 }
+
 
 export interface SimFlight {
   id: string

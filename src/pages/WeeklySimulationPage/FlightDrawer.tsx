@@ -1,7 +1,9 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import styled from 'styled-components'
 import type { FlightInstance } from '../../api/simulationService'
 import type { OrderSchema } from '../../types'
+import { useState } from 'react'
+
 
 interface FlightDrawerProps {
   isOpen: boolean
@@ -13,6 +15,8 @@ interface FlightDrawerProps {
   simulationStartTime: Date
   activeFlightsCount: number
   onFlightClick: (flight: FlightInstance) => void
+  onFlightCardClick?: (flight: FlightInstance) => void  // optional: specific handler for drawer clicks
+  onOrderClick?: (order: OrderSchema) => void  // NEW: callback for order click
   orders: OrderSchema[]
   loadingOrders: boolean
 }
@@ -557,9 +561,31 @@ export const FlightDrawer = memo(function FlightDrawer({
   // simulationStartTime no se usa actualmente
   activeFlightsCount,
   onFlightClick,
+  onFlightCardClick,
+  onOrderClick,
   orders,
   loadingOrders,
 }: FlightDrawerProps) {
+
+  // Función helper para obtener el conteo de productos de un vuelo - O(1)
+  // Solo coincidencia exacta por instanceId (cada instancia de vuelo es única)
+  const getProductCount = (flight: FlightInstance): number => {
+    return instanceHasProducts[flight.instanceId] ?? 0
+  }
+
+  const flightsWithProducts = useMemo(
+    () => flightInstances.filter(f => getProductCount(f) > 0),
+    [flightInstances, instanceHasProducts]
+  )
+
+  const [orderFilter, setOrderFilter] = useState<'PENDING' | 'IN_TRANSIT' | 'ARRIVED' | 'DELIVERED'>('IN_TRANSIT');
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredOrders = orders
+    .filter(o => o.status === orderFilter)
+    .filter(o =>
+      o.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <>
@@ -604,37 +630,38 @@ export const FlightDrawer = memo(function FlightDrawer({
                 </EmptyState>
               ) : (
                 <DrawerGrid>
-                  {flightInstances.map(f => {
-                    // Usar instanceId directamente del objeto
-                    const productCount = instanceHasProducts[f.instanceId] ?? 0
-                    const hasProducts = productCount > 0
-                    
+                  {flightsWithProducts.map(f => {
+                    const productCount = getProductCount(f)
+
                     return (
-                      <FlightCard key={f.id} onClick={() => onFlightClick(f)}>
+                      <FlightCard
+                        key={f.id}
+                        onClick={() => (onFlightCardClick ?? onFlightClick)(f)}
+                      >
                         <FlightCardHeader>
                           <FlightCode>{f.flightCode}</FlightCode>
-                          <FlightBadge $hasProducts={hasProducts}>
-                            {hasProducts ? `${productCount} prod.` : "Vacío"}
+                          <FlightBadge $hasProducts={productCount > 0}>
+                            {productCount} prod.
                           </FlightBadge>
                         </FlightCardHeader>
-                        
+
                         <FlightRoute>
-                          {f.originAirport.codeIATA} 
-                          <span style={{ color: "#2563eb" }}>→</span> 
+                          {f.originAirport.codeIATA}
+                          <span style={{ color: "#2563eb" }}>→</span>
                           {f.destinationAirport.codeIATA}
                         </FlightRoute>
-                        
+
                         <FlightTime>
-                          Salida: {new Date(f.departureTime).toLocaleString("es-PE", { 
+                          🛫 {new Date(f.departureTime).toLocaleString("es-PE", {
                             timeZone: "UTC",
-                            month: "short", 
-                            day: "numeric", 
-                            hour: "2-digit", 
-                            minute: "2-digit" 
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
                           })}
                         </FlightTime>
                       </FlightCard>
-                    );
+                    )
                   })}
                 </DrawerGrid>
               )}
@@ -658,8 +685,8 @@ export const FlightDrawer = memo(function FlightDrawer({
                 </EmptyState>
                 ) : (
                 <DrawerGrid>
-                    {orders.map(order => (
-                    <OrderCard key={order.id}>
+                    {filteredOrders.map(order => (
+                    <OrderCard key={order.id} onClick={() => onOrderClick?.(order)}>
                         <OrderCardHeader>
                         <OrderCode>
                             <strong>{order.name}</strong>

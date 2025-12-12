@@ -1,19 +1,21 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
-import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane } from 'react-leaflet'
 import L, { type LatLngTuple, DivIcon, Marker } from 'leaflet'
 import gsap from 'gsap'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { simulationService, type FlightStatus, type FlightInstance } from '../../api/simulationService'
 import { useAirports } from '../../hooks/api/useAirports'
+import { useOrders } from '../../hooks/api/useOrders'
 import { toast } from 'react-toastify'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightDrawer } from '../WeeklySimulationPage/FlightDrawer'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import type { Continent } from '../../types/Continent'
+import type { OrderSchema } from '../../types'
 import '../WeeklySimulationPage/index.css'
 
 const Wrapper = styled.div`
@@ -135,60 +137,6 @@ const StatLine = styled.div`
   align-items: center;
 `
 
-const Modal = styled.div<{ $show: boolean }>`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: ${(p) => (p.$show ? 'flex' : 'none')};
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-`
-
-const ModalContent = styled.div`
-  background: white;
-  padding: 32px;
-  border-radius: 16px;
-  max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  text-align: center;
-`
-
-const ModalTitle = styled.h3`
-  margin: 0 0 16px;
-  color: #111827;
-  font-size: 24px;
-  font-weight: 700;
-`
-
-const ModalText = styled.p`
-  margin: 0 0 24px;
-  color: #6b7280;
-  font-size: 15px;
-  line-height: 1.5;
-`
-
-const ModalButton = styled.button`
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  background: #14b8a6;
-  color: white;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: #0d9488;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-`
-
 const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'paused' }>`
   display: inline-block;
   padding: 4px 12px;
@@ -257,6 +205,51 @@ const SpeedHint = styled.div`
   color: #9ca3af;
   text-align: center;
   margin-top: 4px;
+`
+
+const ToggleContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+`
+
+const ToggleLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+`
+
+const ToggleSwitch = styled.div<{ $active: boolean }>`
+  width: 40px;
+  height: 22px;
+  background: ${p => p.$active ? '#10b981' : '#d1d5db'};
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: ${p => p.$active ? '20px' : '2px'};
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: left 0.2s ease;
+  }
+`
+
+const ToggleHint = styled.div`
+  font-size: 10px;
+  color: #9ca3af;
 `
 
 const LoadingOverlay = styled.div`
@@ -346,6 +339,9 @@ function mapAirportToSimAirport(a: any): SimAirport {
     latitude: Number(a.latitude ?? 0),
     longitude: Number(a.longitude ?? 0),
     capacityPercent: Number(a.capacityPercent ?? 0),
+    codeIATA: a.codeIATA ?? a.code_iata ?? a.alias ?? undefined,
+    maxCapacity: a.maxCapacity ?? a.capacity ?? undefined,
+    currentUsedCapacity: a.currentUsedCapacity ?? a.usedCapacity ?? 0,
   }
 }
 
@@ -677,14 +673,39 @@ function AnimatedFlights({
     timelineRef.current.timeScale(playbackSpeed)
   }, [playbackSpeed])
 
+  // Toggle visibility of markers based on showOnlyWithProducts
+  useEffect(() => {
+    // Iterate over existing markers and show/hide based on product status
+    Object.entries(markersRef.current).forEach(([flightId, marker]) => {
+      // Find the flight instance to get the instanceId
+      const flight = flightInstances.find(f => f.id === flightId)
+      if (!flight) return
+
+      const productCount = instanceHasProducts[flight.instanceId] ?? 0
+      const hasProducts = productCount > 0
+
+      if (showOnlyWithProducts && !hasProducts) {
+        // Hide markers for flights without products
+        marker.setOpacity(0)
+      } else {
+        // Check if the flight is currently in-flight to show it
+        const dept = new Date(flight.departureTime)
+        const arr = new Date(flight.arrivalTime)
+        if (currentSimTime >= dept && currentSimTime <= arr) {
+          marker.setOpacity(1)
+        }
+        // If the flight hasn't departed yet or already arrived, keep it hidden (the timeline handles this)
+      }
+    })
+  }, [showOnlyWithProducts, instanceHasProducts, flightInstances, currentSimTime, markersRef])
+
   return null
 }
 
 export function DailySimulationPage() {
-  const navigate = useNavigate()
   const {
-    hasValidConfig,
     simulationStartDate,
+    setSimulationStartDate,
     isDailyRunning,
     dailyCurrentSimTime,
     dailyPlaybackSpeed,
@@ -713,6 +734,7 @@ export function DailySimulationPage() {
   const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
   const [hoveredFlightId, setHoveredFlightId] = useState<number | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
   
   // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
   const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
@@ -738,10 +760,42 @@ export function DailySimulationPage() {
   // Lifted refs for cleanup access
   const processedIdsRef = useRef<Set<string>>(new Set())
   const markersRef = useRef<Record<string, Marker>>({})
-
-  // Load airports
+  // Track if we've already restored simulation on this mount
+  const hasRestoredRef = useRef(false)
+  // Track if clock is running to prevent duplicate intervals
+  const isClockRunningRef = useRef(false)
+  // Track if algorithm is running (ref to avoid stale closure in interval)
+  const algorithmRunningRef = useRef(false)
+  
+  // Load airports (must be before refs that use airports)
   const { data: airportsData } = useAirports()
   const airports = Array.isArray(airportsData) ? airportsData : []
+  
+  // ✅ Refs to store latest values for stable callbacks (avoid stale closures)
+  const simulationStartDateRef = useRef(simulationStartDate)
+  const playbackSpeedRef = useRef(playbackSpeed)
+  const airportsRef = useRef(airports)
+  
+  // Keep refs updated with latest values
+  useEffect(() => { simulationStartDateRef.current = simulationStartDate }, [simulationStartDate])
+  useEffect(() => { playbackSpeedRef.current = playbackSpeed }, [playbackSpeed])
+  useEffect(() => { airportsRef.current = airports }, [airports])
+
+  // Load orders for the simulation window (for FlightDrawer orders tab)
+  const { 
+    data: ordersData, 
+    isLoading: loadingOrders 
+  } = useOrders(
+    simulationStartDate ? {
+      // Load orders for current day + some buffer
+      startDate: simulationStartDate.toISOString(),
+      endDate: new Date(simulationStartDate.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    } : undefined,
+    !!simulationStartDate && isDailyRunning
+  )
+  
+  // Extract orders from query result
+  const orders = useMemo(() => ordersData ?? [], [ordersData])
 
   // Store flight statuses for rolling window
   const flightStatusesRef = useRef<FlightStatus[]>([])
@@ -851,8 +905,15 @@ export function DailySimulationPage() {
   // Run algorithm using CURRENT simulation time
   const runDailyAlgorithm = useCallback(async (simTime: Date) => {
     if (!simulationStartDate) return
+    
+    // Prevent duplicate runs
+    if (algorithmRunningRef.current) {
+      console.log('⚠️ Algorithm already running, skipping duplicate call')
+      return
+    }
 
     setAlgorithmRunning(true)
+    algorithmRunningRef.current = true
     const algorithmStartTime = performance.now()
 
     // Calculate day number from the simulation time passed
@@ -878,6 +939,19 @@ export function DailySimulationPage() {
       const seconds = String(simTime.getSeconds()).padStart(2, '0')
       const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
 
+      // STEP 1: Refresh orders from files (loads new ones, skips duplicates)
+      console.log('📦 Refreshing orders from files...')
+      try {
+        const refreshResponse = await simulationService.refreshOrdersForDaily(localTimeString)
+        if (refreshResponse.success) {
+          console.log(`✅ Orders refreshed: ${refreshResponse.statistics.ordersCreated} new, ${refreshResponse.statistics.duplicatesSkipped} skipped`)
+        }
+      } catch (refreshErr) {
+        console.warn('⚠️ Could not refresh orders from files:', refreshErr)
+        // Continue with algorithm anyway - manual orders are already in DB
+      }
+
+      // STEP 2: Execute algorithm
       console.log('Request:', {
         simulationStartTime: localTimeString,
         simulationDurationHours: durationHours,
@@ -924,11 +998,34 @@ export function DailySimulationPage() {
       // Update last algorithm run time for 10-min window tracking
       setLastAlgorithmRunTime(simTime)
 
-      setKpi({
-        totalOrders: response.totalOrders || 0,
-        assignedOrders: response.assignedOrders || 0,
-        totalProducts: response.totalProducts || 0,
-        assignedProducts: response.assignedProducts || 0,
+      // Update KPIs with current totals from this run
+      // Use functional update to accumulate properly across multiple runs
+      setKpi(prev => {
+        const newTotalOrders = response.totalOrders || 0
+        const newTotalProducts = response.totalProducts || 0
+        const newAssignedOrders = response.assignedOrders || 0
+        const newAssignedProducts = response.assignedProducts || 0
+        
+        // If this is first run (prev is 0), just set the values
+        // Otherwise, add the new assignments to previous totals
+        const isFirstRun = prev.totalOrders === 0 && prev.totalProducts === 0
+        
+        if (isFirstRun) {
+          return {
+            totalOrders: newTotalOrders,
+            assignedOrders: newAssignedOrders,
+            totalProducts: newTotalProducts,
+            assignedProducts: newAssignedProducts,
+          }
+        }
+        
+        // For subsequent runs, accumulate the totals and assignments
+        return {
+          totalOrders: prev.totalOrders + newTotalOrders,
+          assignedOrders: prev.assignedOrders + newAssignedOrders,
+          totalProducts: prev.totalProducts + newTotalProducts,
+          assignedProducts: prev.assignedProducts + newAssignedProducts,
+        }
       })
 
       // Cleanup processedIdsRef periodically to prevent memory leak over many days
@@ -965,25 +1062,42 @@ export function DailySimulationPage() {
       toast.error('Error al ejecutar el algoritmo')
     } finally {
       setAlgorithmRunning(false)
+      algorithmRunningRef.current = false
     }
   }, [simulationStartDate, addNextDayInstances, playbackSpeed])
 
+  // ✅ Ref to store runDailyAlgorithm for stable access in interval
+  const runDailyAlgorithmRef = useRef(runDailyAlgorithm)
+  useEffect(() => { runDailyAlgorithmRef.current = runDailyAlgorithm }, [runDailyAlgorithm])
+
   // Simulation clock - advances by playbackSpeed * 1000ms every real second
-  // NEW: Includes 10-min refresh window logic for real-time order additions
+  // ✅ STABLE: Uses refs instead of dependencies to avoid re-creating the function
   const startSimulationClock = useCallback(() => {
+    // Prevent duplicate intervals
+    if (isClockRunningRef.current) {
+      console.log('⚠️ Clock already running, skipping duplicate start')
+      return
+    }
+    
     if (intervalRef.current) clearInterval(intervalRef.current)
+    
+    isClockRunningRef.current = true
+    console.log('🕐 Starting simulation clock')
 
     intervalRef.current = setInterval(() => {
+      // ✅ Read current values from refs to avoid stale closures
+      const currentPlaybackSpeed = playbackSpeedRef.current
+      const currentSimStartDate = simulationStartDateRef.current
+      
       // Use updater function to get current state, avoiding stale closures
       updateDailySimTime((prev: number | null) => {
-        if (!prev && !simulationStartDate) return null
+        if (!prev && !currentSimStartDate) return null
 
-
-        const currentTime = prev ? new Date(prev) : simulationStartDate!
-        const next = new Date(currentTime.getTime() + playbackSpeed * 1000)
+        const currentTime = prev ? new Date(prev) : currentSimStartDate!
+        const next = new Date(currentTime.getTime() + currentPlaybackSpeed * 1000)
 
         // Calculate which day we're on based on SIMULATION time
-        const elapsedSimulationMs = next.getTime() - simulationStartDate!.getTime()
+        const elapsedSimulationMs = next.getTime() - currentSimStartDate!.getTime()
         const elapsedHours = elapsedSimulationMs / (1000 * 60 * 60)
         const currentDay = Math.floor(elapsedHours / 24)
         const hourOfDay = elapsedHours % 24
@@ -991,17 +1105,21 @@ export function DailySimulationPage() {
         // Update day count (UI display)
         setDayCount(currentDay)
 
-        // NEW: Check if it's time to refresh (10-min window)
+        // Check if it's time to refresh (10-min window)
         // This handles new orders added via Envíos tab
-        if (lastAlgorithmTime && nextAlgorithmTime) {
-          if (next >= nextAlgorithmTime && !algorithmRunning) {
-            console.log('⏰ 10-min refresh window reached - re-running algorithm for new orders')
+        // Read directly from store to avoid stale closure
+        const currentNextAlgorithmTime = useSimulationStore.getState().nextAlgorithmRunTime
+        const currentLastAlgorithmTime = useSimulationStore.getState().lastAlgorithmRunTime
+        
+        if (currentLastAlgorithmTime && currentNextAlgorithmTime) {
+          const nextAlgoDate = new Date(currentNextAlgorithmTime)
+          if (next >= nextAlgoDate && !algorithmRunningRef.current) {
+            console.log('⏰ Refresh window reached - re-running algorithm for new orders')
 
-            // Re-run algorithm with current simulation time (async, will update time when done)
-            runDailyAlgorithm(next).then(() => {
-              // Only update last run time AFTER algorithm completes
-              setLastAlgorithmRunTime(next)
-            })
+            // Re-run algorithm with current simulation time
+            // Note: runDailyAlgorithm already calls setLastAlgorithmRunTime internally
+            // which also updates nextAlgorithmRunTime
+            runDailyAlgorithmRef.current(next)
 
             // Still update time even if algorithm is running
             return next
@@ -1010,7 +1128,6 @@ export function DailySimulationPage() {
 
         // Update package states every hour of simulation time
         // This allows packages to transition smoothly: IN_TRANSIT → ARRIVED → DELIVERED
-        // For Daily simulation this is fine since it runs slower
         const currentHour = Math.floor(next.getTime() / (1000 * 60 * 60))
         const lastUpdateHour = lastStateUpdateHourRef.current
         
@@ -1028,13 +1145,11 @@ export function DailySimulationPage() {
 
         // Trigger algorithm pre-calculation logic for next day
         // Calculate dynamic trigger threshold based on playback speed
-        // We want enough REAL time buffer for the API to respond (e.g., 35 seconds)
         const REAL_TIME_BUFFER_SEC = 35
-        const simSecondsBuffer = REAL_TIME_BUFFER_SEC * playbackSpeed
+        const simSecondsBuffer = REAL_TIME_BUFFER_SEC * currentPlaybackSpeed
         const simHoursBuffer = simSecondsBuffer / 3600
 
         // Determine the hour of the day to trigger the next calculation
-        // We allow triggering as early as 1am if necessary for high speeds
         let triggerHour = 24 - simHoursBuffer
         triggerHour = Math.max(1, Math.min(22, triggerHour))
 
@@ -1043,27 +1158,28 @@ export function DailySimulationPage() {
           const targetRunDay = currentDay + 1
 
           // Only run if we haven't run for this target day yet
-          if (targetRunDay > lastAlgorithmDayRef.current && !algorithmRunning) {
+          if (targetRunDay > lastAlgorithmDayRef.current && !algorithmRunningRef.current) {
             console.log(`⏰ Pre-loading algorithm for Day ${targetRunDay + 1} (Trigger Hour: ${triggerHour.toFixed(1)})`)
             lastAlgorithmDayRef.current = targetRunDay
 
             // Calculate the target date for the algorithm (Midnight of the target day)
-            const targetDate = new Date(simulationStartDate!.getTime() + targetRunDay * 24 * 60 * 60 * 1000)
-            runDailyAlgorithm(targetDate)
+            const targetDate = new Date(currentSimStartDate!.getTime() + targetRunDay * 24 * 60 * 60 * 1000)
+            runDailyAlgorithmRef.current(targetDate)
           }
         }
 
         return next
       })
     }, 1000) // Every real second
-  }, [simulationStartDate, runDailyAlgorithm, playbackSpeed, updateDailySimTime, lastAlgorithmTime, nextAlgorithmTime, setLastAlgorithmRunTime, algorithmRunning])
+  }, [updateDailySimTime])  // ✅ Minimal stable dependencies
 
-  // Start simulation
+  // Start simulation - uses current local time as start
   const handleStart = useCallback(async () => {
-    if (!hasValidConfig() || !simulationStartDate) {
-      toast.error('Debes configurar la fecha en Planificación primero')
-      return
-    }
+    // Use current local time as simulation start
+    const now = new Date()
+    
+    // Update the store with the current time as simulation start
+    setSimulationStartDate(now)
 
     // Clear previous state to ensure clean start
     processedIdsRef.current.clear()
@@ -1075,6 +1191,15 @@ export function DailySimulationPage() {
     setDayCount(0)
     lastAlgorithmDayRef.current = -1
     lastStateUpdateHourRef.current = -1  // Reset hourly state tracker
+    hasRestoredRef.current = true  // Mark as "restored" since we're starting fresh
+    
+    // Reset KPIs for fresh start (will be set by first algorithm run)
+    setKpi({
+      totalOrders: 0,
+      assignedOrders: 0,
+      totalProducts: 0,
+      assignedProducts: 0,
+    })
 
     try {
       // ✅ STEP 1: Auto-load orders from files to database
@@ -1083,12 +1208,12 @@ export function DailySimulationPage() {
 
       // Format date as local time (NOT UTC) to match file data format
       // Files have orders in local time format (YYYYMMDD-HH-MM)
-      const year = simulationStartDate.getFullYear()
-      const month = String(simulationStartDate.getMonth() + 1).padStart(2, '0')
-      const day = String(simulationStartDate.getDate()).padStart(2, '0')
-      const hours = String(simulationStartDate.getHours()).padStart(2, '0')
-      const minutes = String(simulationStartDate.getMinutes()).padStart(2, '0')
-      const seconds = String(simulationStartDate.getSeconds()).padStart(2, '0')
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
 
       const localTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
       console.log('Local time string:', localTimeString)
@@ -1114,12 +1239,12 @@ export function DailySimulationPage() {
       console.log('✈️ Loading flight data...')
       await loadFlightData()
 
-      // STEP 3: Run first algorithm with simulation start time (existing)
+      // STEP 3: Run first algorithm with current time (existing)
       console.log('🚀 Running initial algorithm...')
-      await runDailyAlgorithm(simulationStartDate)
+      await runDailyAlgorithm(now)
 
       // STEP 4: Start simulation in global store (existing)
-      startDailySimulation(simulationStartDate, playbackSpeed)
+      startDailySimulation(now, playbackSpeed)
 
       // STEP 5: Start the clock (existing)
       startSimulationClock()
@@ -1131,7 +1256,7 @@ export function DailySimulationPage() {
     } finally {
       setIsInitializing(false)
     }
-  }, [hasValidConfig, simulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock, playbackSpeed, startDailySimulation])
+  }, [setSimulationStartDate, loadFlightData, runDailyAlgorithm, startSimulationClock, playbackSpeed, startDailySimulation])
 
   // Pause simulation (keeps running in background)
   const handlePause = () => {
@@ -1141,6 +1266,7 @@ export function DailySimulationPage() {
       clearInterval(intervalRef.current)
       intervalRef.current = undefined
     }
+    isClockRunningRef.current = false  // Allow restart
   }
 
   // Stop simulation (stops background execution)
@@ -1151,6 +1277,9 @@ export function DailySimulationPage() {
     setFlightInstances([])
     lastAlgorithmDayRef.current = -1
     lastStateUpdateHourRef.current = -1  // Reset hourly state tracker
+    hasRestoredRef.current = false  // Allow restore on next run
+    algorithmRunningRef.current = false
+    isClockRunningRef.current = false
     setKpi({
       totalOrders: 0,
       assignedOrders: 0,
@@ -1163,6 +1292,165 @@ export function DailySimulationPage() {
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}
   }
+
+  // ============================================================
+  // RESTORE SIMULATION - Called once on mount if simulation was running
+  // ✅ REFACTORED: Using refs and reading store directly to avoid dependency loops
+  // ============================================================
+  
+  // Single useEffect: try to restore on mount, cleanup on unmount
+  // ✅ Empty dependencies = runs exactly once on mount
+  useEffect(() => {
+    const tryRestore = async () => {
+      // Guard: only restore once per mount
+      if (hasRestoredRef.current) return
+      
+      // Read current values from store directly (not from props/state which might be stale on mount)
+      const storeState = useSimulationStore.getState()
+      const { isDailyRunning, simulationStartDate: storeSimStartDate, dailyCurrentSimTime } = storeState
+      
+      if (!isDailyRunning || !storeSimStartDate || !dailyCurrentSimTime) return
+      
+      // Wait for airports if not loaded yet
+      const currentAirports = airportsRef.current
+      if (!currentAirports || currentAirports.length === 0) {
+        console.log('⏳ Waiting for airports to load before restore...')
+        return  // Will retry via airport useEffect
+      }
+      
+      hasRestoredRef.current = true
+      console.log('🔄 Restoring Daily Simulation...')
+
+      try {
+        setIsLoadingData(true)
+        
+        const simStartDate = typeof storeSimStartDate === 'number' 
+          ? new Date(storeSimStartDate) 
+          : storeSimStartDate
+
+        // Get adjusted time (accounts for real time passed while away)
+        const adjustedSimTime = storeState.getAdjustedSimTime()
+        if (!adjustedSimTime) return
+
+        const adjustedDate = new Date(adjustedSimTime)
+        console.log(`   Adjusted sim time: ${adjustedDate.toLocaleString()}`)
+
+        // Update the store with the adjusted time
+        updateDailySimTime(adjustedDate)
+
+        // Calculate current day
+        const elapsedMs = adjustedDate.getTime() - simStartDate.getTime()
+        const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000))
+        setDayCount(elapsedDays)
+        lastAlgorithmDayRef.current = elapsedDays
+        lastStateUpdateHourRef.current = Math.floor(adjustedDate.getTime() / (1000 * 60 * 60))
+
+        // Load flight data
+        const [response, instancesResponse] = await Promise.all([
+          simulationService.getFlightStatuses(),
+          simulationService.getAssignedFlightInstances()
+        ])
+
+        if (!response?.flights || !Array.isArray(response.flights)) {
+          console.error('Failed to load flight data on restore')
+          return
+        }
+
+        flightStatusesRef.current = response.flights
+        setInstanceHasProducts(instancesResponse.instances ?? {})
+
+        // Generate flight instances
+        const instances = simulationService.generateFlightInstances(
+          response.flights,
+          simStartDate,
+          elapsedDays + 2,
+          currentAirports
+        )
+        setFlightInstances(instances)
+        console.log(`✈️ Restored ${instances.length} flight instances`)
+
+        // Start the clock
+        startSimulationClock()
+        console.log('✅ Daily Simulation restored')
+
+      } catch (error) {
+        console.error('Error restoring simulation:', error)
+        toast.error('Error al restaurar la simulación')
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+    
+    tryRestore()
+
+    return () => {
+      // Cleanup on unmount
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = undefined
+      }
+      isClockRunningRef.current = false
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // ✅ Empty deps = run once on mount
+  
+  // ✅ Retry restore when airports load (only if we haven't restored yet)
+  useEffect(() => {
+    if (airports.length > 0 && !hasRestoredRef.current) {
+      // Trigger restore attempt now that airports are available
+      const storeState = useSimulationStore.getState()
+      if (storeState.isDailyRunning && storeState.simulationStartDate && storeState.dailyCurrentSimTime) {
+        console.log('📍 Airports loaded, attempting restore...')
+        // Need to re-run the restore logic - we'll call a simpler version
+        const doRestore = async () => {
+          hasRestoredRef.current = true
+          setIsLoadingData(true)
+          
+          try {
+            const simStartDate = typeof storeState.simulationStartDate === 'number' 
+              ? new Date(storeState.simulationStartDate) 
+              : storeState.simulationStartDate!
+              
+            const adjustedSimTime = storeState.getAdjustedSimTime()
+            if (!adjustedSimTime) return
+            
+            const adjustedDate = new Date(adjustedSimTime)
+            updateDailySimTime(adjustedDate)
+            
+            const elapsedMs = adjustedDate.getTime() - simStartDate.getTime()
+            const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000))
+            setDayCount(elapsedDays)
+            lastAlgorithmDayRef.current = elapsedDays
+            lastStateUpdateHourRef.current = Math.floor(adjustedDate.getTime() / (1000 * 60 * 60))
+            
+            const [response, instancesResponse] = await Promise.all([
+              simulationService.getFlightStatuses(),
+              simulationService.getAssignedFlightInstances()
+            ])
+            
+            if (response?.flights && Array.isArray(response.flights)) {
+              flightStatusesRef.current = response.flights
+              setInstanceHasProducts(instancesResponse.instances ?? {})
+              
+              const instances = simulationService.generateFlightInstances(
+                response.flights,
+                simStartDate,
+                elapsedDays + 2,
+                airports
+              )
+              setFlightInstances(instances)
+              startSimulationClock()
+              console.log('✅ Daily Simulation restored (after airports loaded)')
+            }
+          } finally {
+            setIsLoadingData(false)
+          }
+        }
+        doRestore()
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [airports.length])  // ✅ Only depend on airports.length to avoid loops
 
   // Format time for display
   const formatSimTime = (date: Date | null) => {
@@ -1213,17 +1501,6 @@ export function DailySimulationPage() {
 
   return (
     <Wrapper>
-      {/* Config check modal */}
-      <Modal $show={!hasValidConfig()}>
-        <ModalContent>
-          <ModalTitle>⚠️ Configuración Requerida</ModalTitle>
-          <ModalText>
-            Debes configurar la fecha de simulación en la página de Planificación antes de continuar.
-          </ModalText>
-          <ModalButton onClick={() => navigate('/planificacion')}>Ir a Planificación</ModalButton>
-        </ModalContent>
-      </Modal>
-
       <Header>
         <div>
           <Title>Simulación Diaria</Title>
@@ -1343,50 +1620,28 @@ export function DailySimulationPage() {
                 Iniciando...
               </ControlButton>
             ) : (
-              <>
-                <ControlButton $variant="pause" onClick={handlePause}>
-                  ⏸ Pausar
-                </ControlButton>
-                <ControlButton
-                  $variant="danger"
-                  onClick={handleStop}
-                  disabled={!isRunning && !currentSimTime}
-                >
-                  Detener
-                </ControlButton>
-              </>
+              <ControlButton
+                $variant="danger"
+                onClick={handleStop}
+                disabled={!isRunning && !currentSimTime}
+              >
+                ⏹ Detener Simulación
+              </ControlButton>
             )}
           </div>
           
-          {/* Toggle para mostrar solo vuelos con productos */}
-          <div style={{ 
-            marginTop: '12px', 
-            padding: '8px',
-            background: '#f3f4f6',
-            borderRadius: '6px',
-          }}>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: '#374151',
-            }}>
-              <input
-                type="checkbox"
-                checked={showOnlyWithProducts}
-                onChange={(e) => setShowOnlyWithProducts(e.target.checked)}
-                style={{ width: '16px', height: '16px' }}
-              />
-              Solo vuelos con carga
-            </label>
-            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px' }}>
+          {/* Toggle para mostrar solo vuelos con productos - igual que Weekly */}
+          <ToggleContainer>
+            <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
+              <ToggleSwitch $active={showOnlyWithProducts} />
+              <span>Solo vuelos con carga</span>
+            </ToggleLabel>
+            <ToggleHint>
               {showOnlyWithProducts 
                 ? 'Mostrando solo vuelos con paquetes asignados'
                 : 'Mostrando todos los vuelos'}
-            </div>
-          </div>
+            </ToggleHint>
+          </ToggleContainer>
         </SimulationControls>
 
         <MapContainer
@@ -1544,12 +1799,11 @@ export function DailySimulationPage() {
             />
           )}
         </MapContainer>
-      </MapWrapper>
 
-      {/* Flight Drawer Panel - same as WeeklySimulationPage */}
-      {simulationStartDate && (
-        <FlightDrawer
-          isOpen={panelOpen}
+        {/* Flight Drawer Panel - inside MapWrapper for proper positioning */}
+        {simulationStartDate && (
+          <FlightDrawer
+            isOpen={panelOpen}
           onToggle={() => setPanelOpen(!panelOpen)}
           panelTab={panelTab}
           onTabChange={setPanelTab}
@@ -1563,10 +1817,12 @@ export function DailySimulationPage() {
             return currentSimTime >= dept && currentSimTime <= arr
           }).length}
           onFlightClick={(f) => handleFlightClick(f)}
-          orders={[]}
-          loadingOrders={false}
+          onOrderClick={(order) => setSelectedOrder(order)}
+          orders={orders}
+          loadingOrders={loadingOrders}
         />
       )}
+      </MapWrapper>
 
       {/* Flight packages modal */}
       {selectedFlight && (
@@ -1582,6 +1838,16 @@ export function DailySimulationPage() {
         <AirportDetailsModal
           airport={selectedAirport}
           onClose={() => setSelectedAirport(null)}
+          flightInstances={flightInstances}
+          instanceHasProducts={instanceHasProducts}
+        />
+      )}
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <OrderDetailsModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
         />
       )}
     </Wrapper>

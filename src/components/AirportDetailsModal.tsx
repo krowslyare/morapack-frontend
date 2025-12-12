@@ -4,6 +4,7 @@ import type { SimAirport } from '../hooks/useFlightSimulation'
 import { AirportState } from '../types/AirportState'
 import { useFlightsByOrigin } from '../hooks/api/useFlights'
 import { useWarehouseByAirport } from '../hooks/api/useWarehouses'
+import { useAirport } from '../hooks/api/useAirports'
 import { FlightsListModal } from './FlightsListModal'
 import { FlightPackagesModal } from './FlightPackagesModal'
 
@@ -16,7 +17,7 @@ interface AirportDetailsModalProps {
   onClose: () => void
   readOnly?: boolean
 
-  // 👇 igual que en FlightDrawer
+  // 👇 igual que en FlightDrawer (opcionales para compatibilidad)
   flightInstances?: FlightInstance[]
   instanceHasProducts?: Record<string, number>
 }
@@ -368,6 +369,9 @@ export function AirportDetailsModal({
 
   const airportWithData = airport as any
 
+  // Fetch authoritative airport detail from backend (may include citySchema.country)
+  const { data: airportDetail } = useAirport(airport.id, !!airport.id)
+
   // Prioritize warehouse data from API, fallback to airport prop
   const maxCapacity = warehouse?.maxCapacity ?? airportWithData.maxCapacity ?? 1000
   const usedCapacity = warehouse?.usedCapacity ?? airportWithData.currentUsedCapacity ?? 0
@@ -560,7 +564,9 @@ export function AirportDetailsModal({
                 </InfoField>
                 <InfoField>
                   <Label>País</Label>
-                  <Value>{airport.city}</Value>
+                  <Value>
+                    {airportDetail?.citySchema?.country || airport.country || 'N/A'}
+                  </Value>
                 </InfoField>
                 <InfoField>
                   <Label>Código IATA</Label>
