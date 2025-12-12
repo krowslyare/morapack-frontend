@@ -417,7 +417,7 @@ export interface CollapseSimulationResult {
   intercontinentalSlaCompliance?: number
   
   // NEW: Affected airports (for map visualization)
-  affectedAirports?: AffectedAirport[]
+  //affectedAirports?: AffectedAirport[]
   
   // Detailed SLA violations (optional, for analysis)
   slaViolations?: SLAViolationDetail[]
