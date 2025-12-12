@@ -836,6 +836,9 @@ export function WeeklySimulationPage() {
       !!simulationStartDate
     )
 
+    // Query separada para obtener TODOS los pedidos entregados (sin filtro de fecha)
+    const { data: allDeliveredOrders } = useOrdersByStatus('DELIVERED', !!simulationStartDate)
+
     // ✅ Extraer los pedidos del resultado
     const orders = useMemo(() => ordersData ?? [], [ordersData])
     // ✅ KPIs derivados de los pedidos reales
@@ -859,15 +862,6 @@ export function WeeklySimulationPage() {
       return base
     }, [orders])
     
-    // Total pedidos (suma de todos los estados)
-    const totalOrdersFromDb = useMemo(
-      () =>
-        ordersByStatus.PENDING +
-        ordersByStatus.IN_TRANSIT +
-        ordersByStatus.ARRIVED +
-        ordersByStatus.DELIVERED,
-      [ordersByStatus]
-    )
 
     // Nota: se usa la tasa de asignación calculada por el algoritmo
 
@@ -1734,8 +1728,8 @@ export function WeeklySimulationPage() {
                   value={deliveredOrdersFromDb}
                 />
                 <WeeklyKPICard
-                  label="Uso actual de capacidad"
-                  value={kpi.avgCapacityUsage.toFixed(1) + "%"}
+                  label="Cantidad pedidos pendientes"
+                  value={ordersByStatus.PENDING}
                 />
                 {/* Si quieres, puedes cambiar alguno por:
                     <WeeklyKPICard
