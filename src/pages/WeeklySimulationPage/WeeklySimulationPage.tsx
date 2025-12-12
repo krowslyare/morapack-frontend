@@ -17,7 +17,7 @@ import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import { OrderDetailsModal } from '../../components/OrderDetailsModal'
-import './index.css' 
+import './index.css'
 import { FlightDrawer } from './FlightDrawer'
 import { useOrders } from '../../hooks/api/useOrders'
 import { useQueryClient } from '@tanstack/react-query'
@@ -498,10 +498,10 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       // Calcular progreso actual (si la simulación empezó en medio del vuelo)
       const elapsedSinceDepart = now - depMs
       const initialProgress = Math.min(1, Math.max(0, elapsedSinceDepart / flightDurationMs))
-      
+
       // Posición inicial basada en el progreso
       const startPos = bezierPoint(initialProgress, origin, ctrl, dest)
-      
+
       // Ángulo inicial
       const tangent = bezierTangent(initialProgress, origin, ctrl, dest)
       const initialAngle = (Math.atan2(tangent[1], tangent[0]) * 180 / Math.PI + 90) % 360
@@ -620,7 +620,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         // asegurar limpieza cuando el tiempo simulado pasó el arrival
         try {
           markerObj.marker.remove()
-        } catch (e) {}
+        } catch (e) { }
         delete markersRef.current[id]
         const t = flightAnimationsRef.current[id]
         if (t) {
@@ -697,7 +697,7 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
         if (markerObj && markerObj.marker) {
           try {
             markerObj.marker.remove()
-          } catch (e) {}
+          } catch (e) { }
           delete markersRef.current[id]
         }
 
@@ -721,7 +721,7 @@ function mapAirportToSimAirport(a: any): SimAirport {
     id: a.id,
     city: a.cityName ?? a.city ?? '',
     country: a.countryName ?? a.country ?? '',
-    continent: (a.continent as Continent) ?? 'America', 
+    continent: (a.continent as Continent) ?? 'America',
     latitude: Number(a.latitude ?? 0),
     longitude: Number(a.longitude ?? 0),
     capacityPercent: Number(a.capacityPercent ?? 0),
@@ -771,1234 +771,1234 @@ function useThrottle<T>(value: T, delay: number): T {
 export function WeeklySimulationPage() {
 
 
-    const queryClient = useQueryClient()
-    const [showPanel, setShowPanel] = useState(true);
-    const [panelOpen, setPanelOpen] = useState(false);
-    const [panelTab, setPanelTab] = useState<"orders"|"flights">("flights");
-    const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(false);
+  const queryClient = useQueryClient()
+  const [showPanel, setShowPanel] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<"orders" | "flights">("flights");
+  const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(false);
 
-    // ✅ AGREGAR estos refs para control de cancelación
-    const abortControllersRef = useRef<AbortController[]>([])
-    const pendingRequestsRef = useRef(0)
+  // ✅ AGREGAR estos refs para control de cancelación
+  const abortControllersRef = useRef<AbortController[]>([])
+  const pendingRequestsRef = useRef(0)
 
-    const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
+  const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false)
 
-    // Overlay for algorithm / long ops
-    const [showAlgorithmOverlay, setShowAlgorithmOverlay] = useState(false)
-    const [overlayMessage, setOverlayMessage] = useState('')
-    const overlayCountRef = useRef(0)
+  // Overlay for algorithm / long ops
+  const [showAlgorithmOverlay, setShowAlgorithmOverlay] = useState(false)
+  const [overlayMessage, setOverlayMessage] = useState('')
+  const overlayCountRef = useRef(0)
 
-    const pushOverlay = useCallback((message: string) => {
-      overlayCountRef.current += 1
-      setOverlayMessage(message)
-      setShowAlgorithmOverlay(true)
-    }, [])
+  const pushOverlay = useCallback((message: string) => {
+    overlayCountRef.current += 1
+    setOverlayMessage(message)
+    setShowAlgorithmOverlay(true)
+  }, [])
 
-    const popOverlay = useCallback(() => {
-      overlayCountRef.current = Math.max(0, overlayCountRef.current - 1)
-      if (overlayCountRef.current === 0) {
-        setShowAlgorithmOverlay(false)
-        setOverlayMessage('')
-      }
-    }, [])
+  const popOverlay = useCallback(() => {
+    overlayCountRef.current = Math.max(0, overlayCountRef.current - 1)
+    if (overlayCountRef.current === 0) {
+      setShowAlgorithmOverlay(false)
+      setOverlayMessage('')
+    }
+  }, [])
 
-    const TOTAL_DAYS = 7
-    const SPEED_SLOW = 60      // 10 min simulados por segundo real
-    const SPEED_FAST = 600    // 1 hora simulada por segundo real
-    
-    // 🐍 PYTHON REPLICA: Pasos discretos de 4 horas
-    const STEP_HOURS = 0.5 //speedRef
-    const STEP_MIN = 0.05 //speedRef
-    const TOTAL_HOURS = 24 * TOTAL_DAYS  // 168 horas
+  const TOTAL_DAYS = 7
+  const SPEED_SLOW = 60      // 10 min simulados por segundo real
+  const SPEED_FAST = 600    // 1 hora simulada por segundo real
 
-    const { simulationStartDate, hasValidConfig } = useSimulationStore()
+  // 🐍 PYTHON REPLICA: Pasos discretos de 4 horas
+  const STEP_HOURS = 0.5 //speedRef
+  const STEP_MIN = 0.05 //speedRef
+  const TOTAL_HOURS = 24 * TOTAL_DAYS  // 168 horas
 
-    const startTime = useMemo(() => {
-      const raw = simulationStartDate ?? new Date();
-      // Usar la hora en UTC
-      return new Date(Date.UTC(
-        raw.getUTCFullYear(),
-        raw.getUTCMonth(),
-        raw.getUTCDate(),
-        0, 0, 0, 0
-      ));
-    }, [simulationStartDate]);
+  const { simulationStartDate, hasValidConfig } = useSimulationStore()
 
-    const { 
-      data: ordersData, 
-      isLoading: loadingOrders 
-    } = useOrders(
-      simulationStartDate ? {
-        // Filtrar pedidos de la semana de simulación
-        startDate: simulationStartDate.toISOString(),
-        endDate: new Date(simulationStartDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      } : undefined,
-      !!simulationStartDate
-    )
+  const startTime = useMemo(() => {
+    const raw = simulationStartDate ?? new Date();
+    // Usar la hora en UTC
+    return new Date(Date.UTC(
+      raw.getUTCFullYear(),
+      raw.getUTCMonth(),
+      raw.getUTCDate(),
+      0, 0, 0, 0
+    ));
+  }, [simulationStartDate]);
 
-    // ✅ Extraer los pedidos del resultado
-    const orders = useMemo(() => ordersData ?? [], [ordersData])
-    // ✅ KPIs derivados de los pedidos reales
+  const {
+    data: ordersData,
+    isLoading: loadingOrders
+  } = useOrders(
+    simulationStartDate ? {
+      // Filtrar pedidos de la semana de simulación
+      startDate: simulationStartDate.toISOString(),
+      endDate: new Date(simulationStartDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    } : undefined,
+    !!simulationStartDate
+  )
 
-    // Conteo por estado en base a los pedidos que ya tienes en memoria
-    const ordersByStatus = useMemo(() => {
-      const base = {
-        PENDING: 0,
-        IN_TRANSIT: 0,
-        ARRIVED: 0,
-        DELIVERED: 0,
-      }
+  // ✅ Extraer los pedidos del resultado
+  const orders = useMemo(() => ordersData ?? [], [ordersData])
+  // ✅ KPIs derivados de los pedidos reales
 
-      for (const o of orders) {
-        const s = (o.status || '').toUpperCase() as keyof typeof base
-        if (s in base) {
-          base[s] += 1
-        }
-      }
-
-      return base
-    }, [orders])
-    
-    // Total pedidos (suma de todos los estados)
-    const totalOrdersFromDb = useMemo(
-      () =>
-        ordersByStatus.PENDING +
-        ordersByStatus.IN_TRANSIT +
-        ordersByStatus.ARRIVED +
-        ordersByStatus.DELIVERED,
-      [ordersByStatus]
-    )
-
-    // Nota: se usa la tasa de asignación calculada por el algoritmo
-
-    // Entregados desde BD (por estado)
-    const deliveredOrdersFromDb = useMemo(
-      () => ordersByStatus.DELIVERED,
-      [ordersByStatus]
-    )
-    
-
-    const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW)
-    const speedRef = useRef(SPEED_SLOW)
-
-    useEffect(() => {
-        speedRef.current = playbackSpeed
-    }, [playbackSpeed])
-    
-    const updatesInProgressRef = useRef(0);
-
-    // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
-    const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
-    const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
-    const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
-    const [selectedFlight, setSelectedFlight] = useState<{
-      id: number;
-      code: string;
-      originCity: string;
-      destinationCity: string;
-    } | null>(null)
-    const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
-    const [highlightMarkerId, setHighlightMarkerId] = useState<string | null>(null)
-
-    const handleFlightClick = (flight: FlightInstance) => {
-        setSelectedFlight({
-          id: flight.flightId,
-          code: flight.flightCode,
-          originCity: flight.originAirport.city.name,
-          destinationCity: flight.destinationAirport.city.name,
-        })
+  // Conteo por estado en base a los pedidos que ya tienes en memoria
+  const ordersByStatus = useMemo(() => {
+    const base = {
+      PENDING: 0,
+      IN_TRANSIT: 0,
+      ARRIVED: 0,
+      DELIVERED: 0,
     }
 
-
-
-    const { data: airports } = useAirports()
-    const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
-    const mainWarehouses =
-        airports?.filter(
-          (a: any) =>
-            a.codeIATA && MAIN_HUB_CODES.includes(a.codeIATA.toUpperCase())
-        ) ?? []
-
-    const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
-    const [currentTime, setCurrentTime] = useState<Date | null>(null)
-    const [dayIndex, setDayIndex] = useState(0)
-    const [isRunning, setIsRunning] = useState(false)
-    const [isPaused, setIsPaused] = useState(false)
-
-    // ✅ Refs para control
-    const visualClockIntervalRef = useRef<any>(null)  // Reloj visual (1 seg)
-    const lastAlgorithmDayRef = useRef(-1)
-    const lastUpdateHoursRef = useRef(0)  // Última vez que ejecutamos update-states
-    const isUpdatingStatesRef = useRef(false)
-    const pausedRef = useRef(false)
-
-    const intervalRef = useRef<any>(null)
-
-    // 🐍 PYTHON REPLICA: Control de pasos discretos
-    const currentStepHoursRef = useRef(0)  // step actual en horas (0, 4, 8, 12, ...)
-    const pendingUpdateRef = useRef(false)
-
-    const [kpi, setKpi] = useState(INITIAL_KPI)
-
-    const loadWeeklyFlights = useCallback(async () => {
-      try {
-          // Cargar vuelos y sus instancias asignadas en paralelo
-          const [flightResponse, instancesResponse] = await Promise.all([
-            simulationService.getFlightStatuses(),
-            simulationService.getAssignedFlightInstances()
-          ])
-
-          if (!airports || airports.length === 0) {
-            toast.error("No hay aeropuertos cargados")
-            return
-          }
-
-          // ✅ Generar instancias para TODOS los vuelos (168 horas = 7 días completos)
-          const inst = simulationService.generateFlightInstances(
-            flightResponse.flights,  // ← TODOS los vuelos
-            startTime,
-            168,  // ← 7 días completos
-            airports,
-            { baseDay: 0 }
-          )
-
-          setFlightInstances(inst)
-
-          // ✅ Usar instancias reales del algoritmo (solo las que tienen productos)
-          setInstanceHasProducts(instancesResponse.instances ?? {})
-          
-          // ✅ Validación: Solo validar contra las que SÍ tienen productos
-          const backendInstances = new Set(Object.keys(instancesResponse.instances ?? {}))
-          
-          // Filtrar instancias del frontend que coinciden con backend
-          const matchingInstances = inst.filter(f => backendInstances.has(f.instanceId))
-          
-          const matches = matchingInstances.length
-          const matchRate = backendInstances.size > 0 
-            ? (matches / backendInstances.size * 100).toFixed(1) 
-            : '0.0'
-          
-          console.group('🔍 Validación de instanceIds')
-          console.log(`Total vuelos en sistema: ${flightResponse.flights.length}`)
-          console.log(`Total instancias generadas (7 días): ${inst.length}`)
-          console.log(`Backend: ${backendInstances.size} instancias con productos`)
-          console.log(`✅ ${matches} instancias con productos detectadas en frontend`)
-          console.log(`📊 Detection rate: ${matchRate}%`)
-          
-          if (matches < backendInstances.size) {
-            const missingInFrontend = Array.from(backendInstances).filter(id => 
-              !inst.some(i => i.instanceId === id)
-            )
-            console.warn(`⚠️ ${missingInFrontend.length} instancias con productos NO se generaron en frontend:`)
-            console.log(missingInFrontend.slice(0, 10))
-            
-            // DEBUG: Analizar por qué faltan
-            missingInFrontend.slice(0, 3).forEach(instanceId => {
-              const match = instanceId.match(/^FL-(\d+)-DAY-(\d+)-(\d{4})$/)
-              if (match) {
-                const flightId = parseInt(match[1])
-                const day = parseInt(match[2])
-                const time = match[3]
-                const flight = flightResponse.flights.find(f => f.id === flightId)
-                console.log(`  ${instanceId}:`)
-                console.log(`    Flight exists: ${!!flight}`)
-                console.log(`    departureTime: ${flight?.departureTime || 'NULL'}`)
-                console.log(`    Expected: DAY ${day} at ${time}`)
-              }
-            })
-          }
-          
-          // Mostrar ejemplos
-          if (matchingInstances.length > 0) {
-            console.log('✅ Instancias con productos (primeras 5):')
-            matchingInstances.slice(0, 5).forEach(i => {
-              console.log(`  ${i.instanceId} (${instanceHasProducts[i.instanceId]} productos)`)
-            })
-          }
-          
-          console.groupEnd()
-
-          // ✅ KPIs
-          const flightsByAirport: Record<string, number> = {}
-
-          inst.forEach((f) => {
-              const rawCode =
-                  f.originAirport.codeIATA ??
-                  (typeof f.originAirport.city === 'string'
-                    ? f.originAirport.city
-                    : f.originAirport.city?.name)
-
-              if (!rawCode) return
-
-              const code = String(rawCode)
-              flightsByAirport[code] = (flightsByAirport[code] ?? 0) + 1
-          })
-
-          const flightsByDay = Array(TOTAL_DAYS).fill(0)
-
-          inst.forEach(f => {
-            const dep = new Date(f.departureTime)
-            const d = Math.floor(
-                (dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
-            )
-            if (d >= 0 && d < TOTAL_DAYS) {
-                flightsByDay[d] += 1
-            }
-          })
-
-          setKpi(prev => ({
-            ...prev,
-            totalFlights: inst.length,
-          }))
-
-          // ✅ Mensaje final
-          if (parseFloat(matchRate) === 100) {
-            toast.success(`✅ ${matches} vuelos con carga detectados correctamente`)
-          } else if (parseFloat(matchRate) >= 90) {
-            toast.success(`✅ ${matches}/${backendInstances.size} vuelos con carga (${matchRate}%)`)
-          } else {
-            toast.warning(`⚠️ Solo ${matchRate}% de vuelos con carga detectados - revisa consola`)
-          }
-
-      } catch (error) {
-          console.error('Error cargando vuelos semanales:', error)
-          toast.error("Error cargando vuelos semanales")
+    for (const o of orders) {
+      const s = (o.status || '').toUpperCase() as keyof typeof base
+      if (s in base) {
+        base[s] += 1
       }
+    }
+
+    return base
+  }, [orders])
+
+  // Total pedidos (suma de todos los estados)
+  const totalOrdersFromDb = useMemo(
+    () =>
+      ordersByStatus.PENDING +
+      ordersByStatus.IN_TRANSIT +
+      ordersByStatus.ARRIVED +
+      ordersByStatus.DELIVERED,
+    [ordersByStatus]
+  )
+
+  // Nota: se usa la tasa de asignación calculada por el algoritmo
+
+  // Entregados desde BD (por estado)
+  const deliveredOrdersFromDb = useMemo(
+    () => ordersByStatus.DELIVERED,
+    [ordersByStatus]
+  )
+
+
+  const [playbackSpeed, setPlaybackSpeed] = useState(SPEED_SLOW)
+  const speedRef = useRef(SPEED_SLOW)
+
+  useEffect(() => {
+    speedRef.current = playbackSpeed
+  }, [playbackSpeed])
+
+  const updatesInProgressRef = useRef(0);
+
+  // ✅ Mapeo de instanceId -> cantidad de productos (del algoritmo)
+  const [instanceHasProducts, setInstanceHasProducts] = useState<Record<string, number>>({})
+  const [hoveredFlight, setHoveredFlight] = useState<FlightInstance | null>(null)
+  const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+  const [selectedFlight, setSelectedFlight] = useState<{
+    id: number;
+    code: string;
+    originCity: string;
+    destinationCity: string;
+  } | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<OrderSchema | null>(null)
+  const [highlightMarkerId, setHighlightMarkerId] = useState<string | null>(null)
+
+  const handleFlightClick = (flight: FlightInstance) => {
+    setSelectedFlight({
+      id: flight.flightId,
+      code: flight.flightCode,
+      originCity: flight.originAirport.city.name,
+      destinationCity: flight.destinationAirport.city.name,
+    })
+  }
+
+
+
+  const { data: airports } = useAirports()
+  const MAIN_HUB_CODES = ["SPIM", "EBCI", "UBBB"]
+  const mainWarehouses =
+    airports?.filter(
+      (a: any) =>
+        a.codeIATA && MAIN_HUB_CODES.includes(a.codeIATA.toUpperCase())
+    ) ?? []
+
+  const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
+  const [currentTime, setCurrentTime] = useState<Date | null>(null)
+  const [dayIndex, setDayIndex] = useState(0)
+  const [isRunning, setIsRunning] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+
+  // ✅ Refs para control
+  const visualClockIntervalRef = useRef<any>(null)  // Reloj visual (1 seg)
+  const lastAlgorithmDayRef = useRef(-1)
+  const lastUpdateHoursRef = useRef(0)  // Última vez que ejecutamos update-states
+  const isUpdatingStatesRef = useRef(false)
+  const pausedRef = useRef(false)
+
+  const intervalRef = useRef<any>(null)
+
+  // 🐍 PYTHON REPLICA: Control de pasos discretos
+  const currentStepHoursRef = useRef(0)  // step actual en horas (0, 4, 8, 12, ...)
+  const pendingUpdateRef = useRef(false)
+
+  const [kpi, setKpi] = useState(INITIAL_KPI)
+
+  const loadWeeklyFlights = useCallback(async () => {
+    try {
+      // Cargar vuelos y sus instancias asignadas en paralelo
+      const [flightResponse, instancesResponse] = await Promise.all([
+        simulationService.getFlightStatuses(),
+        simulationService.getAssignedFlightInstances()
+      ])
+
+      if (!airports || airports.length === 0) {
+        toast.error("No hay aeropuertos cargados")
+        return
+      }
+
+      // ✅ Generar instancias para TODOS los vuelos (168 horas = 7 días completos)
+      const inst = simulationService.generateFlightInstances(
+        flightResponse.flights,  // ← TODOS los vuelos
+        startTime,
+        168,  // ← 7 días completos
+        airports,
+        { baseDay: 0 }
+      )
+
+      setFlightInstances(inst)
+
+      // ✅ Usar instancias reales del algoritmo (solo las que tienen productos)
+      setInstanceHasProducts(instancesResponse.instances ?? {})
+
+      // ✅ Validación: Solo validar contra las que SÍ tienen productos
+      const backendInstances = new Set(Object.keys(instancesResponse.instances ?? {}))
+
+      // Filtrar instancias del frontend que coinciden con backend
+      const matchingInstances = inst.filter(f => backendInstances.has(f.instanceId))
+
+      const matches = matchingInstances.length
+      const matchRate = backendInstances.size > 0
+        ? (matches / backendInstances.size * 100).toFixed(1)
+        : '0.0'
+
+      console.group('🔍 Validación de instanceIds')
+      console.log(`Total vuelos en sistema: ${flightResponse.flights.length}`)
+      console.log(`Total instancias generadas (7 días): ${inst.length}`)
+      console.log(`Backend: ${backendInstances.size} instancias con productos`)
+      console.log(`✅ ${matches} instancias con productos detectadas en frontend`)
+      console.log(`📊 Detection rate: ${matchRate}%`)
+
+      if (matches < backendInstances.size) {
+        const missingInFrontend = Array.from(backendInstances).filter(id =>
+          !inst.some(i => i.instanceId === id)
+        )
+        console.warn(`⚠️ ${missingInFrontend.length} instancias con productos NO se generaron en frontend:`)
+        console.log(missingInFrontend.slice(0, 10))
+
+        // DEBUG: Analizar por qué faltan
+        missingInFrontend.slice(0, 3).forEach(instanceId => {
+          const match = instanceId.match(/^FL-(\d+)-DAY-(\d+)-(\d{4})$/)
+          if (match) {
+            const flightId = parseInt(match[1])
+            const day = parseInt(match[2])
+            const time = match[3]
+            const flight = flightResponse.flights.find(f => f.id === flightId)
+            console.log(`  ${instanceId}:`)
+            console.log(`    Flight exists: ${!!flight}`)
+            console.log(`    departureTime: ${flight?.departureTime || 'NULL'}`)
+            console.log(`    Expected: DAY ${day} at ${time}`)
+          }
+        })
+      }
+
+      // Mostrar ejemplos
+      if (matchingInstances.length > 0) {
+        console.log('✅ Instancias con productos (primeras 5):')
+        matchingInstances.slice(0, 5).forEach(i => {
+          console.log(`  ${i.instanceId} (${instanceHasProducts[i.instanceId]} productos)`)
+        })
+      }
+
+      console.groupEnd()
+
+      // ✅ KPIs
+      const flightsByAirport: Record<string, number> = {}
+
+      inst.forEach((f) => {
+        const rawCode =
+          f.originAirport.codeIATA ??
+          (typeof f.originAirport.city === 'string'
+            ? f.originAirport.city
+            : f.originAirport.city?.name)
+
+        if (!rawCode) return
+
+        const code = String(rawCode)
+        flightsByAirport[code] = (flightsByAirport[code] ?? 0) + 1
+      })
+
+      const flightsByDay = Array(TOTAL_DAYS).fill(0)
+
+      inst.forEach(f => {
+        const dep = new Date(f.departureTime)
+        const d = Math.floor(
+          (dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000)
+        )
+        if (d >= 0 && d < TOTAL_DAYS) {
+          flightsByDay[d] += 1
+        }
+      })
+
+      setKpi(prev => ({
+        ...prev,
+        totalFlights: inst.length,
+      }))
+
+      // ✅ Mensaje final
+      if (parseFloat(matchRate) === 100) {
+        toast.success(`✅ ${matches} vuelos con carga detectados correctamente`)
+      } else if (parseFloat(matchRate) >= 90) {
+        toast.success(`✅ ${matches}/${backendInstances.size} vuelos con carga (${matchRate}%)`)
+      } else {
+        toast.warning(`⚠️ Solo ${matchRate}% de vuelos con carga detectados - revisa consola`)
+      }
+
+    } catch (error) {
+      console.error('Error cargando vuelos semanales:', error)
+      toast.error("Error cargando vuelos semanales")
+    }
   }, [airports, startTime])
 
 
-    // Helper para crear peticiones cancelables
-    const createCancelableRequest = useCallback((requestFn: (signal: AbortSignal) => Promise<any>) => {
-      const controller = new AbortController()
-      abortControllersRef.current.push(controller)
-      pendingRequestsRef.current += 1
-      
-      return requestFn(controller.signal)
-        .finally(() => {
-          pendingRequestsRef.current -= 1
-          const index = abortControllersRef.current.indexOf(controller)
-          if (index > -1) {
-            abortControllersRef.current.splice(index, 1)
-          }
-        })
-    }, [])
+  // Helper para crear peticiones cancelables
+  const createCancelableRequest = useCallback((requestFn: (signal: AbortSignal) => Promise<any>) => {
+    const controller = new AbortController()
+    abortControllersRef.current.push(controller)
+    pendingRequestsRef.current += 1
 
-    // 🐍 PYTHON REPLICA: Algoritmo diario
-    const runDailyAlgorithm = useCallback(
-      async (dayStart: Date, dayNumber: number) => {
-        if (!simulationStartDate) return
-        console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
-        console.log('📅 Day Start (UTC):', dayStart.toISOString())
-        // Mostrar overlay mientras backend ejecuta el algoritmo
-        try {
-          pushOverlay(`Ejecutando algoritmo día ${dayNumber + 1}...`)
-        } catch (e) {}
-        
-        const year = dayStart.getUTCFullYear()
-        const month = String(dayStart.getUTCMonth() + 1).padStart(2, '0')
-        const day = String(dayStart.getUTCDate()).padStart(2, '0')
-        const dateTimeStr = `${year}-${month}-${day}T00:00:00`
-
-        console.log('📅 Sending to backend:', dateTimeStr)
-
-        try {
-          const response = await createCancelableRequest(async (signal) => {
-            return await simulationService.executeDaily({
-              simulationStartTime: dateTimeStr,
-              simulationDurationHours: 24,
-              useDatabase: true,
-            }, signal)
-          })
-          
-          // ✅ Refrescar pedidos después de ejecutar el algoritmo
-          queryClient.invalidateQueries({ queryKey: orderKeys.all })
-
-          if (!response) {
-            toast.error('Error: respuesta del algoritmo inválida')
-            console.groupEnd()
-            return
-          }
-
-          console.log('✅ Algorithm Stats:', {
-            totalOrders: response.totalOrders,
-            assignedOrders: response.assignedOrders,
-            totalProducts: response.totalProducts,
-            assignedProducts: response.assignedProducts,
-            score: response.score,
-          })
-
-          const assignedOrders = Number(response.assignedOrders ?? 0)
-          const assignedProducts = Number(response.assignedProducts ?? 0)
-          const totalOrders = Number(response.totalOrders ?? 0)
-          const totalProducts = Number(response.totalProducts ?? 0)
-
-          setKpi(prev => {
-            const newAssignedProductsWeek = prev.assignedProductsWeek + assignedProducts
-            const newTotalProductsWeek = prev.totalProductsWeek + totalProducts
-            const newAssignedOrdersWeek = prev.assignedOrdersWeek + assignedOrders
-            const newTotalOrdersWeek = prev.totalOrdersWeek + totalOrders
-
-            const rate =
-              newTotalProductsWeek > 0
-                ? (newAssignedProductsWeek / newTotalProductsWeek) * 100
-                : 0
-
-            return {
-              ...prev,
-              assignedProductsWeek: newAssignedProductsWeek,
-              totalProductsWeek: newTotalProductsWeek,
-              assignedOrdersWeek: newAssignedOrdersWeek,
-              totalOrdersWeek: newTotalOrdersWeek,
-              assignmentRate: Number(rate.toFixed(2)),
-            }
-          })
-          
-          // ✅ CRÍTICO: Recargar instancias con productos DESPUÉS del algoritmo
-          try {
-            console.log('🔄 Recargando instancias con productos...')
-            const instancesResponse = await simulationService.getAssignedFlightInstances()
-            setInstanceHasProducts(instancesResponse.instances ?? {})
-            console.log(`✅ Actualizadas ${Object.keys(instancesResponse.instances ?? {}).length} instancias con productos`)
-          } catch (error) {
-            console.error('❌ Error recargando instancias:', error)
-          }
-          
-          console.groupEnd()
-
-          // ✅ Toast solo si hay algo asignado ese día
-          if (assignedProducts > 0 || assignedOrders > 0) {
-            const partes: string[] = []
-
-            if (assignedOrders > 0) {
-              partes.push(
-                `${assignedOrders} pedido${assignedOrders !== 1 ? 's' : ''}`
-              )
-            }
-            if (assignedProducts > 0) {
-              partes.push(
-                `${assignedProducts} producto${assignedProducts !== 1 ? 's' : ''}`
-              )
-            }
-
-            toast.success(`Día ${dayNumber + 1}: ${partes.join(' y ')} asignados`)
-          }
-
-        } catch (error: any) {
-          if (error.name === 'AbortError') {
-            console.log('❌ Petición cancelada por el usuario')
-            console.groupEnd()
-            return
-          }
-
-          console.error('❌ Error ejecutando algoritmo:', error)
-          console.groupEnd()
-          toast.error('Error al ejecutar el algoritmo diario')
+    return requestFn(controller.signal)
+      .finally(() => {
+        pendingRequestsRef.current -= 1
+        const index = abortControllersRef.current.indexOf(controller)
+        if (index > -1) {
+          abortControllersRef.current.splice(index, 1)
         }
-        finally {
-          // Ocultar overlay
-          try { popOverlay() } catch (e) {}
-        }
-      },
-      [simulationStartDate, createCancelableRequest, queryClient]
-    )
+      })
+  }, [])
 
-    // 🐍 PYTHON REPLICA: Update states
-    const runUpdateStates = useCallback(async (simTime: Date) => {
-      updatesInProgressRef.current += 1;
-      setIsBackgroundProcessing(true)
+  // 🐍 PYTHON REPLICA: Algoritmo diario
+  const runDailyAlgorithm = useCallback(
+    async (dayStart: Date, dayNumber: number) => {
+      if (!simulationStartDate) return
+      console.group(`🐍 PYTHON REPLICA - Day ${dayNumber + 1}`)
+      console.log('📅 Day Start (UTC):', dayStart.toISOString())
+      // Mostrar overlay mientras backend ejecuta el algoritmo
+      try {
+        pushOverlay(`Ejecutando algoritmo día ${dayNumber + 1}...`)
+      } catch (e) { }
+
+      const year = dayStart.getUTCFullYear()
+      const month = String(dayStart.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(dayStart.getUTCDate()).padStart(2, '0')
+      const dateTimeStr = `${year}-${month}-${day}T00:00:00`
+
+      console.log('📅 Sending to backend:', dateTimeStr)
 
       try {
-        const year = simTime.getUTCFullYear()
-        const month = String(simTime.getUTCMonth() + 1).padStart(2, '0')
-        const day = String(simTime.getUTCDate()).padStart(2, '0')
-        const hours = String(simTime.getUTCHours()).padStart(2, '0')
-        const minutes = String(simTime.getUTCMinutes()).padStart(2, '0')
-        const seconds = String(simTime.getUTCSeconds()).padStart(2, '0')
-        const dateTimeStr = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
-        
-        const controller = new AbortController()
-        abortControllersRef.current.push(controller)
-        
-        const response = await simulationService.updateStates({
-          currentTime: dateTimeStr,
-        }, controller.signal)
+        const response = await createCancelableRequest(async (signal) => {
+          return await simulationService.executeDaily({
+            simulationStartTime: dateTimeStr,
+            simulationDurationHours: 24,
+            useDatabase: true,
+          }, signal)
+        })
 
-        const transitions = response?.transitions ?? 0
-
+        // ✅ Refrescar pedidos después de ejecutar el algoritmo
         queryClient.invalidateQueries({ queryKey: orderKeys.all })
 
-        if (response.capacityStats) {
-          const used = Number(response.capacityStats.usedCapacity ?? 0)
-          const total = Number(response.capacityStats.totalCapacity ?? 0)
-          const percent = total > 0 ? (used / total) * 100 : 0
-
-          setKpi(prev => ({
-            ...prev,
-            avgCapacityUsage: Number(percent.toFixed(2)),
-          }))
-        }
-        
-        const deliveredThisStep = Number(response.transitions?.arrivedToDelivered ?? 0)
-
-        if (deliveredThisStep > 0) {
-          setKpi(prev => ({
-            ...prev,
-            deliveredOrders:
-              (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0) +
-              deliveredThisStep,
-          }))
-        }
-
-        // ✅ NUEVO: Recargar instancias cada cierto número de updates
-        // Para evitar hacer demasiadas peticiones, solo actualiza cada 4 updates
-        if (updatesInProgressRef.current % 4 === 0) {
-          try {
-            const instancesResponse = await simulationService.getAssignedFlightInstances()
-            setInstanceHasProducts(instancesResponse.instances ?? {})
-            console.log(`🔄 Instancias actualizadas: ${Object.keys(instancesResponse.instances ?? {}).length}`)
-          } catch (error) {
-            console.error('Error actualizando instancias:', error)
-          }
-        }
-        
-      } catch (error: any) {
-        if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
-          console.log('❌ update-states cancelado')
+        if (!response) {
+          toast.error('Error: respuesta del algoritmo inválida')
+          console.groupEnd()
           return
         }
 
-        console.error('❌ Error en update-states:', error)
-      } finally {
-        updatesInProgressRef.current -= 1;
-
-        if (updatesInProgressRef.current === 0) {
-          setIsBackgroundProcessing(false);
-        }
-      }
-    }, [queryClient])
-
-    
-
-    // 🐍 DECLARAR STOP PRIMERO (para evitar error de orden)
-    const stop = useCallback((reset: boolean = true) => {
-      console.log(`🛑 Deteniendo simulación (reset: ${reset})`)
-
-      // ✅ CANCELAR TODAS LAS PETICIONES PENDIENTES
-      console.log(`🔥 Cancelando ${abortControllersRef.current.length} peticiones pendientes...`)
-      abortControllersRef.current.forEach(controller => {
-        try {
-          controller.abort()
-        } catch (e) {
-          console.error('Error al cancelar:', e)
-        }
-      })
-      abortControllersRef.current = []
-
-      // ✅ Forzar fin del procesamiento en background
-      updatesInProgressRef.current = 0
-      setIsBackgroundProcessing(false)
-      
-      setIsRunning(false)
-      setIsPaused(false)
-      
-      if (visualClockIntervalRef.current) {
-        clearInterval(visualClockIntervalRef.current)
-        visualClockIntervalRef.current = null
-      }
-      
-      if (reset) {
-        setCurrentTime(null)
-        setDayIndex(0)
-        setFlightInstances([])
-        setKpi(INITIAL_KPI)
-        lastAlgorithmDayRef.current = -1
-        lastUpdateHoursRef.current = 0
-        //isUpdatingStatesRef.current = false
-        //pausedRef.current = false
-      }
-    }, [])  
-
-    const hasShownCompletionToastRef = useRef(false);
-
-    // ✅ AHORA SÍ PODEMOS USAR stop EN setupVisualClock
-    const setupVisualClock = useCallback(() => {
-      if (visualClockIntervalRef.current) {
-        clearInterval(visualClockIntervalRef.current)
-      }
-
-      visualClockIntervalRef.current = setInterval(() => {
-        if (pausedRef.current) return
-
-        setCurrentTime(prev => {
-          if (!prev) return prev
-
-          const next = new Date(prev.getTime() + speedRef.current * 1000)
-          const elapsedMs = next.getTime() - startTime.getTime()
-          const elapsedHours = elapsedMs / (60 * 60 * 1000)
-          const dayNumber = Math.floor(elapsedHours / 24)
-
-          if (dayNumber >= TOTAL_DAYS) {
-
-            // Detén el reloj visual
-            if (visualClockIntervalRef.current) {
-              clearInterval(visualClockIntervalRef.current);
-              visualClockIntervalRef.current = null;
-            }
-
-            setIsRunning(false);
-            setIsPaused(false);
-
-            // Mantén el banner hasta que backend termine
-            if (updatesInProgressRef.current === 0) {
-              setIsBackgroundProcessing(false);
-            }
-
-            // Mostrar toast solo UNA VEZ
-            if (!hasShownCompletionToastRef.current) {
-              hasShownCompletionToastRef.current = true;
-              toast.info("Simulación semanal completada");
-            }
-
-            return prev;
-          }
-
-          setDayIndex(dayNumber)
-
-          // Algoritmo diario
-          if (dayNumber > lastAlgorithmDayRef.current) {
-            lastAlgorithmDayRef.current = dayNumber
-            const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000)
-            console.log(`🔔 Nuevo día ${dayNumber + 1} detectado`)
-            void runDailyAlgorithm(dayStart, dayNumber)
-          }
-
-          // Update-states cada 4h
-          const currentStepHours = Math.floor(elapsedHours / (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) * (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)
-          
-          if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
-            lastUpdateHoursRef.current = currentStepHours
-            //console.log(`🔄 Update-states en hora ${currentStepHours}`)
-            void runUpdateStates(next)
-          }
-
-          return next
+        console.log('✅ Algorithm Stats:', {
+          totalOrders: response.totalOrders,
+          assignedOrders: response.assignedOrders,
+          totalProducts: response.totalProducts,
+          assignedProducts: response.assignedProducts,
+          score: response.score,
         })
-      }, 1000)
-    }, [startTime, runDailyAlgorithm, runUpdateStates, stop])  // ✅ stop en dependencies
 
+        const assignedOrders = Number(response.assignedOrders ?? 0)
+        const assignedProducts = Number(response.assignedProducts ?? 0)
+        const totalOrders = Number(response.totalOrders ?? 0)
+        const totalProducts = Number(response.totalProducts ?? 0)
 
-    const start = useCallback(async () => {
-      if (!hasValidConfig() || !simulationStartDate) {
-        toast.error("Debes configurar la fecha en Planificación primero")
+        setKpi(prev => {
+          const newAssignedProductsWeek = prev.assignedProductsWeek + assignedProducts
+          const newTotalProductsWeek = prev.totalProductsWeek + totalProducts
+          const newAssignedOrdersWeek = prev.assignedOrdersWeek + assignedOrders
+          const newTotalOrdersWeek = prev.totalOrdersWeek + totalOrders
+
+          const rate =
+            newTotalProductsWeek > 0
+              ? (newAssignedProductsWeek / newTotalProductsWeek) * 100
+              : 0
+
+          return {
+            ...prev,
+            assignedProductsWeek: newAssignedProductsWeek,
+            totalProductsWeek: newTotalProductsWeek,
+            assignedOrdersWeek: newAssignedOrdersWeek,
+            totalOrdersWeek: newTotalOrdersWeek,
+            assignmentRate: Number(rate.toFixed(2)),
+          }
+        })
+
+        // ✅ CRÍTICO: Recargar instancias con productos DESPUÉS del algoritmo
+        try {
+          console.log('🔄 Recargando instancias con productos...')
+          const instancesResponse = await simulationService.getAssignedFlightInstances()
+          setInstanceHasProducts(instancesResponse.instances ?? {})
+          console.log(`✅ Actualizadas ${Object.keys(instancesResponse.instances ?? {}).length} instancias con productos`)
+        } catch (error) {
+          console.error('❌ Error recargando instancias:', error)
+        }
+
+        console.groupEnd()
+
+        // ✅ Toast solo si hay algo asignado ese día
+        if (assignedProducts > 0 || assignedOrders > 0) {
+          const partes: string[] = []
+
+          if (assignedOrders > 0) {
+            partes.push(
+              `${assignedOrders} pedido${assignedOrders !== 1 ? 's' : ''}`
+            )
+          }
+          if (assignedProducts > 0) {
+            partes.push(
+              `${assignedProducts} producto${assignedProducts !== 1 ? 's' : ''}`
+            )
+          }
+
+          toast.success(`Día ${dayNumber + 1}: ${partes.join(' y ')} asignados`)
+        }
+
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('❌ Petición cancelada por el usuario')
+          console.groupEnd()
+          return
+        }
+
+        console.error('❌ Error ejecutando algoritmo:', error)
+        console.groupEnd()
+        toast.error('Error al ejecutar el algoritmo diario')
+      }
+      finally {
+        // Ocultar overlay
+        try { popOverlay() } catch (e) { }
+      }
+    },
+    [simulationStartDate, createCancelableRequest, queryClient]
+  )
+
+  // 🐍 PYTHON REPLICA: Update states
+  const runUpdateStates = useCallback(async (simTime: Date) => {
+    updatesInProgressRef.current += 1;
+    setIsBackgroundProcessing(true)
+
+    try {
+      const year = simTime.getUTCFullYear()
+      const month = String(simTime.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(simTime.getUTCDate()).padStart(2, '0')
+      const hours = String(simTime.getUTCHours()).padStart(2, '0')
+      const minutes = String(simTime.getUTCMinutes()).padStart(2, '0')
+      const seconds = String(simTime.getUTCSeconds()).padStart(2, '0')
+      const dateTimeStr = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+
+      const controller = new AbortController()
+      abortControllersRef.current.push(controller)
+
+      const response = await simulationService.updateStates({
+        currentTime: dateTimeStr,
+      }, controller.signal)
+
+      const transitions = response?.transitions ?? 0
+
+      queryClient.invalidateQueries({ queryKey: orderKeys.all })
+
+      if (response.capacityStats) {
+        const used = Number(response.capacityStats.usedCapacity ?? 0)
+        const total = Number(response.capacityStats.totalCapacity ?? 0)
+        const percent = total > 0 ? (used / total) * 100 : 0
+
+        setKpi(prev => ({
+          ...prev,
+          avgCapacityUsage: Number(percent.toFixed(2)),
+        }))
+      }
+
+      const deliveredThisStep = Number(response.transitions?.arrivedToDelivered ?? 0)
+
+      if (deliveredThisStep > 0) {
+        setKpi(prev => ({
+          ...prev,
+          deliveredOrders:
+            (Number.isFinite(prev.deliveredOrders) ? prev.deliveredOrders : 0) +
+            deliveredThisStep,
+        }))
+      }
+
+      // ✅ NUEVO: Recargar instancias cada cierto número de updates
+      // Para evitar hacer demasiadas peticiones, solo actualiza cada 4 updates
+      if (updatesInProgressRef.current % 4 === 0) {
+        try {
+          const instancesResponse = await simulationService.getAssignedFlightInstances()
+          setInstanceHasProducts(instancesResponse.instances ?? {})
+          console.log(`🔄 Instancias actualizadas: ${Object.keys(instancesResponse.instances ?? {}).length}`)
+        } catch (error) {
+          console.error('Error actualizando instancias:', error)
+        }
+      }
+
+    } catch (error: any) {
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        console.log('❌ update-states cancelado')
         return
       }
 
-      if (!airports || airports.length === 0) {
-        toast.error("Cargar aeropuertos primero")
-        return
-      }
+      console.error('❌ Error en update-states:', error)
+    } finally {
+      updatesInProgressRef.current -= 1;
 
-      console.group('%c🐍 INICIANDO SIMULACIÓN', 'color:#10b981;font-weight:bold;')
-      console.log('📅 Start Time (UTC):', startTime.toISOString())
-      
-      hasShownCompletionToastRef.current = false;
-      stop(false)
+      if (updatesInProgressRef.current === 0) {
+        setIsBackgroundProcessing(false);
+      }
+    }
+  }, [queryClient])
+
+
+
+  // 🐍 DECLARAR STOP PRIMERO (para evitar error de orden)
+  const stop = useCallback((reset: boolean = true) => {
+    console.log(`🛑 Deteniendo simulación (reset: ${reset})`)
+
+    // ✅ CANCELAR TODAS LAS PETICIONES PENDIENTES
+    console.log(`🔥 Cancelando ${abortControllersRef.current.length} peticiones pendientes...`)
+    abortControllersRef.current.forEach(controller => {
+      try {
+        controller.abort()
+      } catch (e) {
+        console.error('Error al cancelar:', e)
+      }
+    })
+    abortControllersRef.current = []
+
+    // ✅ Forzar fin del procesamiento en background
+    updatesInProgressRef.current = 0
+    setIsBackgroundProcessing(false)
+
+    setIsRunning(false)
+    setIsPaused(false)
+
+    if (visualClockIntervalRef.current) {
+      clearInterval(visualClockIntervalRef.current)
+      visualClockIntervalRef.current = null
+    }
+
+    if (reset) {
+      setCurrentTime(null)
+      setDayIndex(0)
+      setFlightInstances([])
+      setKpi(INITIAL_KPI)
       lastAlgorithmDayRef.current = -1
       lastUpdateHoursRef.current = 0
-      pausedRef.current = false
+      //isUpdatingStatesRef.current = false
+      //pausedRef.current = false
+    }
+  }, [])
 
+  const hasShownCompletionToastRef = useRef(false);
+
+  // ✅ AHORA SÍ PODEMOS USAR stop EN setupVisualClock
+  const setupVisualClock = useCallback(() => {
+    if (visualClockIntervalRef.current) {
+      clearInterval(visualClockIntervalRef.current)
+    }
+
+    visualClockIntervalRef.current = setInterval(() => {
+      if (pausedRef.current) return
+
+      setCurrentTime(prev => {
+        if (!prev) return prev
+
+        const next = new Date(prev.getTime() + speedRef.current * 1000)
+        const elapsedMs = next.getTime() - startTime.getTime()
+        const elapsedHours = elapsedMs / (60 * 60 * 1000)
+        const dayNumber = Math.floor(elapsedHours / 24)
+
+        if (dayNumber >= TOTAL_DAYS) {
+
+          // Detén el reloj visual
+          if (visualClockIntervalRef.current) {
+            clearInterval(visualClockIntervalRef.current);
+            visualClockIntervalRef.current = null;
+          }
+
+          setIsRunning(false);
+          setIsPaused(false);
+
+          // Mantén el banner hasta que backend termine
+          if (updatesInProgressRef.current === 0) {
+            setIsBackgroundProcessing(false);
+          }
+
+          // Mostrar toast solo UNA VEZ
+          if (!hasShownCompletionToastRef.current) {
+            hasShownCompletionToastRef.current = true;
+            toast.info("Simulación semanal completada");
+          }
+
+          return prev;
+        }
+
+        setDayIndex(dayNumber)
+
+        // Algoritmo diario
+        if (dayNumber > lastAlgorithmDayRef.current) {
+          lastAlgorithmDayRef.current = dayNumber
+          const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000)
+          console.log(`🔔 Nuevo día ${dayNumber + 1} detectado`)
+          void runDailyAlgorithm(dayStart, dayNumber)
+        }
+
+        // Update-states cada 4h
+        const currentStepHours = Math.floor(elapsedHours / (speedRef.current === SPEED_SLOW ? STEP_MIN : STEP_HOURS)) * (speedRef.current === SPEED_SLOW ? STEP_MIN : STEP_HOURS)
+
+        if (currentStepHours > lastUpdateHoursRef.current && currentStepHours > 0) {
+          lastUpdateHoursRef.current = currentStepHours
+          //console.log(`🔄 Update-states en hora ${currentStepHours}`)
+          void runUpdateStates(next)
+        }
+
+        return next
+      })
+    }, 1000)
+  }, [startTime, runDailyAlgorithm, runUpdateStates, stop])  // ✅ stop en dependencies
+
+
+  const start = useCallback(async () => {
+    if (!hasValidConfig() || !simulationStartDate) {
+      toast.error("Debes configurar la fecha en Planificación primero")
+      return
+    }
+
+    if (!airports || airports.length === 0) {
+      toast.error("Cargar aeropuertos primero")
+      return
+    }
+
+    console.group('%c🐍 INICIANDO SIMULACIÓN', 'color:#10b981;font-weight:bold;')
+    console.log('📅 Start Time (UTC):', startTime.toISOString())
+
+    hasShownCompletionToastRef.current = false;
+    stop(false)
+    lastAlgorithmDayRef.current = -1
+    lastUpdateHoursRef.current = 0
+    pausedRef.current = false
+
+    try {
+      // 1️⃣ PRIMERO: Ejecutar algoritmo (backend procesa vuelos)
+      console.log('🔄 Ejecutando algoritmo día 1...')
+      await runDailyAlgorithm(startTime, 0)
+      lastAlgorithmDayRef.current = 0
+
+      // 2️⃣ DESPUÉS: Cargar vuelos Y instancias asignadas
+      // Esto debe obtener los MISMOS vuelos que el backend procesó
       try {
-        // 1️⃣ PRIMERO: Ejecutar algoritmo (backend procesa vuelos)
-        console.log('🔄 Ejecutando algoritmo día 1...')
-        await runDailyAlgorithm(startTime, 0)
-        lastAlgorithmDayRef.current = 0
-        
-        // 2️⃣ DESPUÉS: Cargar vuelos Y instancias asignadas
-        // Esto debe obtener los MISMOS vuelos que el backend procesó
-        try {
-          pushOverlay('Cargando vuelos e instancias...')
-        } catch (e) {}
-        try {
-          await loadWeeklyFlights()
-        } finally {
-          try { popOverlay() } catch (e) {}
-        }
-        
-        console.log('✅ Setup completado')
-        console.groupEnd()
-
-        setCurrentTime(startTime)
-        setIsRunning(true)
-        setIsPaused(false)
-        setupVisualClock()
-        
-      } catch (error) {
-        console.error('❌ Error al iniciar simulación:', error)
-        console.groupEnd()
-        toast.error('Error al iniciar la simulación semanal')
-      }
-    }, [
-      hasValidConfig,
-      simulationStartDate,
-      airports,
-      startTime,
-      stop,
-      runDailyAlgorithm,
-      loadWeeklyFlights,
-      setupVisualClock
-    ])
-
-    const togglePause = useCallback(() => {
-      if (!isRunning) return
-      
-      pausedRef.current = !pausedRef.current
-      setIsPaused(pausedRef.current)
-      
-      if (pausedRef.current) {
-        toast.info('⏸️ Simulación pausada')
-      } else {
-        toast.info('▶️ Simulación reanudada')
-      }
-    }, [isRunning])
-
-    useEffect(() => {
-      return () => {
-        if (visualClockIntervalRef.current) {
-          clearInterval(visualClockIntervalRef.current)
-        }
-      }
-    }, [])
-
-    // 🐍 PYTHON REPLICA: Paso discreto (ejecuta un tick del script Python)
-    const executeStep = useCallback(async (stepHours: number) => {
-
-      currentStepHoursRef.current = stepHours  // ✅ Actualizar
-
-      const currentTime = new Date(startTime.getTime() + stepHours * 60 * 60 * 1000);
-      const dayNumber = Math.floor(stepHours / 24);  // Cálculo del día de simulación
-
-      if (dayNumber >= TOTAL_DAYS) {
-        stop(false);
-        toast.info('✅ Simulación semanal completada');
-        return;
+        pushOverlay('Cargando vuelos e instancias...')
+      } catch (e) { }
+      try {
+        await loadWeeklyFlights()
+      } finally {
+        try { popOverlay() } catch (e) { }
       }
 
-      setCurrentTime(currentTime); // Establece la hora actual de la simulación
-      setDayIndex(dayNumber);  // Actualiza el índice del día
+      console.log('✅ Setup completado')
+      console.groupEnd()
 
-      console.group(
-        `%c🐍 STEP ${stepHours}h (Day ${dayNumber + 1})`,
-        'color:#8b5cf6;font-weight:bold;'
-      );
-      console.log('⏰ Simulation Time (UTC):', currentTime.toISOString());
-      console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }));
+      setCurrentTime(startTime)
+      setIsRunning(true)
+      setIsPaused(false)
+      setupVisualClock()
 
-      // Ejecutar el algoritmo al inicio de un nuevo día
-      if (dayNumber > lastAlgorithmDayRef.current) {
-        console.log('🔔 Nuevo día detectado - ejecutando algoritmo');
-        lastAlgorithmDayRef.current = dayNumber;
+    } catch (error) {
+      console.error('❌ Error al iniciar simulación:', error)
+      console.groupEnd()
+      toast.error('Error al iniciar la simulación semanal')
+    }
+  }, [
+    hasValidConfig,
+    simulationStartDate,
+    airports,
+    startTime,
+    stop,
+    runDailyAlgorithm,
+    loadWeeklyFlights,
+    setupVisualClock
+  ])
 
-        const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000);
-        await runDailyAlgorithm(dayStart, dayNumber);
+  const togglePause = useCallback(() => {
+    if (!isRunning) return
 
-        // En el paso 0, no ejecutamos update-states
-        if (stepHours === 0) {
-          console.log('⏭️ Step 0: Saltando update-states (igual que Python)');
-          console.groupEnd();
-          return;
-        }
+    pausedRef.current = !pausedRef.current
+    setIsPaused(pausedRef.current)
+
+    if (pausedRef.current) {
+      toast.info('⏸️ Simulación pausada')
+    } else {
+      toast.info('▶️ Simulación reanudada')
+    }
+  }, [isRunning])
+
+  useEffect(() => {
+    return () => {
+      if (visualClockIntervalRef.current) {
+        clearInterval(visualClockIntervalRef.current)
       }
+    }
+  }, [])
 
-      // Ejecutar update-states en todos los pasos después del 0
-      console.log('🔄 Ejecutando update-states...');
-      await runUpdateStates(currentTime);
+  // 🐍 PYTHON REPLICA: Paso discreto (ejecuta un tick del script Python)
+  const executeStep = useCallback(async (stepHours: number) => {
 
-      console.groupEnd();
-    }, [startTime, runDailyAlgorithm, runUpdateStates, stop]);
+    currentStepHoursRef.current = stepHours  // ✅ Actualizar
 
-    // 🐍 PYTHON REPLICA: Loop secuencial (espera a que termine cada paso)
-    const runSimulationLoop = useCallback(async () => {
-      const msPerStep = ((speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS) * 3600 * 1000) / speedRef.current;
+    const currentTime = new Date(startTime.getTime() + stepHours * 60 * 60 * 1000);
+    const dayNumber = Math.floor(stepHours / 24);  // Cálculo del día de simulación
 
-      for (let stepHours = (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS); stepHours <= TOTAL_HOURS; stepHours += (speedRef.current === SPEED_SLOW? STEP_MIN : STEP_HOURS)) {
-
-        // ✅ Esperar mientras esté pausado
-        while (pausedRef.current && intervalRef.current) {
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-
-
-        if (!intervalRef.current) {
-          console.log('🛑 Loop interrumpido');
-          break;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, msPerStep));
-
-        if (!intervalRef.current) {
-          console.log('🛑 Loop interrumpido después de timeout');
-          break;
-        }
-
-        try {
-          await executeStep(stepHours);
-        } catch (err) {
-          console.error('Error en executeStep:', err);
-        }
-      }
-
+    if (dayNumber >= TOTAL_DAYS) {
       stop(false);
       toast.info('✅ Simulación semanal completada');
-    }, [executeStep, stop]);
+      return;
+    }
 
-    // Lógica para iniciar la simulación
-    const startSimulationLoop = useCallback(() => {
-      intervalRef.current = true;
-      runSimulationLoop();
-    }, [runSimulationLoop]);
+    setCurrentTime(currentTime); // Establece la hora actual de la simulación
+    setDayIndex(dayNumber);  // Actualiza el índice del día
 
-    
-    useEffect(() => {
-      return () => {
-        // Limpiar el loop al desmontar
-        intervalRef.current = null
+    console.group(
+      `%c🐍 STEP ${stepHours}h (Day ${dayNumber + 1})`,
+      'color:#8b5cf6;font-weight:bold;'
+    );
+    console.log('⏰ Simulation Time (UTC):', currentTime.toISOString());
+    console.log('⏰ Simulation Time (local):', currentTime.toLocaleString('es-PE', { hour12: false }));
+
+    // Ejecutar el algoritmo al inicio de un nuevo día
+    if (dayNumber > lastAlgorithmDayRef.current) {
+      console.log('🔔 Nuevo día detectado - ejecutando algoritmo');
+      lastAlgorithmDayRef.current = dayNumber;
+
+      const dayStart = new Date(startTime.getTime() + dayNumber * 24 * 60 * 60 * 1000);
+      await runDailyAlgorithm(dayStart, dayNumber);
+
+      // En el paso 0, no ejecutamos update-states
+      if (stepHours === 0) {
+        console.log('⏭️ Step 0: Saltando update-states (igual que Python)');
+        console.groupEnd();
+        return;
       }
-    }, [])
+    }
 
-    useEffect(() => {
-      if (hoveredFlight && currentTime) {
-        const dep = new Date(hoveredFlight.departureTime).getTime()
-        const arr = new Date(hoveredFlight.arrivalTime).getTime()
-        const now = currentTime.getTime()
-        
-        // Limpiar si el vuelo ya terminó o aún no ha salido
-        if (now < dep - 60000 || now > arr + 60000) {  // 1 min de margen
-          setHoveredFlight(null)
-        }
+    // Ejecutar update-states en todos los pasos después del 0
+    console.log('🔄 Ejecutando update-states...');
+    await runUpdateStates(currentTime);
+
+    console.groupEnd();
+  }, [startTime, runDailyAlgorithm, runUpdateStates, stop]);
+
+  // 🐍 PYTHON REPLICA: Loop secuencial (espera a que termine cada paso)
+  const runSimulationLoop = useCallback(async () => {
+    const msPerStep = ((speedRef.current === SPEED_SLOW ? STEP_MIN : STEP_HOURS) * 3600 * 1000) / speedRef.current;
+
+    for (let stepHours = (speedRef.current === SPEED_SLOW ? STEP_MIN : STEP_HOURS); stepHours <= TOTAL_HOURS; stepHours += (speedRef.current === SPEED_SLOW ? STEP_MIN : STEP_HOURS)) {
+
+      // ✅ Esperar mientras esté pausado
+      while (pausedRef.current && intervalRef.current) {
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
-    }, [currentTime, hoveredFlight])
 
-    const flightsOfDay = flightInstances.filter(f => {
-        const dep = new Date(f.departureTime)
-        const d = Math.floor((dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000))
-        return d === dayIndex
+
+      if (!intervalRef.current) {
+        console.log('🛑 Loop interrumpido');
+        break;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, msPerStep));
+
+      if (!intervalRef.current) {
+        console.log('🛑 Loop interrumpido después de timeout');
+        break;
+      }
+
+      try {
+        await executeStep(stepHours);
+      } catch (err) {
+        console.error('Error en executeStep:', err);
+      }
+    }
+
+    stop(false);
+    toast.info('✅ Simulación semanal completada');
+  }, [executeStep, stop]);
+
+  // Lógica para iniciar la simulación
+  const startSimulationLoop = useCallback(() => {
+    intervalRef.current = true;
+    runSimulationLoop();
+  }, [runSimulationLoop]);
+
+
+  useEffect(() => {
+    return () => {
+      // Limpiar el loop al desmontar
+      intervalRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (hoveredFlight && currentTime) {
+      const dep = new Date(hoveredFlight.departureTime).getTime()
+      const arr = new Date(hoveredFlight.arrivalTime).getTime()
+      const now = currentTime.getTime()
+
+      // Limpiar si el vuelo ya terminó o aún no ha salido
+      if (now < dep - 60000 || now > arr + 60000) {  // 1 min de margen
+        setHoveredFlight(null)
+      }
+    }
+  }, [currentTime, hoveredFlight])
+
+  const flightsOfDay = flightInstances.filter(f => {
+    const dep = new Date(f.departureTime)
+    const d = Math.floor((dep.getTime() - startTime.getTime()) / (24 * 3600 * 1000))
+    return d === dayIndex
+  })
+
+  const activeFlightsCountRaw = currentTime
+    ? flightsOfDay.filter(f => {
+      const dep = new Date(f.departureTime)
+      const arr = new Date(f.arrivalTime)
+      return currentTime >= dep && currentTime <= arr
+    }).length
+    : 0
+
+  // ✅ Solo actualiza cada 5 segundos
+  const activeFlightsCount = useThrottle(activeFlightsCountRaw, 5000)
+
+  const activeFlights = useMemo(() => {
+    if (!currentTime) return []
+
+    return flightInstances.filter(f => {
+      const dep = new Date(f.departureTime).getTime()
+      const arr = new Date(f.arrivalTime).getTime()
+      const now = currentTime.getTime()
+      return now >= dep && now <= arr
     })
+  }, [flightInstances, currentTime])
 
-    const activeFlightsCountRaw = currentTime
-      ? flightsOfDay.filter(f => {
-          const dep = new Date(f.departureTime)
-          const arr = new Date(f.arrivalTime)
-          return currentTime >= dep && currentTime <= arr
-        }).length
-      : 0
+  // When an order is selected from the drawer, try to find the flight instance
+  // that carries its products and highlight / pan to that plane on the map.
+  const handleOrderSelect = useCallback(async (order: OrderSchema) => {
+    if (!order) return
 
-    // ✅ Solo actualiza cada 5 segundos
-    const activeFlightsCount = useThrottle(activeFlightsCountRaw, 5000)
-    
-    const activeFlights = useMemo(() => {
-      if (!currentTime) return []
-      
-      return flightInstances.filter(f => {
-        const dep = new Date(f.departureTime).getTime()
-        const arr = new Date(f.arrivalTime).getTime()
-        const now = currentTime.getTime()
-        return now >= dep && now <= arr
+    // Ensure the drawer/tab is visible so user sees context
+    setPanelTab('flights')
+    setPanelOpen(true)
+
+    // Collect assigned instance ids from the order's products (if present)
+    const assignedIds = new Set<string>()
+    if (order.productSchemas && order.productSchemas.length > 0) {
+      order.productSchemas.forEach(p => {
+        if (p.assignedFlightInstance) assignedIds.add(p.assignedFlightInstance)
       })
-    }, [flightInstances, currentTime])
+    }
 
-    // When an order is selected from the drawer, try to find the flight instance
-    // that carries its products and highlight / pan to that plane on the map.
-    const handleOrderSelect = useCallback(async (order: OrderSchema) => {
-      if (!order) return
-
-      // Ensure the drawer/tab is visible so user sees context
-      setPanelTab('flights')
-      setPanelOpen(true)
-
-      // Collect assigned instance ids from the order's products (if present)
-      const assignedIds = new Set<string>()
-      if (order.productSchemas && order.productSchemas.length > 0) {
-        order.productSchemas.forEach(p => {
+    // If none found locally, query the simulation service for products by order id
+    if (assignedIds.size === 0 && order.id) {
+      try {
+        const products = await simulationService.getProductsByOrderId(order.id)
+        products.forEach(p => {
           if (p.assignedFlightInstance) assignedIds.add(p.assignedFlightInstance)
         })
+      } catch (e) {
+        console.warn('Failed to fetch products for order', order.id, e)
       }
+    }
 
-      // If none found locally, query the simulation service for products by order id
-      if (assignedIds.size === 0 && order.id) {
-        try {
-          const products = await simulationService.getProductsByOrderId(order.id)
-          products.forEach(p => {
-            if (p.assignedFlightInstance) assignedIds.add(p.assignedFlightInstance)
-          })
-        } catch (e) {
-          console.warn('Failed to fetch products for order', order.id, e)
-        }
-      }
+    // Try to find a visible/active flight that matches any of the assigned instance ids
+    const matched = Array.from(assignedIds).map(id => {
+      return activeFlights.find(f => f.instanceId === id)
+    }).find(Boolean) as FlightInstance | undefined
 
-      // Try to find a visible/active flight that matches any of the assigned instance ids
-      const matched = Array.from(assignedIds).map(id => {
-        return activeFlights.find(f => f.instanceId === id)
-      }).find(Boolean) as FlightInstance | undefined
+    // Set the selected order (opens details modal) and highlight the flight if found
+    setSelectedOrder(order)
 
-      // Set the selected order (opens details modal) and highlight the flight if found
-      setSelectedOrder(order)
-
-      if (matched) {
-        setHighlightMarkerId(matched.id)
-        // Clear after 5s (AnimatedFlights effect will also remove CSS)
-        setTimeout(() => setHighlightMarkerId(null), 5000)
-      }
-    }, [activeFlights])
-
-    // When a flight card in the drawer is clicked, highlight/pan that plane
-    const handleDrawerFlightClick = useCallback((flight: FlightInstance) => {
-      if (!flight) return
-      setPanelTab('flights')
-      setPanelOpen(true)
-      setHighlightMarkerId(flight.id)
+    if (matched) {
+      setHighlightMarkerId(matched.id)
+      // Clear after 5s (AnimatedFlights effect will also remove CSS)
       setTimeout(() => setHighlightMarkerId(null), 5000)
-      handleFlightClick(flight)  // keep existing behavior (open modal)
-    }, [handleFlightClick])
+    }
+  }, [activeFlights])
 
-    const flightsStartedSoFar = useMemo(() => {
-      if (!currentTime) return 0
-      const now = currentTime.getTime()
-      return flightInstances.filter(f =>
-        new Date(f.departureTime).getTime() <= now
-      ).length
-    }, [flightInstances, currentTime])
+  // When a flight card in the drawer is clicked, highlight/pan that plane
+  const handleDrawerFlightClick = useCallback((flight: FlightInstance) => {
+    if (!flight) return
+    setPanelTab('flights')
+    setPanelOpen(true)
+    setHighlightMarkerId(flight.id)
+    setTimeout(() => setHighlightMarkerId(null), 5000)
+    handleFlightClick(flight)  // keep existing behavior (open modal)
+  }, [handleFlightClick])
 
-    const bounds = airports?.length
-        ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
-        : L.latLngBounds([[-60, -180], [60, 180]])
+  const flightsStartedSoFar = useMemo(() => {
+    if (!currentTime) return 0
+    const now = currentTime.getTime()
+    return flightInstances.filter(f =>
+      new Date(f.departureTime).getTime() <= now
+    ).length
+  }, [flightInstances, currentTime])
 
-    // Mostrar solo el conteo autoritativo desde la BD en la tarjeta de entregados
+  const bounds = airports?.length
+    ? L.latLngBounds(airports.map(a => [Number(a.latitude), Number(a.longitude)] as LatLngTuple))
+    : L.latLngBounds([[-60, -180], [60, 180]])
 
-    return (
-        <Wrapper>
+  // Mostrar solo el conteo autoritativo desde la BD en la tarjeta de entregados
+
+  return (
+    <Wrapper>
 
 
-            <Header>
+      <Header>
 
-              <TitleBlock>
-                  <Title>Simulación semanal</Title>
-                  <Subtitle>
-                    Simulación semanal de la red aérea con actualización de estados cada 4 horas
-                  </Subtitle>
-              </TitleBlock>
+        <TitleBlock>
+          <Title>Simulación semanal</Title>
+          <Subtitle>
+            Simulación semanal de la red aérea con actualización de estados cada 4 horas
+          </Subtitle>
+        </TitleBlock>
 
-              <HeaderRight>
-                  <DayBadge>Día {Math.min(dayIndex + 1, 7)} / 7</DayBadge>
+        <HeaderRight>
+          <DayBadge>Día {Math.min(dayIndex + 1, 7)} / 7</DayBadge>
 
-                  <StatusBadge $running={isRunning && !isPaused}>
-                    {!isRunning
-                        ? '○ Detenido'
-                        : isPaused
-                        ? '▮▮ Pausado'
-                        : '● Ejecutando'}
-                  </StatusBadge>
+          <StatusBadge $running={isRunning && !isPaused}>
+            {!isRunning
+              ? '○ Detenido'
+              : isPaused
+                ? '▮▮ Pausado'
+                : '● Ejecutando'}
+          </StatusBadge>
 
-                  <ControlButton
-                    $variant="play"
-                    onClick={togglePause}
-                    disabled={!isRunning}
-                  >
-                    {isPaused ? 'Reanudar' : 'Pausar'}
-                  </ControlButton>
+          <ControlButton
+            $variant="play"
+            onClick={togglePause}
+            disabled={!isRunning}
+          >
+            {isPaused ? 'Reanudar' : 'Pausar'}
+          </ControlButton>
 
-                  <ControlButton
-                    $variant={isRunning ? 'stop' : 'play'}
-                    onClick={isRunning ? () => stop() : start}
-                    disabled={!airports || airports.length === 0}
-                  >
-                    {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
-                  </ControlButton>
-              </HeaderRight>
-            </Header>
+          <ControlButton
+            $variant={isRunning ? 'stop' : 'play'}
+            onClick={isRunning ? () => stop() : start}
+            disabled={!airports || airports.length === 0}
+          >
+            {isRunning ? 'Detener simulación' : 'Iniciar simulación'}
+          </ControlButton>
+        </HeaderRight>
+      </Header>
 
-            <KPIPanel>
-              <KPIPanelHeader>
-                  <KPIPanelTitle>Indicadores de la semana</KPIPanelTitle>
-                  <KPIPanelSubtitle>
-                    Corte del día {Math.min(dayIndex + 1, 7)} / 7
-                  </KPIPanelSubtitle>
-              </KPIPanelHeader>
+      <KPIPanel>
+        <KPIPanelHeader>
+          <KPIPanelTitle>Indicadores de la semana</KPIPanelTitle>
+          <KPIPanelSubtitle>
+            Corte del día {Math.min(dayIndex + 1, 7)} / 7
+          </KPIPanelSubtitle>
+        </KPIPanelHeader>
 
-              <KPIContainer>
-                <WeeklyKPICard
-                  label="Vuelos activos"
-                  value={activeFlightsCount}
-                />
-                <WeeklyKPICard
-                  label="Pedidos entregados"
-                  value={deliveredOrdersFromDb}
-                />
-                <WeeklyKPICard
-                  label="Uso actual de capacidad"
-                  value={kpi.avgCapacityUsage.toFixed(1) + "%"}
-                />
-                {/* Si quieres, puedes cambiar alguno por:
+        <KPIContainer>
+          <WeeklyKPICard
+            label="Vuelos activos"
+            value={activeFlightsCount}
+          />
+          <WeeklyKPICard
+            label="Pedidos entregados"
+            value={deliveredOrdersFromDb}
+          />
+          <WeeklyKPICard
+            label="Uso actual de capacidad"
+            value={kpi.avgCapacityUsage.toFixed(1) + "%"}
+          />
+          {/* Si quieres, puedes cambiar alguno por:
                     <WeeklyKPICard
                       label="Tasa de asignación"
                       value={kpi.assignmentRate.toFixed(1) + "%"}
                     />
                 */}
-              </KPIContainer>
-            </KPIPanel>
+        </KPIContainer>
+      </KPIPanel>
 
-            <MapWrapper>
-              <SimulationControls>
-                  <div>
-                    <ClockLabel>Tiempo de simulación</ClockLabel>
-                    <Clock>
-                      {currentTime
-                        ? currentTime.toLocaleDateString('es-ES', {
-                            timeZone: 'UTC',  // ✅ Forzar UTC
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                          })
-                        : '--/--/----'}
-                    </Clock>
-                    <Clock style={{ marginTop: '8px', fontSize: '20px' }}>
-                      {currentTime
-                        ? currentTime.toLocaleTimeString('es-ES', {
-                            timeZone: 'UTC',  // ✅ Forzar UTC
-                            hour12: false,
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit'
-                          })
-                        : '--:--:--'}
-                    </Clock>
-                  </div>
+      <MapWrapper>
+        <SimulationControls>
+          <div>
+            <ClockLabel>Tiempo de simulación</ClockLabel>
+            <Clock>
+              {currentTime
+                ? currentTime.toLocaleDateString('es-ES', {
+                  timeZone: 'UTC',  // ✅ Forzar UTC
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                })
+                : '--/--/----'}
+            </Clock>
+            <Clock style={{ marginTop: '8px', fontSize: '20px' }}>
+              {currentTime
+                ? currentTime.toLocaleTimeString('es-ES', {
+                  timeZone: 'UTC',  // ✅ Forzar UTC
+                  hour12: false,
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                })
+                : '--:--:--'}
+            </Clock>
+          </div>
 
-                  <StatsRow>
-                    <StatLine>
-                        <span>Día de la semana:</span>
-                        <strong>{Math.min(dayIndex + 1, 7)} / 7</strong>
-                    </StatLine>
-                    <StatLine>
-                        <span>Vuelos del día:</span>
-                        <strong>{flightsOfDay.length}</strong>
-                    </StatLine>
-                    <StatLine>
-                        <span>Vuelos activos ahora:</span>
-                        <strong>{activeFlightsCount}</strong>
-                    </StatLine>
-                  </StatsRow>
+          <StatsRow>
+            <StatLine>
+              <span>Día de la semana:</span>
+              <strong>{Math.min(dayIndex + 1, 7)} / 7</strong>
+            </StatLine>
+            <StatLine>
+              <span>Vuelos del día:</span>
+              <strong>{flightsOfDay.length}</strong>
+            </StatLine>
+            <StatLine>
+              <span>Vuelos activos ahora:</span>
+              <strong>{activeFlightsCount}</strong>
+            </StatLine>
+          </StatsRow>
 
-                  <SpeedControlContainer>
-                      <SpeedLabel>Velocidad de reproducción</SpeedLabel>
-                      <SpeedButtonGroup>
-                          <SpeedButton
-                            $active={playbackSpeed === SPEED_SLOW}
-                            onClick={() => setPlaybackSpeed(SPEED_SLOW)}
-                            disabled={!isRunning}
-                          >
-                            {SPEED_SLOW / 60} min/seg
-                          </SpeedButton>
-                          <SpeedButton
-                            $active={playbackSpeed === SPEED_FAST}
-                            onClick={() => setPlaybackSpeed(SPEED_FAST)}
-                            disabled={!isRunning}
-                          >
-                            {SPEED_FAST / 60} min/seg
-                          </SpeedButton>
-                      </SpeedButtonGroup>
-                      <SpeedHint>
-                          {playbackSpeed === SPEED_SLOW && `${SPEED_SLOW / 60} minuto simulado = 1 segundo real`}
-                          {playbackSpeed === SPEED_FAST && `${SPEED_FAST / 60} minutos simulados = 1 segundo real`}
-                      </SpeedHint>
-                  </SpeedControlContainer>
-
-                  <ToggleContainer>
-                    <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
-                      <ToggleSwitch $active={showOnlyWithProducts} />
-                      <span>Solo vuelos con carga</span>
-                    </ToggleLabel>
-                    <ToggleHint>
-                      {showOnlyWithProducts 
-                        ? 'Mostrando solo vuelos con paquetes asignados'
-                        : 'Mostrando todos los vuelos'}
-                    </ToggleHint>
-                  </ToggleContainer>
-              </SimulationControls>
-
-              {showAlgorithmOverlay && (
-                <LoadingOverlay>
-                  <Spinner />
-                  <LoadingText>{overlayMessage || 'Procesando...'}</LoadingText>
-                  <div style={{ height: 8 }} />
-                  <AlgorithmBadge>Algoritmo en ejecución</AlgorithmBadge>
-                </LoadingOverlay>
-              )}
-
-              <MapContainer 
-                  bounds={bounds} 
-                  style={{ height: '100%', width: '100%' }}
-                  scrollWheelZoom={true}
-                  worldCopyJump={false}
-                  maxBounds={new L.LatLngBounds([
-                    [-90, -180],
-                    [90, 180],
-                  ])}
-                  maxBoundsViscosity={1.0}
-                  minZoom={3}
-                  maxZoom={7}
-                  zoomControl={true}
+          <SpeedControlContainer>
+            <SpeedLabel>Velocidad de reproducción</SpeedLabel>
+            <SpeedButtonGroup>
+              <SpeedButton
+                $active={playbackSpeed === SPEED_SLOW}
+                onClick={() => setPlaybackSpeed(SPEED_SLOW)}
+                disabled={!isRunning}
               >
-                  <Pane name="routes" style={{ zIndex: 400 }} />
-                  <Pane name="airports" style={{ zIndex: 450 }} />
-                  <Pane name="main-hubs" style={{ zIndex: 500 }} />
+                {SPEED_SLOW / 60} min/seg
+              </SpeedButton>
+              <SpeedButton
+                $active={playbackSpeed === SPEED_FAST}
+                onClick={() => setPlaybackSpeed(SPEED_FAST)}
+                disabled={!isRunning}
+              >
+                {SPEED_FAST / 60} min/seg
+              </SpeedButton>
+            </SpeedButtonGroup>
+            <SpeedHint>
+              {playbackSpeed === SPEED_SLOW && `${SPEED_SLOW / 60} minuto simulado = 1 segundo real`}
+              {playbackSpeed === SPEED_FAST && `${SPEED_FAST / 60} minutos simulados = 1 segundo real`}
+            </SpeedHint>
+          </SpeedControlContainer>
 
-                  <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" noWrap={true} />
+          <ToggleContainer>
+            <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
+              <ToggleSwitch $active={showOnlyWithProducts} />
+              <span>Solo vuelos con carga</span>
+            </ToggleLabel>
+            <ToggleHint>
+              {showOnlyWithProducts
+                ? 'Mostrando solo vuelos con paquetes asignados'
+                : 'Mostrando todos los vuelos'}
+            </ToggleHint>
+          </ToggleContainer>
+        </SimulationControls>
 
-                  {mainWarehouses.map((airport: any) => {
-                    const center: LatLngTuple = [
-                        Number(airport.latitude),
-                        Number(airport.longitude),
-                    ]
-                    const hubFill = '#f6b53b'
-                    const hubStroke = '#ebc725'
+        {showAlgorithmOverlay && (
+          <LoadingOverlay>
+            <Spinner />
+            <LoadingText>{overlayMessage || 'Procesando...'}</LoadingText>
+            <div style={{ height: 8 }} />
+            <AlgorithmBadge>Algoritmo en ejecución</AlgorithmBadge>
+          </LoadingOverlay>
+        )}
 
-                    return (
-                        <g key={`hub-${airport.id}`}>
-                          <CircleMarker
-                              center={center}
-                              radius={10}
-                              color={hubStroke}
-                              fillColor={hubFill}
-                              fillOpacity={0.95}
-                              weight={2.5}
-                              pane="main-hubs"
-                              eventHandlers={{
-                                  click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-                              }}
-                          >
-                              <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <strong>{airport.cityName}</strong>
-                                    <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
-                                      Hub principal ({airport.codeIATA || airport.alias})
-                                    </div>
-                                </div>
-                              </Tooltip>
-                          </CircleMarker>
-                        </g>
-                    )
-                  })}
+        <MapContainer
+          bounds={bounds}
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+          worldCopyJump={false}
+          maxBounds={new L.LatLngBounds([
+            [-90, -180],
+            [90, 180],
+          ])}
+          maxBoundsViscosity={1.0}
+          minZoom={3}
+          maxZoom={7}
+          zoomControl={true}
+        >
+          <Pane name="routes" style={{ zIndex: 400 }} />
+          <Pane name="airports" style={{ zIndex: 450 }} />
+          <Pane name="main-hubs" style={{ zIndex: 500 }} />
 
-                  {airports?.map((airport: any) => (
-                      <CircleMarker
-                          key={airport.id}
-                          center={[Number(airport.latitude), Number(airport.longitude)]}
-                          radius={6}
-                          color="#14b8a6"
-                          fillColor="#14b8a6"
-                          fillOpacity={0.8}
-                          weight={2}
-                          pane="airports"
-                          eventHandlers={{
-                            click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-                          }}
-                      />
-                  ))}
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" noWrap={true} />
 
-                  {hoveredFlight && (
-                      (() => {
-                          const origin: LatLngTuple = [
-                            hoveredFlight.originAirport.latitude,
-                            hoveredFlight.originAirport.longitude,
-                          ]
-                          const dest: LatLngTuple = [
-                            hoveredFlight.destinationAirport.latitude,
-                            hoveredFlight.destinationAirport.longitude,
-                          ]
-                          const ctrl = computeControlPoint(origin, dest)
+          {mainWarehouses.map((airport: any) => {
+            const center: LatLngTuple = [
+              Number(airport.latitude),
+              Number(airport.longitude),
+            ]
+            const hubFill = '#f6b53b'
+            const hubStroke = '#ebc725'
 
-                          const samples = 30
-                          const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) => {
-                            const t = i / samples
-                            return bezierPoint(t, origin, ctrl, dest)
-                          })
+            return (
+              <g key={`hub-${airport.id}`}>
+                <CircleMarker
+                  center={center}
+                  radius={10}
+                  color={hubStroke}
+                  fillColor={hubFill}
+                  fillOpacity={0.95}
+                  weight={2.5}
+                  pane="main-hubs"
+                  eventHandlers={{
+                    click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+                  }}
+                >
+                  <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                    <div style={{ textAlign: 'center' }}>
+                      <strong>{airport.cityName}</strong>
+                      <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
+                        Hub principal ({airport.codeIATA || airport.alias})
+                      </div>
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              </g>
+            )
+          })}
 
-                          return (
-                            <Polyline
-                                positions={arc}
-                                color="#3b82f6"
-                                weight={2.5}
-                                opacity={0.85}
-                                pane="routes"
-                            />
-                          )
-                      })()
-                  )}
+          {airports?.map((airport: any) => (
+            <CircleMarker
+              key={airport.id}
+              center={[Number(airport.latitude), Number(airport.longitude)]}
+              radius={6}
+              color="#14b8a6"
+              fillColor="#14b8a6"
+              fillOpacity={0.8}
+              weight={2}
+              pane="airports"
+              eventHandlers={{
+                click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
+              }}
+            />
+          ))}
 
-                  {isRunning && currentTime && (
-                    <AnimatedFlights
-                      flightInstances={flightInstances}
-                      currentSimTime={currentTime}
-                      simulationStartTime={startTime}
-                      isPlaying={isRunning && !isPaused}
-                      playbackSpeed={playbackSpeed}
-                      speedRef={speedRef}
-                      onFlightClick={handleFlightClick}
-                      onFlightHover={setHoveredFlight}
-                      instanceHasProducts={instanceHasProducts}
-                      showOnlyWithProducts={showOnlyWithProducts}
-                      highlightMarkerId={highlightMarkerId}
-                    />
-                  )}
-              </MapContainer>
+          {hoveredFlight && (
+            (() => {
+              const origin: LatLngTuple = [
+                hoveredFlight.originAirport.latitude,
+                hoveredFlight.originAirport.longitude,
+              ]
+              const dest: LatLngTuple = [
+                hoveredFlight.destinationAirport.latitude,
+                hoveredFlight.destinationAirport.longitude,
+              ]
+              const ctrl = computeControlPoint(origin, dest)
 
-              {/* ✅ Drawer como componente separado */}
-              <FlightDrawer
-                isOpen={panelOpen}
-                onToggle={() => setPanelOpen(!panelOpen)}
-                panelTab={panelTab}
-                onTabChange={setPanelTab}
-                flightInstances={activeFlights}
-                instanceHasProducts={instanceHasProducts}
-                simulationStartTime={startTime}
-                activeFlightsCount={activeFlightsCount}
-                onFlightClick={handleFlightClick}
-                onFlightCardClick={handleDrawerFlightClick}
-                onOrderClick={handleOrderSelect}
-                orders={orders}
-                loadingOrders={loadingOrders}
-              />
+              const samples = 30
+              const arc: LatLngTuple[] = Array.from({ length: samples + 1 }, (_, i) => {
+                const t = i / samples
+                return bezierPoint(t, origin, ctrl, dest)
+              })
 
-
-            </MapWrapper>
-
-            {selectedAirport && (
-                <AirportDetailsModal
-                  airport={selectedAirport}
-                  onClose={() => setSelectedAirport(null)}
-                  flightInstances={flightInstances}
-                  instanceHasProducts={instanceHasProducts}
+              return (
+                <Polyline
+                  positions={arc}
+                  color="#3b82f6"
+                  weight={2.5}
+                  opacity={0.85}
+                  pane="routes"
                 />
-            )}
+              )
+            })()
+          )}
 
-            {selectedFlight && (
-                <FlightPackagesModal
-                  flightId={selectedFlight.id}
-                  flightCode={selectedFlight.code}
-                  originCity={selectedFlight.originCity}
-                  destinationCity={selectedFlight.destinationCity}
-                  onClose={() => setSelectedFlight(null)}
-                />
-            )}
+          {isRunning && currentTime && (
+            <AnimatedFlights
+              flightInstances={flightInstances}
+              currentSimTime={currentTime}
+              simulationStartTime={startTime}
+              isPlaying={isRunning && !isPaused}
+              playbackSpeed={playbackSpeed}
+              speedRef={speedRef}
+              onFlightClick={handleFlightClick}
+              onFlightHover={setHoveredFlight}
+              instanceHasProducts={instanceHasProducts}
+              showOnlyWithProducts={showOnlyWithProducts}
+              highlightMarkerId={highlightMarkerId}
+            />
+          )}
+        </MapContainer>
 
-            {selectedOrder && (
-                <OrderDetailsModal
-                  order={selectedOrder}
-                  onClose={() => setSelectedOrder(null)}
-                />
-            )}
+        {/* ✅ Drawer como componente separado */}
+        <FlightDrawer
+          isOpen={panelOpen}
+          onToggle={() => setPanelOpen(!panelOpen)}
+          panelTab={panelTab}
+          onTabChange={setPanelTab}
+          flightInstances={activeFlights}
+          instanceHasProducts={instanceHasProducts}
+          simulationStartTime={startTime}
+          activeFlightsCount={activeFlightsCount}
+          onFlightClick={handleFlightClick}
+          onFlightCardClick={handleDrawerFlightClick}
+          onOrderClick={handleOrderSelect}
+          orders={orders}
+          loadingOrders={loadingOrders}
+        />
 
 
-        </Wrapper>
-    )
+      </MapWrapper>
+
+      {selectedAirport && (
+        <AirportDetailsModal
+          airport={selectedAirport}
+          onClose={() => setSelectedAirport(null)}
+          flightInstances={flightInstances}
+          instanceHasProducts={instanceHasProducts}
+        />
+      )}
+
+      {selectedFlight && (
+        <FlightPackagesModal
+          flightId={selectedFlight.id}
+          flightCode={selectedFlight.code}
+          originCity={selectedFlight.originCity}
+          destinationCity={selectedFlight.destinationCity}
+          onClose={() => setSelectedFlight(null)}
+        />
+      )}
+
+      {selectedOrder && (
+        <OrderDetailsModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+        />
+      )}
+
+
+    </Wrapper>
+  )
 }

@@ -1424,7 +1424,7 @@ export function CollapseSimulationPage() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
-  }, [hasCollapsed, dayCount])
+  }, [hasCollapsed])
 
   // Get status for badge
   const getStatusLabel = (): 'idle' | 'running' | 'paused' | 'collapsed' | 'completed' => {
@@ -1445,6 +1445,7 @@ export function CollapseSimulationPage() {
     return '○ Detenido'
   }
 
+  /*
   // Demo preview with dummy data
   const handleDemoPreview = useCallback(() => {
     // Set demo data
@@ -1462,7 +1463,6 @@ export function CollapseSimulationPage() {
     setCollapseDay(12)
     setCollapseReason('SLA_BREACH')
     setDayCount(12)
-    
     // Set demo affected airports - these show on the map
     const demoAirports: AffectedAirport[] = [
       {
@@ -1498,35 +1498,13 @@ export function CollapseSimulationPage() {
         severity: 'medium',
         reason: 'Demoras de conexión',
       },
-      {
-        airportCode: 'SPJC',
-        airportName: 'Cajamarca',
-        cityName: 'Cajamarca',
-        latitude: -7.139,
-        longitude: -78.489,
-        unassignedProducts: 12,
-        affectedOrders: 8,
-        severity: 'low',
-        reason: 'Baja frecuencia',
-      },
-      {
-        airportCode: 'SPHY',
-        airportName: 'Andahuaylas',
-        cityName: 'Andahuaylas',
-        latitude: -13.706,
-        longitude: -73.350,
-        unassignedProducts: 11,
-        affectedOrders: 6,
-        severity: 'medium',
-        reason: 'Rutas limitadas',
-      },
     ]
     setDemoAffectedAirports(demoAirports)
     setShowDemoOverlay(true)
     setShowResultModal(true)
     setShowConfigModal(false)
-    toast.info('Vista previa con datos de ejemplo')
   }, [])
+  */
 
   return (
     <Wrapper>

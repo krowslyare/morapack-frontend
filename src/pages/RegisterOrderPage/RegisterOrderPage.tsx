@@ -194,11 +194,20 @@ export default function RegisterOrderPage() {
 
           <S.Field>
             <S.Label>Estado *</S.Label>
-            <S.Select name="status" value={form.status} onChange={onChange}>
-              {STATUS_OPTS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </S.Select>
+            {isEditMode ? (
+              <S.Select name="status" value={form.status} onChange={onChange}>
+                {STATUS_OPTS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </S.Select>
+            ) : (
+              <S.Input 
+                name="status" 
+                value="PENDING" 
+                disabled 
+                style={{ backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'not-allowed' }} 
+              />
+            )}
           </S.Field>
         </S.Grid>
 

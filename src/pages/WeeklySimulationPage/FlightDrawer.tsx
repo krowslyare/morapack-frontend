@@ -291,7 +291,7 @@ const OrderBadge = styled.span<{ $status: string }>`
   text-transform: uppercase;
   letter-spacing: 0.5px;
   background: ${p => {
-    switch(p.$status?.toLowerCase()) {
+    switch (p.$status?.toLowerCase()) {
       case 'pending': return '#fef3c7'
       case 'assigned': return '#dbeafe'
       case 'in_transit': return '#e0e7ff'
@@ -300,7 +300,7 @@ const OrderBadge = styled.span<{ $status: string }>`
     }
   }};
   color: ${p => {
-    switch(p.$status?.toLowerCase()) {
+    switch (p.$status?.toLowerCase()) {
       case 'pending': return '#92400e'
       case 'assigned': return '#1e40af'
       case 'in_transit': return '#4338ca'
@@ -309,7 +309,7 @@ const OrderBadge = styled.span<{ $status: string }>`
     }
   }};
   border: 1px solid ${p => {
-    switch(p.$status?.toLowerCase()) {
+    switch (p.$status?.toLowerCase()) {
       case 'pending': return '#fcd34d'
       case 'assigned': return '#93c5fd'
       case 'in_transit': return '#a5b4fc'
@@ -515,7 +515,7 @@ function parseFlightInfo(assignedFlight: string | undefined, originCity: string,
       arrival: null
     };
   }
-  
+
   // Si no tiene vuelo asignado
   if (!assignedFlight || assignedFlight.trim() === '') {
     return {
@@ -527,18 +527,18 @@ function parseFlightInfo(assignedFlight: string | undefined, originCity: string,
       arrival: null
     };
   }
-  
+
   // Tiene vuelo asignado - buscar en las instancias para obtener horarios
   const flightCodes = assignedFlight.split('->').map(s => s.trim()).filter(Boolean);
   const firstFlightCode = flightCodes[0];
-  
+
   // Buscar la instancia del vuelo para obtener horarios
-  const flightInstance = flightInstances.find(f => 
-    f.instanceId === firstFlightCode || 
+  const flightInstance = flightInstances.find(f =>
+    f.instanceId === firstFlightCode ||
     f.flightCode === firstFlightCode ||
     assignedFlight.includes(f.instanceId)
   );
-  
+
   return {
     status: 'assigned' as const,
     message: flightCodes.length > 1 ? `${flightCodes.length} vuelos` : firstFlightCode,
@@ -550,6 +550,23 @@ function parseFlightInfo(assignedFlight: string | undefined, originCity: string,
   };
 }
 
+interface FlightDrawerProps {
+  isOpen: boolean;
+  onToggle: () => void;
+  panelTab: "flights" | "orders";
+  onTabChange: (tab: "flights" | "orders") => void;
+  flightInstances: FlightInstance[];
+  instanceHasProducts: Record<string, number>;
+  simulationStartTime?: Date; // Optional: kept for backward compatibility with Weekly page
+  currentSimTime?: Date; // Optional: if provided, used to show active empty flights
+  activeFlightsCount: number;
+  onFlightClick: (flight: FlightInstance) => void;
+  onFlightCardClick?: (flight: FlightInstance) => void;
+  onOrderClick?: (order: OrderSchema) => void;
+  orders: OrderSchema[];
+  loadingOrders: boolean;
+}
+
 // ✅ Componente memoizado para evitar re-renders
 export const FlightDrawer = memo(function FlightDrawer({
   isOpen,
@@ -559,6 +576,7 @@ export const FlightDrawer = memo(function FlightDrawer({
   flightInstances,
   instanceHasProducts,
   // simulationStartTime no se usa actualmente
+  currentSimTime,
   activeFlightsCount,
   onFlightClick,
   onFlightCardClick,
@@ -573,10 +591,23 @@ export const FlightDrawer = memo(function FlightDrawer({
     return instanceHasProducts[flight.instanceId] ?? 0
   }
 
-  const flightsWithProducts = useMemo(
-    () => flightInstances.filter(f => getProductCount(f) > 0),
-    [flightInstances, instanceHasProducts]
-  )
+  const flightsToShow = useMemo(() => {
+    // If currentSimTime is provided (Daily mode), show Active flights OR flights with products
+    if (currentSimTime) {
+      return flightInstances.filter(f => {
+        const hasProducts = getProductCount(f) > 0
+        if (hasProducts) return true
+
+        // Also show empty flights if they are currently flying
+        const dept = new Date(f.departureTime)
+        const arr = new Date(f.arrivalTime)
+        return currentSimTime >= dept && currentSimTime <= arr
+      })
+    }
+
+    // Fallback for Weekly mode (matches previous behavior: only flights with products)
+    return flightInstances.filter(f => getProductCount(f) > 0)
+  }, [flightInstances, instanceHasProducts, currentSimTime])
 
   const [orderFilter, setOrderFilter] = useState<'PENDING' | 'IN_TRANSIT' | 'ARRIVED' | 'DELIVERED'>('IN_TRANSIT');
   const [searchQuery, setSearchQuery] = useState("");
@@ -585,7 +616,7 @@ export const FlightDrawer = memo(function FlightDrawer({
     .filter(o => o.status === orderFilter)
     .filter(o =>
       o.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    );
 
   return (
     <>
@@ -630,7 +661,7 @@ export const FlightDrawer = memo(function FlightDrawer({
                 </EmptyState>
               ) : (
                 <DrawerGrid>
-                  {flightsWithProducts.map(f => {
+                  {flightsToShow.map(f => {
                     const productCount = getProductCount(f)
 
                     return (
@@ -670,157 +701,157 @@ export const FlightDrawer = memo(function FlightDrawer({
 
           {panelTab === "orders" && (
             <>
-                {loadingOrders ? (
+              {loadingOrders ? (
                 <EmptyState>
-                    <EmptyIcon></EmptyIcon>
-                    <EmptyTitle>Cargando pedidos...</EmptyTitle>
+                  <EmptyIcon></EmptyIcon>
+                  <EmptyTitle>Cargando pedidos...</EmptyTitle>
                 </EmptyState>
-                ) : orders.length === 0 ? (
+              ) : orders.length === 0 ? (
                 <EmptyState>
-                    <EmptyIcon></EmptyIcon>
-                    <EmptyTitle>No hay pedidos disponibles</EmptyTitle>
-                    <EmptySubtitle>
+                  <EmptyIcon></EmptyIcon>
+                  <EmptyTitle>No hay pedidos disponibles</EmptyTitle>
+                  <EmptySubtitle>
                     Los pedidos apareceran cuando se ejecute el algoritmo diario
-                    </EmptySubtitle>
+                  </EmptySubtitle>
                 </EmptyState>
-                ) : (
+              ) : (
                 <DrawerGrid>
-                    {filteredOrders.map(order => (
+                  {filteredOrders.map(order => (
                     <OrderCard key={order.id} onClick={() => onOrderClick?.(order)}>
-                        <OrderCardHeader>
+                      <OrderCardHeader>
                         <OrderCode>
-                            <strong>{order.name}</strong>
-                            <span>ID: {order.id}</span>
+                          <strong>{order.name}</strong>
+                          <span>ID: {order.id}</span>
                         </OrderCode>
                         <OrderBadge $status={order.status}>
-                            {order.status}
+                          {order.status}
                         </OrderBadge>
-                        </OrderCardHeader>
-                        
-                        <OrderDetails>
+                      </OrderCardHeader>
+
+                      <OrderDetails>
                         <DetailItem>
-                            <label>Origen</label>
-                            <span>{order.originCityName}</span>
+                          <label>Origen</label>
+                          <span>{order.originCityName}</span>
                         </DetailItem>
                         <DetailItem>
-                            <label>Destino</label>
-                            <span>{order.destinationCityName}</span>
+                          <label>Destino</label>
+                          <span>{order.destinationCityName}</span>
                         </DetailItem>
                         <DetailItem>
-                            <label>Cliente</label>
-                            <span>
+                          <label>Cliente</label>
+                          <span>
                             {order.customerSchema?.name || `ID: ${order.customerId}`}
-                            </span>
+                          </span>
                         </DetailItem>
                         <DetailItem>
-                            <label>Entrega</label>
-                            <span>
+                          <label>Entrega</label>
+                          <span>
                             {new Date(order.deliveryDate).toLocaleDateString('es-PE', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric'
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
                             })}
-                            </span>
+                          </span>
                         </DetailItem>
-                        </OrderDetails>
+                      </OrderDetails>
 
-                        {/* Información adicional */}
-                        <OrderMetadata>
+                      {/* Información adicional */}
+                      <OrderMetadata>
                         {order.priority && (
-                            <MetadataItem>
+                          <MetadataItem>
                             Prioridad: <strong>{order.priority}</strong>
-                            </MetadataItem>
+                          </MetadataItem>
                         )}
-                        
-                        {order.pickupTimeHours && (
-                            <MetadataItem>
-                            Recojo: <strong>{order.pickupTimeHours}h</strong>
-                            </MetadataItem>
-                        )}
-                        </OrderMetadata>
 
-                        {/* Lista de productos con información de vuelo */}
-                        {order.productSchemas && order.productSchemas.length > 0 && (
+                        {order.pickupTimeHours && (
+                          <MetadataItem>
+                            Recojo: <strong>{order.pickupTimeHours}h</strong>
+                          </MetadataItem>
+                        )}
+                      </OrderMetadata>
+
+                      {/* Lista de productos con información de vuelo */}
+                      {order.productSchemas && order.productSchemas.length > 0 && (
                         <ProductsSection>
-                            <ProductsSectionTitle>
+                          <ProductsSectionTitle>
                             Productos ({order.productSchemas.length})
-                            </ProductsSectionTitle>
-                            {order.productSchemas.map((product, idx) => {
+                          </ProductsSectionTitle>
+                          {order.productSchemas.map((product, idx) => {
                             const flightInfo = parseFlightInfo(
-                                product.assignedFlight,
-                                order.originCityName,
-                                order.destinationCityName,
-                                flightInstances
+                              product.assignedFlight,
+                              order.originCityName,
+                              order.destinationCityName,
+                              flightInstances
                             );
                             return (
-                                <ProductItem key={product.id || idx}>
+                              <ProductItem key={product.id || idx}>
                                 <ProductHeader>
-                                    <ProductName>{product.name}</ProductName>
-                                    <ProductWeight>{product.weight?.toFixed(1)} kg</ProductWeight>
+                                  <ProductName>{product.name}</ProductName>
+                                  <ProductWeight>{product.weight?.toFixed(1)} kg</ProductWeight>
                                 </ProductHeader>
                                 <ProductFlightInfo $status={flightInfo.status}>
-                                    <FlightInfoIcon>{flightInfo.icon}</FlightInfoIcon>
-                                    <FlightInfoText>
-                                    {flightInfo.status === 'assigned' && flightInfo.flightCode 
-                                        ? flightInfo.flightCode 
-                                        : flightInfo.message
+                                  <FlightInfoIcon>{flightInfo.icon}</FlightInfoIcon>
+                                  <FlightInfoText>
+                                    {flightInfo.status === 'assigned' && flightInfo.flightCode
+                                      ? flightInfo.flightCode
+                                      : flightInfo.message
                                     }
-                                    </FlightInfoText>
+                                  </FlightInfoText>
                                 </ProductFlightInfo>
                                 {flightInfo.status === 'assigned' && (flightInfo.departure || flightInfo.route) && (
-                                    <FlightTimes>
+                                  <FlightTimes>
                                     {flightInfo.route && (
-                                        <span>Ruta: {flightInfo.route}</span>
+                                      <span>Ruta: {flightInfo.route}</span>
                                     )}
                                     {flightInfo.departure && (
-                                        <span>
+                                      <span>
                                         Salida: {new Date(flightInfo.departure).toLocaleString('es-PE', {
-                                            timeZone: 'UTC',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
+                                          timeZone: 'UTC',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
                                         })}
-                                        </span>
+                                      </span>
                                     )}
                                     {flightInfo.arrival && (
-                                        <span>
+                                      <span>
                                         Llegada: {new Date(flightInfo.arrival).toLocaleString('es-PE', {
-                                            timeZone: 'UTC',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
+                                          timeZone: 'UTC',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
                                         })}
-                                        </span>
+                                      </span>
                                     )}
-                                    </FlightTimes>
+                                  </FlightTimes>
                                 )}
-                                </ProductItem>
+                              </ProductItem>
                             );
-                            })}
+                          })}
                         </ProductsSection>
-                        )}
-                        
-                        {/* Ruta asignada */}
-                        {order.assignedRouteSchema && (
-                        <OrderFlight>
-                            Ruta asignada: <strong>
-                            {order.assignedRouteSchema.originCitySchema.name} → {order.assignedRouteSchema.destinationCitySchema.name}
-                            </strong>
-                        </OrderFlight>
-                        )}
+                      )}
 
-                        {/* Ubicacion actual */}
-                        {order.currentLocation && (
+                      {/* Ruta asignada */}
+                      {order.assignedRouteSchema && (
+                        <OrderFlight>
+                          Ruta asignada: <strong>
+                            {order.assignedRouteSchema.originCitySchema.name} → {order.assignedRouteSchema.destinationCitySchema.name}
+                          </strong>
+                        </OrderFlight>
+                      )}
+
+                      {/* Ubicacion actual */}
+                      {order.currentLocation && (
                         <OrderLocation>
-                            Ubicacion actual: <strong>{order.currentLocation.name}</strong>
+                          Ubicacion actual: <strong>{order.currentLocation.name}</strong>
                         </OrderLocation>
-                        )}
+                      )}
                     </OrderCard>
-                    ))}
+                  ))}
                 </DrawerGrid>
-                )}
+              )}
             </>
-            )}
+          )}
 
         </DrawerContent>
       </BottomDrawer>
