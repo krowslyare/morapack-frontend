@@ -894,8 +894,8 @@ export function WeeklySimulationPage() {
         setSelectedFlight({
           id: flight.flightId,
           code: flight.flightCode,
-          originCity: flight.originAirport.city,
-          destinationCity: flight.destinationAirport.city,
+          originCity: flight.originAirport.city.name,
+          destinationCity: flight.destinationAirport.city.name,
         })
     }
 
