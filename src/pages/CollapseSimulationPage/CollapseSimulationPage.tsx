@@ -13,10 +13,12 @@ import {
   type FlightInstanceDTO
 } from '../../api/simulationService'
 import { toast } from 'react-toastify'
-import { useSimulationStore } from '../../store/useSimulationStore'
-import type { Continent } from '../../types/Continent'
-import type { SimAirport } from '../../hooks/useFlightSimulation'
+import { FlightPackagesModal } from '../../components/FlightPackagesModal'
+import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import { useSimulationStore } from '../../store/useSimulationStore'
+import type { SimAirport } from '../../hooks/useFlightSimulation'
+import type { Continent } from '../../types/Continent'
 import '../WeeklySimulationPage/index.css'
 
 // ====================== Constants ======================
@@ -180,7 +182,6 @@ const ClockBox = styled.div<{ $danger?: boolean }>`
     : 'linear-gradient(135deg, #14b8a6 0%, #10b981 100%)'};
   border-radius: 10px;
   color: white;
-  text-align: center;
 `
 
 const ClockLabel = styled.div`
@@ -557,6 +558,179 @@ const ResultFooter = styled.div`
   gap: 12px;
 `
 
+// ====================== Map Legend ======================
+const MapLegend = styled.div`
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+`
+
+const LegendTitle = styled.div`
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 10px;
+`
+
+const LegendItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #374151;
+  &:last-child {
+    margin-bottom: 0;
+  }
+`
+
+const LegendDot = styled.div<{ $color: string }>`
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: ${(p) => p.$color};
+`
+
+// Affected airports panel
+const AffectedPanel = styled.div`
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 300px;
+  max-height: calc(100% - 40px);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+`
+
+const AffectedPanelHeader = styled.div`
+  padding: 16px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+`
+
+const AffectedPanelTitle = styled.h3`
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+`
+
+const AffectedPanelSubtitle = styled.p`
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.9;
+`
+
+const AffectedPanelBody = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+`
+
+const AffectedAirportCard = styled.div<{ $severity: string }>`
+  background: ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return 'rgba(220, 38, 38, 0.08)'
+      case 'high': return 'rgba(234, 88, 12, 0.08)'
+      case 'medium': return 'rgba(202, 138, 4, 0.08)'
+      default: return 'rgba(22, 163, 74, 0.08)'
+    }
+  }};
+  border-left: 4px solid ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return '#dc2626'
+      case 'high': return '#ea580c'
+      case 'medium': return '#ca8a04'
+      default: return '#16a34a'
+    }
+  }};
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`
+
+const AffectedAirportName = styled.div`
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+  margin-bottom: 4px;
+`
+
+const AffectedAirportCode = styled.span`
+  font-weight: 700;
+  font-size: 11px;
+  color: #6b7280;
+  margin-left: 6px;
+`
+
+const AffectedAirportStats = styled.div`
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #374151;
+  margin-bottom: 4px;
+`
+
+const AffectedAirportReason = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+  font-style: italic;
+`
+
+const SeverityBadge = styled.span<{ $severity: string }>`
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: ${(p) => {
+    switch (p.$severity) {
+      case 'critical': return '#dc2626'
+      case 'high': return '#ea580c'
+      case 'medium': return '#ca8a04'
+      default: return '#16a34a'
+    }
+  }};
+  color: white;
+  margin-left: 8px;
+`
+
+const CloseAffectedPanelButton = styled.button`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.2s;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+`
+
 // ====================== Helpers ======================
 function mapAirportToSimAirport(a: any): SimAirport {
   return {
@@ -626,7 +800,7 @@ interface AnimatedFlightsProps {
   playbackSpeed: number
 }
 
-function AnimatedFlights({ flightInstances, currentSimTime, isPlaying, playbackSpeed }: AnimatedFlightsProps) {
+function AnimatedFlights({ flightInstances, currentSimTime }: AnimatedFlightsProps) {
   const map = useMap()
   const markersRef = useRef<Record<string, Marker>>({})
   const lastUpdateRef = useRef<number>(0)
@@ -689,7 +863,7 @@ function AnimatedFlights({ flightInstances, currentSimTime, isPlaying, playbackS
         // Update rotation
         const icon = marker.getIcon() as DivIcon
         const img = icon.options.html
-        if (img) {
+        if (typeof img === 'string') {
            const newHtml = img.replace(/rotate\([\d.-]+deg\)/, `rotate(${adjustedBearing}deg)`)
            if (newHtml !== img) {
              const newIcon = new DivIcon({
@@ -765,6 +939,8 @@ export function CollapseSimulationPage() {
   
   // Flight data
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
+  const [selectedFlight, setSelectedFlight] = useState<{ id: number; code: string } | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   
   // Refs
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -826,13 +1002,32 @@ export function CollapseSimulationPage() {
     : L.latLngBounds([[-60, -180], [70, 180]])
 
   const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-  const tileAttribution = '&copy; OpenStreetMap & CARTO'
+  const tileAttribution = '&copy; <a href="https://carto.com/">CARTO</a>'
 
   // Current simulation time
   const currentTime = collapseVisualCurrentTime ? new Date(collapseVisualCurrentTime) : DEFAULT_START_DATE
   const isRunning = collapseVisualStatus === 'running'
   const isPaused = collapseVisualStatus === 'paused'
   const hasCollapsed = collapseVisualHasCollapsed
+
+  // Helper for Spanish status
+  const getStatusLabelSpanish = (status: string) => {
+    switch (status) {
+      case 'HEALTHY': return 'SALUDABLE'
+      case 'WARNING': return 'ADVERTENCIA'
+      case 'CRITICAL': return 'CRÍTICO'
+      case 'COLLAPSED': return 'COLAPSADO'
+      default: return status
+    }
+  }
+
+  // Calculate active flights for display
+  const activeFlightsCount = flightInstances.filter(f => {
+    const now = currentTime.getTime()
+    const dept = new Date(f.departureTime).getTime()
+    const arr = new Date(f.arrivalTime).getTime()
+    return now >= dept && now <= arr
+  }).length
 
   // Load flight data
   const loadFlightData = useCallback(async () => {
@@ -933,11 +1128,10 @@ export function CollapseSimulationPage() {
     // Only show loading indicator if we actually have to wait
     // If it's a cache hit or in-flight promise, we might not want to flash the UI
     const isCached = prefetchCacheRef.current.has(dayNumber)
-    const isFetching = prefetchPromiseRef.current.has(dayNumber)
     
-    // If it's not cached AND not currently being fetched, show loading
-    // If it IS being fetched, we assume it will be ready soon and don't show the full screen overlay
-    if (!isCached && !isFetching) {
+    // Only show loading screen for the VERY FIRST day (Day 1)
+    // For subsequent days, we rely on prefetching and background loading
+    if (dayNumber === 1 && !isCached) {
       setIsProcessingDay(true)
     }
     
@@ -977,8 +1171,8 @@ export function CollapseSimulationPage() {
       
       // 1. Get real instances from backend (flights with cargo)
       const realInstances = (result.assignedFlightInstances || [])
-        .map(dto => convertToFlightInstance(dto, airports))
-        .filter((inst): inst is FlightInstance => inst !== null)
+        .map((dto: FlightInstanceDTO) => convertToFlightInstance(dto, airports))
+        .filter((inst: FlightInstance | null): inst is FlightInstance => inst !== null)
       
       // 2. Generate ALL scheduled instances for this day (background traffic)
       let allScheduledInstances: FlightInstance[] = []
@@ -994,9 +1188,9 @@ export function CollapseSimulationPage() {
       
       // 3. Merge them: Use real instance if available, otherwise use scheduled one
       // Create a map of real instances by ID for fast lookup
-      const realInstanceMap = new Map(realInstances.map(i => [i.instanceId, i]))
+      const realInstanceMap = new Map<string, FlightInstance>(realInstances.map((i: FlightInstance) => [i.instanceId, i]))
       
-      const mergedInstances = allScheduledInstances.map(scheduled => {
+      const mergedInstances: FlightInstance[] = allScheduledInstances.map((scheduled): FlightInstance => {
         // If we have a real version of this flight (with cargo info), use it
         if (realInstanceMap.has(scheduled.instanceId)) {
           return realInstanceMap.get(scheduled.instanceId)!
@@ -1006,7 +1200,7 @@ export function CollapseSimulationPage() {
       })
       
       // Also add any real instances that might not have matched (safety fallback)
-      realInstances.forEach(real => {
+      realInstances.forEach((real: FlightInstance) => {
         if (!mergedInstances.find(m => m.instanceId === real.instanceId)) {
           mergedInstances.push(real)
         }
@@ -1021,8 +1215,8 @@ export function CollapseSimulationPage() {
         return [...oldFlights, ...mergedInstances]
       })
 
-      // Mark processing complete
-      if (!isCached && !isFetching) {
+      // Mark processing complete (only if it was showing)
+      if (dayNumber === 1) {
         setIsProcessingDay(false)
       }
       
@@ -1452,24 +1646,24 @@ export function CollapseSimulationPage() {
                 <ProgressFill $percent={collapseVisualProgress} $status={collapseVisualStatusLabel} />
               </ProgressBar>
               <ProgressValue>
-                {collapseVisualProgress.toFixed(0)}% - {collapseVisualStatusLabel}
+                {collapseVisualProgress.toFixed(0)}% - {getStatusLabelSpanish(collapseVisualStatusLabel)}
               </ProgressValue>
             </ProgressSection>
 
             <StatsGrid>
               <StatCard>
                 <StatValue>{collapseVisualBacklog}</StatValue>
-                <StatLabel>Backlog</StatLabel>
+                <StatLabel>Pedidos Pendientes</StatLabel>
               </StatCard>
               <StatCard $highlight={collapseVisualProgress > 50}>
                 <StatValue $danger={collapseVisualProgress > 70}>
                   {collapseVisualProgress > 70 ? '⚠️' : collapseVisualProgress > 40 ? '⚡' : '✓'}
                 </StatValue>
-                <StatLabel>Estado</StatLabel>
+                <StatLabel>Salud Sistema</StatLabel>
               </StatCard>
               <StatCard>
-                <StatValue>{flightInstances.length}</StatValue>
-                <StatLabel>Vuelos</StatLabel>
+                <StatValue>{activeFlightsCount}</StatValue>
+                <StatLabel>Vuelos Activos</StatLabel>
               </StatCard>
             </StatsGrid>
 
@@ -1523,13 +1717,12 @@ export function CollapseSimulationPage() {
           </SimulationControls>
         )}
 
+        {/* Flight Drawer - Removed as it requires missing props */}
+
         <MapContainer
           bounds={bounds}
           scrollWheelZoom={true}
           style={{ width: '100%', height: '100%' }}
-          worldCopyJump={false}
-          maxBounds={new L.LatLngBounds([[-90, -180], [90, 180]])}
-          maxBoundsViscosity={1.0}
           minZoom={2}
           maxZoom={8}
         >
@@ -1564,7 +1757,7 @@ export function CollapseSimulationPage() {
                 pane="main-hubs"
                 eventHandlers={{ click: () => setSelectedAirport(mapAirportToSimAirport(airport)) }}
               >
-                <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                <Tooltip direction="top" offset={[0, -10]} permanent={false}>
                   <div style={{ textAlign: 'center' }}>
                     <strong>{airport.cityName}</strong>
                     <div style={{ fontSize: '11px', color: '#ebc725', fontWeight: 700 }}>
@@ -1598,9 +1791,28 @@ export function CollapseSimulationPage() {
             </CircleMarker>
           ))}
         </MapContainer>
+
+        {/* Legend */}
+        <MapLegend>
+          <LegendTitle>Leyenda</LegendTitle>
+          <LegendItem>
+            <LegendDot $color="#f6b53b" />
+            <span>Hub principal</span>
+          </LegendItem>
+          <LegendItem>
+            <LegendDot $color="#14b8a6" />
+            <span>Aeropuerto</span>
+          </LegendItem>
+          <LegendItem>
+            <img src="/airplane.png" alt="✈" style={{ width: 16, height: 16, objectFit: 'contain' }} />
+            <span>Vuelo activo</span>
+          </LegendItem>
+        </MapLegend>
+
+        {/* Affected Airports Panel - Removed as it requires missing props */}
       </MapWrapper>
 
-      {/* Airport Details Modal */}
+      {/* Modals */}
       {selectedAirport && (
         <AirportDetailsModal
           airport={selectedAirport}
@@ -1609,6 +1821,18 @@ export function CollapseSimulationPage() {
           flightInstances={flightInstances}
           instanceHasProducts={{}}
         />
+      )}
+
+      {selectedFlight && (
+        <FlightPackagesModal
+          flightId={selectedFlight.id}
+          flightCode={selectedFlight.code}
+          onClose={() => setSelectedFlight(null)}
+        />
+      )}
+
+      {selectedOrder && (
+        <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
       )}
     </Wrapper>
   )

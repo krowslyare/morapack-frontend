@@ -28,7 +28,7 @@ export function convertAlgorithmResultToSimulation(result: AlgorithmResultSchema
     const { flights, productId, orderId } = productRoute
 
     // Process each flight in the route
-    flights.forEach((flight: FlightDTO) => {
+    flights.forEach((flight: FlightDTO, flightIndex: number) => {
       // Add origin airport (using simplified data from FlightDTO)
       if (flight.originAirportId && flight.originCity) {
         if (!airportMap.has(flight.originAirportId)) {

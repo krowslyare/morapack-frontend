@@ -228,6 +228,12 @@ export function FlightDetailsModal({
   // Handle both SimFlight and ActiveFlight types
   const maxCapacity = 'maxCapacity' in flight ? flight.maxCapacity : 1000
   const usedCapacity = 'usedCapacity' in flight ? flight.usedCapacity : 0
+  
+  const flightId = 'id' in flight ? flight.id : `FL-${flight.flightId}`
+  const flightCode = 'code' in flight ? flight.code : flight.flightCode
+  const flightStatus = 'status' in flight ? flight.status : 'EN_VUELO'
+  const transportTimeDays = 'transportTimeDays' in flight ? flight.transportTimeDays : 1
+  const description = 'description' in flight ? flight.description : undefined
 
   const capacityPercentage = maxCapacity > 0 ? (usedCapacity / maxCapacity) * 100 : 0
   const isOvercapacity = usedCapacity > maxCapacity
@@ -245,11 +251,11 @@ export function FlightDetailsModal({
             <InfoGrid>
               <InfoField>
                 <Label>ID</Label>
-                <Value>{flight.id}</Value>
+                <Value>{flightId}</Value>
               </InfoField>
               <InfoField>
                 <Label>Número</Label>
-                <Value>{flight.code}</Value>
+                <Value>{flightCode}</Value>
               </InfoField>
             </InfoGrid>
           </Section>
@@ -279,7 +285,7 @@ export function FlightDetailsModal({
 
           <Section>
             <SectionTitle>Estado</SectionTitle>
-            <StatusBadge $status={flight.status}>{flight.status}</StatusBadge>
+            <StatusBadge $status={flightStatus}>{flightStatus}</StatusBadge>
           </Section>
 
           <Section>
@@ -301,15 +307,15 @@ export function FlightDetailsModal({
             <InfoField>
               <Label>Tiempo de Transporte</Label>
               <Value>
-                {flight.transportTimeDays} {flight.transportTimeDays === 1 ? 'día' : 'días'}
+                {transportTimeDays} {transportTimeDays === 1 ? 'día' : 'días'}
               </Value>
             </InfoField>
           </Section>
 
-          {flight.description && (
+          {description && (
             <Section>
               <SectionTitle>Descripción</SectionTitle>
-              <Description>{flight.description}</Description>
+              <Description>{description}</Description>
             </Section>
           )}
         </Content>
