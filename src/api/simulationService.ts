@@ -263,26 +263,175 @@ export interface CollapseDayStatistics {
   productsAssigned: number
   productsUnassigned: number
   assignmentRate: number
+  // NEW: SLA metrics per day
+  productsOnTime?: number
+  productsLate?: number
+  slaComplianceRate?: number
 }
 
-export interface CollapseSimulationResult {
+// ===== VISUAL Collapse Simulation Types (Day-by-Day) =====
+
+/**
+ * Request to initialize visual collapse simulation
+ */
+export interface CollapseVisualInitRequest {
+  simulationStartTime?: string // ISO 8601, default: 2025-01-02T00:00:00
+}
+
+/**
+ * Flight instance assigned by the algorithm for visualization
+ */
+export interface FlightInstanceDTO {
+  instanceId: string           // e.g. "FL-123-DAY-1-0800"
+  flightId: number | null
+  flightCode: string | null
+  departureTime: string        // ISO 8601
+  arrivalTime: string          // ISO 8601
+  originCode: string | null    // IATA code
+  destinationCode: string | null  // IATA code
+  originLat: number | null
+  originLng: number | null
+  destLat: number | null
+  destLng: number | null
+  productCount: number         // Products assigned to this instance
+}
+
+/**
+ * Result from ONE DAY of visual collapse simulation
+ * Frontend calls this repeatedly until hasReachedCollapse=true
+ */
+export interface CollapseVisualDayResult {
   success: boolean
   message: string
-  hasCollapsed: boolean
-  collapseDay: number
-  collapseTime: string | null
-  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE'
+  
+  // Day identification
+  dayNumber: number
+  dayStart: string   // ISO 8601
+  dayEnd: string     // ISO 8601
+  
+  // Collapse status
+  hasReachedCollapse: boolean
+  collapseReason: 'SLA_BREACH' | 'CAPACITY_EXHAUSTED' | 'ERROR' | 'MAX_DAYS_REACHED' | null
+  continueSimulation: boolean
+  
+  // Today's statistics
+  ordersLoadedToday: number
+  productsAssignedToday: number
+  productsUnassignedToday: number
+  assignmentRateToday: number
+  
+  // Cumulative statistics
+  totalDaysSimulated: number
+  totalOrdersLoaded: number
+  totalProductsInSystem: number
+  cumulativeAssigned: number
+  cumulativeBacklog: number
+  cumulativeAssignmentRate: number
+  
+  // SLA metrics
+  productsOnTimeToday: number
+  productsLateToday: number
+  slaComplianceToday: number
+  
+  // Backlog trend
+  previousDayBacklog: number
+  consecutiveGrowingDays: number
+  backlogIsGrowing: boolean
+  
+  // Execution
   executionStartTime: string
   executionEndTime: string
+  executionTimeMs: number
+  
+  // UI helpers
+  collapseProgress: number      // 0-100, how close to collapse
+  statusLabel: 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'COLLAPSED' | 'ERROR' | 'INITIALIZING' | 'COMPLETED'
+  
+  // Actual flights used by the algorithm (new)
+  assignedFlightInstances?: FlightInstanceDTO[]
+  usedFlightCodes?: string[]
+}
+
+/**
+ * SLA Violation Detail - individual violation info
+ */
+export interface SLAViolationDetail {
+  orderName: string
+  originContinent: string
+  destinationContinent: string
+  isContinental: boolean        // true = same continent
+  slaMaxHours: number           // 48 for continental, 72 for intercontinental
+  actualDeliveryHours: number   // Actual time taken
+  hoursOverdue: number          // How many hours late
+  orderDate: string | null
+  expectedDeadline: string | null
+  actualDelivery: string | null
+}
+
+/**
+ * Collapse Simulation Result (SLA-based)
+ * 
+ * COLLAPSE DEFINITION:
+ * - Continental orders: must be delivered within 2 days (48 hours)
+ * - Intercontinental orders: must be delivered within 3 days (72 hours)
+ * - System collapses when SLA violation rate exceeds threshold (default: 5%)
+ */
+export interface CollapseSimulationResult {
+  success?: boolean
+  message?: string
+  hasCollapsed: boolean
+  collapseDay: number
+  collapseTime?: string | null
+  collapseReason: 'SLA_BREACH' | 'CAPACITY_EXHAUSTED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE'
+  executionStartTime?: string
+  executionEndTime?: string
   executionTimeSeconds: number
-  simulationStartTime: string
+  simulationStartTime?: string
   totalDaysSimulated: number
   totalOrdersProcessed: number
-  totalProductsProcessed: number
+  totalProductsProcessed?: number
   assignedProducts: number
   unassignedProducts: number
   unassignedPercentage: number
+  
+  // NEW: SLA-based collapse metrics
+  productsOnTime?: number           // Products delivered within SLA
+  productsLate?: number             // Products delivered after SLA deadline
+  slaCompliancePercentage?: number  // % of products on time (100% = perfect)
+  slaViolationPercentage?: number   // % of products late (0% = perfect)
+  slaThresholdUsed?: number         // Threshold used to determine collapse (e.g., 5%)
+  
+  // Continental vs Intercontinental breakdown
+  continentalOrdersTotal?: number
+  continentalOrdersOnTime?: number
+  continentalOrdersLate?: number
+  continentalSlaCompliance?: number
+  
+  intercontinentalOrdersTotal?: number
+  intercontinentalOrdersOnTime?: number
+  intercontinentalOrdersLate?: number
+  intercontinentalSlaCompliance?: number
+  
+  // NEW: Affected airports (for map visualization)
+  affectedAirports?: AffectedAirport[]
+  
+  // Detailed SLA violations (optional, for analysis)
+  slaViolations?: SLAViolationDetail[]
+  
   dailyStatistics?: CollapseDayStatistics[]
+}
+
+// NEW: Affected airport info for collapse visualization
+export interface AffectedAirport {
+  airportCode: string       // IATA code (e.g., "JFK")
+  airportName: string       // Full name (e.g., "John F. Kennedy International")
+  cityName: string          // City name (e.g., "New York")
+  latitude: number
+  longitude: number
+  unassignedProducts: number  // How many products couldn't be assigned
+  affectedOrders: number      // How many orders affected
+  severity: 'critical' | 'high' | 'medium' | 'low'  // For color coding
+  reason: string              // Why affected (e.g., "Capacity exceeded", "No available flights")
 }
 
 // ===== Service =====
@@ -360,6 +509,7 @@ export const simulationService = {
   /**
    * Load orders for Daily Simulation with automatic cleanup and 10-minute timeframe
    * This endpoint automatically clears old data and loads orders within the simulation window
+   * USE THIS FOR INITIAL START ONLY
    */
   loadForDailySimulation: async (startTime: string): Promise<{
     success: boolean
@@ -379,7 +529,40 @@ export const simulationService = {
       durationMinutes: number
     }
   }> => {
-    const { data } = await api.post('/data/load-for-daily', null, {
+    // Use apiLongRunning because loading files can take > 30s
+    const { data } = await apiLongRunning.post('/data/load-for-daily', null, {
+      params: { startTime },
+    })
+    return data
+  },
+
+  /**
+   * Refresh orders for Daily Simulation WITHOUT clearing existing orders
+   * Use this when re-running the algorithm during simulation (e.g., when new order is added)
+   * - Does NOT clear existing orders
+   * - Loads new orders from files within the 10-minute window
+   * - Skips duplicates (orders already in DB)
+   */
+  refreshOrdersForDaily: async (startTime: string): Promise<{
+    success: boolean
+    message: string
+    statistics: {
+      ordersLoaded: number
+      ordersCreated: number
+      ordersFiltered: number
+      duplicatesSkipped: number
+      customersCreated: number
+      parseErrors: number
+      fileErrors: number
+      durationSeconds: number
+    }
+    timeWindow: {
+      startTime: string
+      endTime: string
+      durationMinutes: number
+    }
+  }> => {
+    const { data } = await api.post('/data/refresh-orders-for-daily', null, {
       params: { startTime },
     })
     return data
@@ -409,8 +592,7 @@ export const simulationService = {
     flights: FlightStatus[],
     startTime: Date,
     durationHours: number,
-    airports: any[],
-    options?: { baseDay?: number }      // 👈 NUEVO
+    airports: any[]
   ): FlightInstance[] => {
     const instances: FlightInstance[] = []
 
@@ -427,7 +609,6 @@ export const simulationService = {
 
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
     const durationDays = Math.ceil(durationHours / 24)
-    const baseDay = options?.baseDay ?? 1  // 👈 por defecto arranca en 1
 
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
     const parseTimeString = (timeStr: string | undefined): { hours: number; minutes: number } | null => {
@@ -514,14 +695,10 @@ export const simulationService = {
           // Use the scheduled hours/minutes from flights.txt (depTime), not the Date object
           const instanceHours = hasRealTimes ? depTime.hours : 0
           const instanceMinutes = hasRealTimes ? depTime.minutes : 0
-
-          // Día global de simulación (1-based)
-          const globalDayNumber = baseDay + day
-          const instanceId = `FL-${flight.id}-DAY-${globalDayNumber}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
-
+          const instanceId = `FL-${flight.id}-DAY-${day}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
           
           instances.push({
-            id: `${flight.code}-D${globalDayNumber}-${departureDateTime.getTime()}`,
+            id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
             flightId: flight.id,
             flightCode: flight.code,
             departureTime: departureDateTime.toISOString(),
@@ -572,7 +749,7 @@ export const simulationService = {
     flights: FlightStatus[],
     currentInstances: FlightInstance[],
     simulationStartTime: Date,
-    currentDay: number,  // 👈 0-based: 0=day1, 1=day2, etc.
+    currentDay: number,
     airports: any[]
   ): FlightInstance[] => {
     // Validate inputs
@@ -596,8 +773,7 @@ export const simulationService = {
       flights,
       nextDayStart,
       24,
-      airports,
-      { baseDay: currentDay + 2 }   // 👈 si currentDay=0 → DAY-2; si=1 → DAY-3, etc.
+      airports
     )
 
     // Clean up old instances (more than 1 day old)
@@ -668,7 +844,9 @@ export const simulationService = {
   },
 
   /**
-   * Execute collapse simulation (backend endpoint)
+   * Execute collapse simulation (backend endpoint) - BATCH MODE
+   * Runs to completion in one call (can take hours)
+   * Use for "Demo" button to quickly show professor the result
    */
   runCollapseScenario: async (
     request: CollapseSimulationRequest,
@@ -680,5 +858,53 @@ export const simulationService = {
       { signal: options?.signal }
     )
     return data
+  },
+
+  // ==================== VISUAL COLLAPSE SIMULATION (Day-by-Day) ====================
+
+  /**
+   * Initialize visual collapse simulation
+   * Must be called ONCE before starting day-by-day execution
+   * Clears database and prepares for simulation
+   * Default start: January 2, 2025 (where data begins)
+   * Uses long-running client since it clears DB and can take time
+   */
+  initCollapseVisual: async (
+    request?: CollapseVisualInitRequest
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await apiLongRunning.post<CollapseVisualDayResult>(
+      '/algorithm/collapse-visual/init',
+      request || {}
+    )
+    return data
+  },
+
+  /**
+   * Execute ONE day of visual collapse simulation
+   * Call repeatedly for each day (1, 2, 3, ...) until:
+   * - hasReachedCollapse = true (system collapsed)
+   * - continueSimulation = false (max days or error)
+   * 
+   * Frontend should animate flights between calls
+   * Uses long-running client since ALNS can take 1-5 minutes per day
+   */
+  executeCollapseVisualDay: async (
+    dayNumber: number,
+    signal?: AbortSignal
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await apiLongRunning.post<CollapseVisualDayResult>(
+      `/algorithm/collapse-visual/day/${dayNumber}`,
+      null,
+      { signal }
+    )
+    return data
+  },
+
+  /**
+   * Reset visual collapse simulation state
+   * Call before starting a new simulation or to abort current one
+   */
+  resetCollapseVisual: async (): Promise<void> => {
+    await api.post('/algorithm/collapse-visual/reset')
   },
 }

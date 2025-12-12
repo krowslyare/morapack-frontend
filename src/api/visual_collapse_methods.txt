@@ -1,0 +1,46 @@
+
+  // ==================== VISUAL COLLAPSE SIMULATION (Day-by-Day) ====================
+
+  /**
+   * Initialize visual collapse simulation
+   * Must be called ONCE before starting day-by-day execution
+   * Clears database and prepares for simulation
+   * Default start: January 2, 2025 (where data begins)
+   */
+  initCollapseVisual: async (
+    request?: CollapseVisualInitRequest
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await api.post<CollapseVisualDayResult>(
+      '/algorithm/collapse-visual/init',
+      request || {}
+    )
+    return data
+  },
+
+  /**
+   * Execute ONE day of visual collapse simulation
+   * Call repeatedly for each day (1, 2, 3, ...) until:
+   * - hasReachedCollapse = true (system collapsed)
+   * - continueSimulation = false (max days or error)
+   * 
+   * Frontend should animate flights between calls
+   */
+  executeCollapseVisualDay: async (
+    dayNumber: number,
+    signal?: AbortSignal
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await api.post<CollapseVisualDayResult>(
+      `/algorithm/collapse-visual/day/${dayNumber}`,
+      null,
+      { signal }
+    )
+    return data
+  },
+
+  /**
+   * Reset visual collapse simulation state
+   * Call before starting a new simulation or to abort current one
+   */
+  resetCollapseVisual: async (): Promise<void> => {
+    await api.post('/algorithm/collapse-visual/reset')
+  },

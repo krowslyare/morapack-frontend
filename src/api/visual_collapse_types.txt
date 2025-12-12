@@ -1,0 +1,54 @@
+
+// ==================== VISUAL COLLAPSE SIMULATION TYPES ====================
+
+export interface CollapseVisualInitRequest {
+  simulationStartTime?: string // ISO 8601, default: 2025-01-02T00:00:00
+}
+
+export interface CollapseVisualDayResult {
+  success: boolean
+  message: string
+  
+  // Day identification
+  dayNumber: number
+  dayStart?: string
+  dayEnd?: string
+  
+  // Collapse status
+  hasReachedCollapse: boolean
+  collapseReason?: string
+  continueSimulation: boolean
+  
+  // Today's statistics
+  ordersLoadedToday?: number
+  productsAssignedToday?: number
+  productsUnassignedToday?: number
+  assignmentRateToday?: number
+  
+  // Cumulative statistics
+  totalDaysSimulated?: number
+  totalOrdersLoaded?: number
+  totalProductsInSystem?: number
+  cumulativeAssigned?: number
+  cumulativeBacklog?: number
+  cumulativeAssignmentRate?: number
+  
+  // SLA metrics
+  productsOnTimeToday?: number
+  productsLateToday?: number
+  slaComplianceToday?: number
+  
+  // Backlog trend
+  previousDayBacklog?: number
+  consecutiveGrowingDays?: number
+  backlogIsGrowing?: boolean
+  
+  // Execution
+  executionStartTime?: string
+  executionEndTime?: string
+  executionTimeMs?: number
+  
+  // Progress indicators
+  collapseProgress?: number  // 0-100
+  statusLabel?: string       // HEALTHY, WARNING, CRITICAL, COLLAPSED
+}

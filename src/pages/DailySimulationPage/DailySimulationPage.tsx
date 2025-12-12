@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap, Pane } from 'react-leaflet'
@@ -457,21 +457,24 @@ function AnimatedFlights({
     }
 
     return () => {
+      // Only kill timeline if component is truly unmounting
+      // We don't want to kill it on re-renders caused by prop changes
       if (timelineRef.current) {
         timelineRef.current.kill()
         timelineRef.current = null
       }
-      // Don't clear refs on unmount to persist state if needed, or clear if truly unmounting
-      // But for now we let parent handle lifetime if needed.
-      // Actually, we SHOULD clear markers on unmount of this component to avoid map clutter
+      
+      // Clear markers on unmount
       Object.values(markersRef.current).forEach((m) => {
         m.off()
         m.remove()
       })
       markersRef.current = {}
-      // processedIdsRef is managed by parent now
+      
+      // Clear processed IDs to allow re-creation if remounted
+      processedIdsRef.current.clear()
     }
-  }, [map, markersRef])
+  }, [map]) // Remove markersRef from dependency array to prevent re-init on ref change
 
   // Add new flight instances to timeline dynamically
   useEffect(() => {
@@ -692,6 +695,8 @@ export function DailySimulationPage() {
     setDailyPlaybackSpeed,
     stopDailySimulation,
     setLastAlgorithmRunTime,
+    dailyStats,
+    setDailyStats,
   } = useSimulationStore()
 
   // Simulation state (synced with global store for background persistence)
@@ -722,12 +727,9 @@ export function DailySimulationPage() {
   const [algorithmRunning, setAlgorithmRunning] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
 
-  const [kpi, setKpi] = useState({
-    totalOrders: 0,
-    assignedOrders: 0,
-    totalProducts: 0,
-    assignedProducts: 0,
-  })
+  // Use global store for KPI persistence
+  const kpi = dailyStats
+  const setKpi = setDailyStats
 
   // Refs
   const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
@@ -1417,7 +1419,7 @@ export function DailySimulationPage() {
             const hubStroke = '#ebc725'
 
             return (
-              <g key={`hub-${airport.id}`}>
+              <React.Fragment key={`hub-${airport.id}`}>
                 <CircleMarker
                   center={center}
                   radius={18}
@@ -1452,7 +1454,7 @@ export function DailySimulationPage() {
                     </div>
                   </Tooltip>
                 </CircleMarker>
-              </g>
+              </React.Fragment>
             )
           })}
 

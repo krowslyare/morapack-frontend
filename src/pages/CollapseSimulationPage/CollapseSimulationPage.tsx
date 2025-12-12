@@ -1,15 +1,30 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import styled, { keyframes } from 'styled-components'
+import styled, { keyframes, css } from 'styled-components'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Pane } from 'react-leaflet'
-import L, { type LatLngTuple } from 'leaflet'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, Pane } from 'react-leaflet'
+import L, { type LatLngTuple, DivIcon, Marker } from 'leaflet'
 import { useAirports } from '../../hooks/api/useAirports'
-import { simulationService, type CollapseSimulationResult } from '../../api/simulationService'
+import { 
+  simulationService, 
+  type CollapseSimulationResult,
+  type CollapseVisualDayResult,
+  type FlightStatus,
+  type FlightInstance,
+  type FlightInstanceDTO
+} from '../../api/simulationService'
 import { toast } from 'react-toastify'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import type { Continent } from '../../types/Continent'
 import type { SimAirport } from '../../hooks/useFlightSimulation'
 import { AirportDetailsModal } from '../../components/AirportDetailsModal'
+import '../WeeklySimulationPage/index.css'
+
+// ====================== Constants ======================
+const DEFAULT_START_DATE = new Date('2025-01-02T00:00:00')
+const SPEED_OPTIONS = [
+  { label: '15min/s', value: 15 },
+  { label: '30min/s', value: 30 },
+]
 
 // ====================== Animations ======================
 const spin = keyframes`
@@ -18,41 +33,48 @@ const spin = keyframes`
 `
 
 const pulse = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
 `
 
-// ====================== Styled Components (Mismo estilo que Weekly/Daily) ======================
+const collapseFlash = keyframes`
+  0%, 100% { background: rgba(239, 68, 68, 0.1); }
+  50% { background: rgba(239, 68, 68, 0.3); }
+`
+
+// ====================== Styled Components ======================
 const Wrapper = styled.div`
-  padding: 16px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-height: 100vh;
   background: #f9fafb;
 `
 
 const Header = styled.div`
-  background: #ffffff;
+  background: white;
   border-radius: 12px;
   padding: 16px 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
   flex-wrap: wrap;
+  gap: 16px;
 `
 
 const TitleBlock = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 `
 
 const Title = styled.h2`
   margin: 0;
+  color: #111827;
   font-size: 22px;
   font-weight: 700;
-  color: #111827;
 `
 
 const Subtitle = styled.p`
@@ -66,11 +88,10 @@ const HeaderRight = styled.div`
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  justify-content: flex-end;
 `
 
-const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'collapsed' | 'success' }>`
-  padding: 6px 12px;
+const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'paused' | 'collapsed' | 'completed' }>`
+  padding: 6px 14px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
@@ -78,59 +99,62 @@ const StatusBadge = styled.div<{ $status: 'idle' | 'running' | 'collapsed' | 'su
   letter-spacing: 0.5px;
   background: ${(p) => {
     if (p.$status === 'running') return '#d1fae5'
+    if (p.$status === 'paused') return '#fed7aa'
     if (p.$status === 'collapsed') return '#fee2e2'
-    if (p.$status === 'success') return '#dbeafe'
+    if (p.$status === 'completed') return '#dbeafe'
     return '#f3f4f6'
   }};
   color: ${(p) => {
     if (p.$status === 'running') return '#065f46'
+    if (p.$status === 'paused') return '#92400e'
     if (p.$status === 'collapsed') return '#991b1b'
-    if (p.$status === 'success') return '#1e40af'
+    if (p.$status === 'completed') return '#1e40af'
     return '#6b7280'
   }};
 `
 
-const ControlButton = styled.button<{ $variant?: 'play' | 'stop' | 'warning' }>`
+const ControlButton = styled.button<{ $variant?: 'play' | 'pause' | 'stop' | 'demo' | 'reset' }>`
   padding: 10px 18px;
-  border-radius: 999px;
   border: none;
-  font-size: 14px;
+  border-radius: 8px;
   font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  transition: all 0.2s;
   background: ${(p) => {
     if (p.$variant === 'play') return '#10b981'
+    if (p.$variant === 'pause') return '#f59e0b'
     if (p.$variant === 'stop') return '#ef4444'
-    if (p.$variant === 'warning') return '#f59e0b'
-    return '#6b7280'
+    if (p.$variant === 'demo') return '#8b5cf6'
+    if (p.$variant === 'reset') return '#6b7280'
+    return '#e5e7eb'
   }};
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  color: ${(p) => p.$variant ? 'white' : '#374151'};
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    box-shadow: none;
     transform: none;
   }
 `
 
-const MapWrapper = styled.div`
+const MapWrapper = styled.div<{ $collapsed?: boolean }>`
   width: 100%;
   height: 70vh;
   position: relative;
-  background: #ffffff;
+  background: white;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  ${(p) => p.$collapsed && css`animation: ${collapseFlash} 1s ease-in-out infinite;`}
 `
 
 const SimulationControls = styled.div`
@@ -138,74 +162,183 @@ const SimulationControls = styled.div`
   top: 12px;
   right: 12px;
   z-index: 1000;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.97);
   padding: 16px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 260px;
+  min-width: 280px;
+  max-width: 320px;
 `
 
-const ControlsLabel = styled.div`
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #111827;
-  margin-bottom: 4px;
-`
-
-const ProgressBox = styled.div`
-  padding: 12px;
-  background: linear-gradient(135deg, #14b8a6 0%, #10b981 100%);
-  border-radius: 8px;
+const ClockBox = styled.div<{ $danger?: boolean }>`
+  padding: 14px;
+  background: ${(p) => p.$danger 
+    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+    : 'linear-gradient(135deg, #14b8a6 0%, #10b981 100%)'};
+  border-radius: 10px;
   color: white;
   text-align: center;
 `
 
-const ProgressBoxDanger = styled(ProgressBox)`
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+const ClockLabel = styled.div`
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.9;
+  margin-bottom: 4px;
 `
 
-const ProgressValue = styled.div`
-  font-size: 28px;
+const ClockValue = styled.div`
+  font-size: 26px;
   font-weight: 900;
   font-family: 'Courier New', monospace;
 `
 
-const ProgressLabel = styled.div`
-  font-size: 11px;
-  opacity: 0.9;
+const ClockSubvalue = styled.div`
+  font-size: 12px;
+  opacity: 0.85;
   margin-top: 2px;
 `
 
-const StatsRow = styled.div`
-  font-size: 12px;
+const DayCounter = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  align-items: baseline;
+  padding: 10px;
+  background: #f1f5f9;
+  border-radius: 8px;
+`
+
+const DayNumber = styled.span`
+  font-size: 32px;
+  font-weight: 900;
+  color: #111827;
+`
+
+const DayLabel = styled.span`
+  font-size: 14px;
   color: #6b7280;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+`
+
+const ProgressSection = styled.div`
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+`
+
+const ProgressLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+  margin-bottom: 8px;
+`
+
+const ProgressBar = styled.div`
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+`
+
+const ProgressFill = styled.div<{ $percent: number; $status: string }>`
+  height: 100%;
+  width: ${(p) => Math.min(p.$percent, 100)}%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+  background: ${(p) => {
+    if (p.$status === 'COLLAPSED') return '#ef4444'
+    if (p.$status === 'CRITICAL') return '#f97316'
+    if (p.$status === 'WARNING') return '#eab308'
+    return '#10b981'
+  }};
+`
+
+const ProgressValue = styled.div`
+  font-size: 12px;
+  color: #374151;
+  margin-top: 4px;
+  text-align: right;
+`
+
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+`
+
+const StatCard = styled.div<{ $highlight?: boolean }>`
+  padding: 10px;
+  background: ${(p) => p.$highlight ? '#fef2f2' : '#f9fafb'};
+  border: 1px solid ${(p) => p.$highlight ? '#fecaca' : '#e5e7eb'};
+  border-radius: 8px;
+  text-align: center;
+`
+
+const StatValue = styled.div<{ $danger?: boolean }>`
+  font-size: 20px;
+  font-weight: 700;
+  color: ${(p) => p.$danger ? '#dc2626' : '#111827'};
+`
+
+const StatLabel = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 2px;
+`
+
+const SpeedControl = styled.div`
   display: flex;
   flex-direction: column;
   gap: 6px;
 `
 
-const StatLine = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+const SpeedLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
 `
 
-const StatValue = styled.strong<{ $danger?: boolean }>`
-  color: ${p => p.$danger ? '#ef4444' : '#111827'};
+const SpeedButtons = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
 `
 
-// ====================== Loading Overlay ======================
+const SpeedButton = styled.button<{ $active: boolean }>`
+  padding: 6px 8px;
+  border: 2px solid ${(p) => p.$active ? '#14b8a6' : '#e5e7eb'};
+  background: ${(p) => p.$active ? '#d1fae5' : 'white'};
+  color: ${(p) => p.$active ? '#065f46' : '#6b7280'};
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: #14b8a6;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
 const LoadingOverlay = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(4px);
   display: flex;
   flex-direction: column;
@@ -215,36 +348,6 @@ const LoadingOverlay = styled.div`
   border-radius: 12px;
 `
 
-const LoadingContent = styled.div`
-  text-align: center;
-  max-width: 420px;
-  padding: 40px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-`
-
-const LoadingTitle = styled.h3`
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 4px;
-`
-
-const LoadingSubtitle = styled.p`
-  font-size: 13px;
-  color: #6b7280;
-  margin: 0 0 28px;
-  line-height: 1.4;
-`
-
-const SpinnerContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 24px;
-`
-
 const Spinner = styled.div`
   width: 48px;
   height: 48px;
@@ -252,132 +355,57 @@ const Spinner = styled.div`
   border-top-color: #14b8a6;
   border-radius: 50%;
   animation: ${spin} 1s linear infinite;
+  margin-bottom: 16px;
 `
 
-const ProgressBar = styled.div`
-  width: 100%;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 20px;
-`
-
-const ProgressFill = styled.div<{ $percent: number; $danger?: boolean }>`
-  width: ${p => Math.min(p.$percent, 100)}%;
-  height: 100%;
-  background: ${p => p.$danger ? '#f59e0b' : '#14b8a6'};
-  border-radius: 2px;
-  transition: width 0.5s ease;
-`
-
-const LoadingStats = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  padding: 16px 0;
-  border-top: 1px solid #f3f4f6;
-`
-
-const LoadingStat = styled.div`
-  text-align: center;
-`
-
-const LoadingStatValue = styled.div<{ $danger?: boolean }>`
-  font-size: 24px;
+const LoadingText = styled.div`
+  font-size: 16px;
   font-weight: 600;
-  color: ${p => p.$danger ? '#ef4444' : '#111827'};
-  font-family: 'SF Mono', 'Consolas', monospace;
+  color: #374151;
 `
 
-const LoadingStatLabel = styled.div`
-  font-size: 11px;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+const LoadingSubtext = styled.div`
+  font-size: 13px;
+  color: #6b7280;
   margin-top: 4px;
 `
 
-const ElapsedTimer = styled.div`
-  font-size: 14px;
-  font-weight: 500;
-  color: #6b7280;
-  text-align: center;
-  margin-bottom: 4px;
-
-  span {
-    font-family: 'SF Mono', 'Consolas', monospace;
-    color: #111827;
-    font-weight: 600;
-  }
-`
-
-const StatusMessage = styled.div`
+const CollapseOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.15);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #374151;
-  margin-bottom: 24px;
+  z-index: 1500;
+  border-radius: 12px;
 `
 
-const PulseDot = styled.div`
-  width: 8px;
-  height: 8px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: ${pulse} 1.5s ease-in-out infinite;
+const CollapseIcon = styled.div`
+  font-size: 64px;
+  animation: ${pulse} 1s ease-in-out infinite;
 `
 
-const LoadingPhase = styled.div`
-  font-size: 13px;
-  color: #6b7280;
-  text-align: center;
-  margin-bottom: 20px;
+const CollapseTitle = styled.div`
+  font-size: 28px;
+  font-weight: 900;
+  color: #dc2626;
+  margin-top: 16px;
 `
 
-const ProgressInfo = styled.div`
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: right;
-  margin-bottom: 6px;
+const CollapseSubtitle = styled.div`
+  font-size: 16px;
+  color: #7f1d1d;
+  margin-top: 8px;
 `
 
-const FooterNote = styled.div`
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: center;
-`
-
-const CancelButton = styled.button`
-  margin-top: 20px;
-  padding: 8px 20px;
-  background: transparent;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  color: #6b7280;
-  font-weight: 500;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-
-  &:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
-    color: #374151;
-  }
-`
-
-// ====================== Modal Styles ======================
+// Modal Styles
 const ModalOverlay = styled.div<{ $show: boolean }>`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: ${(p) => (p.$show ? 'flex' : 'none')};
+  background: rgba(0, 0, 0, 0.6);
+  display: ${(p) => p.$show ? 'flex' : 'none'};
   align-items: center;
   justify-content: center;
   z-index: 10000;
@@ -385,11 +413,11 @@ const ModalOverlay = styled.div<{ $show: boolean }>`
 
 const ModalContent = styled.div`
   background: white;
-  padding: 24px;
+  padding: 28px;
   border-radius: 16px;
-  max-width: 420px;
+  max-width: 480px;
   width: calc(100% - 32px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
 `
 
 const ModalTitle = styled.h3`
@@ -406,92 +434,74 @@ const ModalSubtitle = styled.p`
   line-height: 1.5;
 `
 
-const FormGroup = styled.div`
-  margin-bottom: 16px;
+const ModalInfoBox = styled.div`
+  padding: 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  margin-bottom: 20px;
 `
 
-const Label = styled.label`
-  display: block;
+const ModalInfoTitle = styled.div`
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
-  margin-bottom: 6px;
+  color: #1e40af;
+  margin-bottom: 4px;
 `
 
-const Input = styled.input`
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #111827;
-  background-color: #ffffff;
-  color-scheme: light;
-  transition: all 0.2s;
-
-  &:focus {
-    outline: none;
-    border-color: #14b8a6;
-    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
-  }
-`
-
-const InfoBox = styled.div`
-  padding: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #166534;
+const ModalInfoText = styled.div`
+  font-size: 12px;
+  color: #3b82f6;
 `
 
 const ButtonRow = styled.div`
   display: flex;
   gap: 12px;
-  margin-top: 24px;
 `
 
-const ModalButton = styled.button<{ $primary?: boolean }>`
+const ModalButton = styled.button<{ $primary?: boolean; $danger?: boolean }>`
   flex: 1;
   padding: 12px 20px;
   border-radius: 8px;
-  border: ${p => p.$primary ? 'none' : '1px solid #d1d5db'};
+  border: ${(p) => (p.$primary || p.$danger) ? 'none' : '1px solid #d1d5db'};
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  background: ${p => p.$primary ? '#14b8a6' : 'white'};
-  color: ${p => p.$primary ? 'white' : '#374151'};
   transition: all 0.2s;
+  background: ${(p) => {
+    if (p.$primary) return '#14b8a6'
+    if (p.$danger) return '#8b5cf6'
+    return 'white'
+  }};
+  color: ${(p) => (p.$primary || p.$danger) ? 'white' : '#374151'};
 
   &:hover {
-    background: ${p => p.$primary ? '#0d9488' : '#f9fafb'};
+    transform: translateY(-1px);
   }
 `
 
-// ====================== Result Modal ======================
+// Result Modal
 const ResultModal = styled.div`
   background: white;
-  padding: 0;
   border-radius: 16px;
   max-width: 520px;
   width: calc(100% - 32px);
   max-height: 85vh;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
 `
 
 const ResultHeader = styled.div<{ $collapsed: boolean }>`
   text-align: center;
   padding: 28px 24px;
-  background: ${p => p.$collapsed 
+  background: ${(p) => p.$collapsed
     ? 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)'
     : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'};
-  border-bottom: 1px solid ${p => p.$collapsed ? '#fecaca' : '#bbf7d0'};
 `
 
 const ResultIcon = styled.div`
   font-size: 48px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 `
 
 const ResultTitle = styled.h2`
@@ -509,37 +519,21 @@ const ResultSubtitle = styled.p`
 
 const ResultBody = styled.div`
   padding: 24px;
-  max-height: 400px;
+  max-height: 350px;
   overflow-y: auto;
-`
-
-const ResultSection = styled.div`
-  margin-bottom: 20px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`
-
-const ResultSectionTitle = styled.h4`
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 `
 
 const ResultGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+  margin-bottom: 16px;
 `
 
 const ResultCard = styled.div<{ $highlight?: boolean }>`
   padding: 14px;
-  background: ${p => p.$highlight ? '#fef2f2' : '#f9fafb'};
-  border: 1px solid ${p => p.$highlight ? '#fecaca' : '#e5e7eb'};
+  background: ${(p) => p.$highlight ? '#fef2f2' : '#f9fafb'};
+  border: 1px solid ${(p) => p.$highlight ? '#fecaca' : '#e5e7eb'};
   border-radius: 10px;
   text-align: center;
 `
@@ -547,26 +541,13 @@ const ResultCard = styled.div<{ $highlight?: boolean }>`
 const ResultCardValue = styled.div<{ $danger?: boolean }>`
   font-size: 24px;
   font-weight: 700;
-  color: ${p => p.$danger ? '#dc2626' : '#111827'};
+  color: ${(p) => p.$danger ? '#dc2626' : '#111827'};
 `
 
 const ResultCardLabel = styled.div`
   font-size: 11px;
   color: #6b7280;
   margin-top: 4px;
-`
-
-const ReasonBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
-  font-weight: 600;
-  font-size: 14px;
 `
 
 const ResultFooter = styled.div`
@@ -589,100 +570,247 @@ function mapAirportToSimAirport(a: any): SimAirport {
   }
 }
 
-function formatCollapseReason(reason: string): string {
-  switch (reason) {
-    case 'UNASSIGNED_ORDERS':
-      return 'Órdenes sin asignar'
-    case 'WAREHOUSE_SATURATED':
-      return 'Almacén saturado'
-    case 'NO_FLIGHTS':
-      return 'Sin vuelos disponibles'
-    default:
-      return 'Desconocido'
-  }
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 }
 
-// ====================== Component ======================
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+// Bezier curve helpers
+function computeControlPoint(a: LatLngTuple, b: LatLngTuple, curvature = 0.25): LatLngTuple {
+  const latMid = (a[0] + b[0]) / 2
+  const lngMid = (a[1] + b[1]) / 2
+  const scale = Math.cos(((a[0] + b[0]) * Math.PI) / 360)
+  const dx = (b[1] - a[1]) * scale
+  const dy = b[0] - a[0]
+  const len = Math.sqrt(dx * dx + dy * dy) || 1
+  const nx = -dy / len
+  const ny = dx / len
+  const offset = curvature * len
+  return [latMid + ny * offset, lngMid + (nx * offset) / (scale || 1e-6)]
+}
+
+function bezierPoint(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTuple): LatLngTuple {
+  const oneMinusT = 1 - t
+  return [
+    oneMinusT * oneMinusT * p0[0] + 2 * oneMinusT * t * p1[0] + t * t * p2[0],
+    oneMinusT * oneMinusT * p0[1] + 2 * oneMinusT * t * p1[1] + t * t * p2[1],
+  ]
+}
+
+function bezierTangent(t: number, p0: LatLngTuple, p1: LatLngTuple, p2: LatLngTuple): LatLngTuple {
+  return [
+    2 * (1 - t) * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]),
+    2 * (1 - t) * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]),
+  ]
+}
+
+// Calculate bearing (heading) between two points
+function calculateBearing(start: LatLngTuple, end: LatLngTuple): number {
+  const lat1 = (start[0] * Math.PI) / 180
+  const lat2 = (end[0] * Math.PI) / 180
+  const dLng = ((end[1] - start[1]) * Math.PI) / 180
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI
+  return (bearing + 360) % 360
+}
+
+// ====================== AnimatedFlights Component ======================
+interface AnimatedFlightsProps {
+  flightInstances: FlightInstance[]
+  currentSimTime: Date
+  isPlaying: boolean
+  playbackSpeed: number
+}
+
+function AnimatedFlights({ flightInstances, currentSimTime, isPlaying, playbackSpeed }: AnimatedFlightsProps) {
+  const map = useMap()
+  const markersRef = useRef<Record<string, Marker>>({})
+  const lastUpdateRef = useRef<number>(0)
+
+  // Update flight positions based on current simulation time
+  useEffect(() => {
+    if (!map || flightInstances.length === 0) return
+
+    const now = Date.now()
+    // Throttle updates to 60fps max
+    if (now - lastUpdateRef.current < 16) return
+    lastUpdateRef.current = now
+
+    const currentTimeMs = currentSimTime.getTime()
+    
+    // Get flights that should be visible (in flight right now)
+    const activeFlights = flightInstances.filter((f) => {
+      const deptTime = new Date(f.departureTime).getTime()
+      const arrTime = new Date(f.arrivalTime).getTime()
+      return currentTimeMs >= deptTime && currentTimeMs <= arrTime &&
+             f.originAirport?.latitude && f.destinationAirport?.latitude
+    }).slice(0, 1000) // Increased limit to prevent disappearing planes on zoom
+
+    // Track which flights are currently shown
+    const activeIds = new Set(activeFlights.map(f => f.instanceId))
+
+    // Remove markers for flights that are no longer active
+    Object.keys(markersRef.current).forEach((id) => {
+      if (!activeIds.has(id)) {
+        markersRef.current[id].remove()
+        delete markersRef.current[id]
+      }
+    })
+
+    // Update or add markers for active flights
+    activeFlights.forEach((flight) => {
+      const origin: LatLngTuple = [flight.originAirport.latitude, flight.originAirport.longitude]
+      const dest: LatLngTuple = [flight.destinationAirport.latitude, flight.destinationAirport.longitude]
+      
+      const deptTime = new Date(flight.departureTime).getTime()
+      const arrTime = new Date(flight.arrivalTime).getTime()
+      const totalDuration = arrTime - deptTime
+      const elapsed = currentTimeMs - deptTime
+      const progress = Math.min(1, Math.max(0, elapsed / totalDuration))
+      
+      // Calculate bezier position
+      const ctrl = computeControlPoint(origin, dest)
+      const pos = bezierPoint(progress, origin, ctrl, dest)
+      
+      // Calculate bearing from tangent of Bezier curve for accurate direction
+      const tangent = bezierTangent(progress, origin, ctrl, dest)
+      const bearing = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
+      const adjustedBearing = (bearing + 90) % 360
+
+      if (markersRef.current[flight.instanceId]) {
+        // Update existing marker position and rotation
+        const marker = markersRef.current[flight.instanceId]
+        marker.setLatLng(pos)
+        
+        // Update rotation
+        const icon = marker.getIcon() as DivIcon
+        const img = icon.options.html
+        if (img) {
+           const newHtml = img.replace(/rotate\([\d.-]+deg\)/, `rotate(${adjustedBearing}deg)`)
+           if (newHtml !== img) {
+             const newIcon = new DivIcon({
+               ...icon.options,
+               html: newHtml
+             })
+             marker.setIcon(newIcon)
+           }
+        }
+      } else {
+        // Create new marker with airplane icon
+        const planeHTML = `<img src="/airplane.png" alt="✈" style="width:24px;height:24px;display:block;transform-origin:50% 50%;transform:rotate(${adjustedBearing}deg);" />`
+        const icon = new DivIcon({
+          className: 'plane-icon plane-icon--loaded',
+          html: planeHTML,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        })
+
+        const marker = new Marker(pos, { icon, pane: 'flights' })
+        marker.addTo(map)
+        markersRef.current[flight.instanceId] = marker
+      }
+    })
+
+    console.log(`Active flights: ${activeFlights.length}, Markers: ${Object.keys(markersRef.current).length}`)
+
+  }, [map, flightInstances, currentSimTime])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(markersRef.current).forEach((m) => m.remove())
+      markersRef.current = {}
+    }
+  }, [])
+
+  return null
+}
+
+// ====================== Main Component ======================
 export function CollapseSimulationPage() {
   const navigate = useNavigate()
-  const { simulationStartDate, hasValidConfig } = useSimulationStore()
+  const {
+    collapseVisualStatus,
+    collapseVisualCurrentDay,
+    collapseVisualCurrentTime,
+    collapseVisualSpeed,
+    collapseVisualBacklog,
+    collapseVisualProgress,
+    collapseVisualStatusLabel,
+    collapseVisualHasCollapsed,
+    collapseVisualCollapseReason,
+    startCollapseVisual,
+    updateCollapseVisualTime,
+    advanceCollapseVisualDay,
+    setCollapseVisualSpeed,
+    setCollapseVisualProgress,
+    setCollapseVisualCollapsed,
+    pauseCollapseVisual,
+    resumeCollapseVisual,
+    resetCollapseVisual,
+  } = useSimulationStore()
 
   // State
-  const [showConfigModal, setShowConfigModal] = useState(true)
-  const [showResultModal, setShowResultModal] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
-  const [result, setResult] = useState<CollapseSimulationResult | null>(null)
   const [selectedAirport, setSelectedAirport] = useState<SimAirport | null>(null)
+  const [showStartModal, setShowStartModal] = useState(true)
+  const [showDemoResultModal, setShowDemoResultModal] = useState(false)
+  const [demoResult, setDemoResult] = useState<CollapseSimulationResult | null>(null)
+  const [isDemoRunning, setIsDemoRunning] = useState(false)
+  const [isProcessingDay, setIsProcessingDay] = useState(false)
+  // Removed showEmptyFlights state - always show only flights with cargo
   
-  // Config form
-  const [configStartDate, setConfigStartDate] = useState(
-    simulationStartDate 
-      ? simulationStartDate.toISOString().slice(0, 16) 
-      : new Date().toISOString().slice(0, 16)
-  )
-
-  // Loading state
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [currentPhase, setCurrentPhase] = useState(0)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const phaseRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Loading phases messages
-  const loadingPhases = [
-    'Inicializando parámetros del algoritmo...',
-    'Cargando datos de órdenes y productos...',
-    'Procesando rutas de vuelos disponibles...',
-    'Ejecutando asignación del día actual...',
-    'Calculando capacidad de almacenes...',
-    'Verificando restricciones de entrega...',
-    'Optimizando distribución de carga...',
-    'Analizando saturación del sistema...',
-    'Avanzando al siguiente día...',
-    'Recalculando estado del sistema...',
-  ]
-
-  // Timer effect
-  useEffect(() => {
-    if (isRunning) {
-      setElapsedSeconds(0)
-      setCurrentPhase(0)
-      
-      // Elapsed time counter
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds(prev => prev + 1)
-      }, 1000)
-      
-      // Phase message rotator
-      phaseRef.current = setInterval(() => {
-        setCurrentPhase(prev => (prev + 1) % loadingPhases.length)
-      }, 3000)
-      
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current)
-        if (phaseRef.current) clearInterval(phaseRef.current)
-      }
-    }
-  }, [isRunning])
-
-  // Format elapsed time
-  const formatElapsedTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Estimate progress (fake but informative)
-  const getEstimatedProgress = () => {
-    // Asumimos que una simulación típica tarda ~2-5 minutos
-    // Mostramos un progreso que avanza lento pero constante
-    const baseProgress = Math.min(elapsedSeconds / 180 * 70, 70) // Máximo 70% en 3 min
-    const fluctuation = Math.sin(elapsedSeconds * 0.1) * 3 // Pequeña fluctuación
-    return Math.min(Math.max(baseProgress + fluctuation, 5), 85) // Entre 5% y 85%
-  }
-
-  // Abort controller
+  // Flight data
+  const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
+  
+  // Refs
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-
+  const flightStatusesRef = useRef<FlightStatus[]>([])
+  
+  // Prefetch system: cache one day ahead for seamless transitions (sequential)
+  const prefetchCacheRef = useRef<Map<number, Awaited<ReturnType<typeof simulationService.executeCollapseVisualDay>>>>(new Map())
+  const prefetchPromiseRef = useRef<Map<number, Promise<any>>>(new Map()) // Track in-flight promises
+  
+  // Convert backend FlightInstanceDTO to frontend FlightInstance
+  const convertToFlightInstance = useCallback((dto: FlightInstanceDTO, airports: any[]): FlightInstance | null => {
+    if (!dto.originLat || !dto.originLng || !dto.destLat || !dto.destLng) {
+      return null
+    }
+    
+    // Find origin and destination airports
+    const originAirport = airports.find((a: any) => a.codeIATA === dto.originCode)
+    const destAirport = airports.find((a: any) => a.codeIATA === dto.destinationCode)
+    
+    return {
+      id: dto.instanceId,
+      flightId: dto.flightId || 0,
+      flightCode: dto.flightCode || '',
+      departureTime: dto.departureTime,
+      arrivalTime: dto.arrivalTime,
+      instanceId: dto.instanceId,
+      originAirportId: originAirport?.id || 0,
+      destinationAirportId: destAirport?.id || 0,
+      originAirport: {
+        codeIATA: dto.originCode || '',
+        city: { name: originAirport?.city?.name || dto.originCode || '' },
+        latitude: dto.originLat,
+        longitude: dto.originLng
+      },
+      destinationAirport: {
+        codeIATA: dto.destinationCode || '',
+        city: { name: destAirport?.city?.name || dto.destinationCode || '' },
+        latitude: dto.destLat,
+        longitude: dto.destLng
+      },
+      status: 'SCHEDULED' as const,
+      assignedProducts: dto.productCount
+    }
+  }, [])
+  
   // Load airports
   const { data: airportsData } = useAirports()
   const airports = Array.isArray(airportsData) ? airportsData : []
@@ -692,204 +820,529 @@ export function CollapseSimulationPage() {
     (airport: any) => airport.codeIATA && MAIN_HUB_CODES.includes(airport.codeIATA.toUpperCase())
   )
 
-  // Map bounds
+  // Map config
   const bounds = airports.length > 0
-    ? L.latLngBounds(
-        airports.map((a: any) => [parseFloat(a.latitude), parseFloat(a.longitude)] as LatLngTuple)
-      )
+    ? L.latLngBounds(airports.map((a: any) => [parseFloat(a.latitude), parseFloat(a.longitude)] as LatLngTuple))
     : L.latLngBounds([[-60, -180], [70, 180]])
 
   const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
   const tileAttribution = '&copy; OpenStreetMap & CARTO'
 
-  // Start simulation
-  const handleStart = useCallback(async () => {
-    if (!configStartDate || !hasValidConfig() || !simulationStartDate) {
-      toast.error('Debes configurar la simulación antes de iniciar')
+  // Current simulation time
+  const currentTime = collapseVisualCurrentTime ? new Date(collapseVisualCurrentTime) : DEFAULT_START_DATE
+  const isRunning = collapseVisualStatus === 'running'
+  const isPaused = collapseVisualStatus === 'paused'
+  const hasCollapsed = collapseVisualHasCollapsed
+
+  // Load flight data
+  const loadFlightData = useCallback(async () => {
+    try {
+      console.log('Loading flight data...')
+      const response = await simulationService.getFlightStatuses()
+      console.log('Flight statuses response:', response)
+      if (response?.flights && response.flights.length > 0) {
+        flightStatusesRef.current = response.flights
+        console.log(`Loaded ${response.flights.length} flights`)
+        
+        // Generate initial instances
+        const instances = simulationService.generateFlightInstances(
+          response.flights,
+          DEFAULT_START_DATE,
+          72,
+          airports
+        )
+        console.log(`Generated ${instances.length} flight instances`)
+        setFlightInstances(instances)
+      } else {
+        console.warn('No flights returned from getFlightStatuses')
+      }
+    } catch (error) {
+      console.error('Error loading flight data:', error)
+    }
+  }, [airports])
+
+  // Initialize and load data on mount
+  useEffect(() => {
+    if (airports.length > 0) {
+      loadFlightData()
+    }
+  }, [airports, loadFlightData])
+
+  // Prefetch a specific day in background - SEQUENTIAL only
+  // Only prefetch if no other prefetch is in progress
+  const prefetchDay = useCallback((dayNumber: number) => {
+    // Skip if already cached or if THIS specific day is already being fetched
+    if (prefetchCacheRef.current.has(dayNumber) || prefetchPromiseRef.current.has(dayNumber)) {
+      return
+    }
+    
+    // Limit concurrency: max 2 requests in flight
+    if (prefetchPromiseRef.current.size >= 2) {
+      return
+    }
+    
+    console.log(`[Prefetch] Starting day ${dayNumber}...`)
+    
+    const promise = simulationService.executeCollapseVisualDay(dayNumber)
+      .then(result => {
+        prefetchCacheRef.current.set(dayNumber, result)
+        console.log(`[Prefetch] Day ${dayNumber} cached ✓`)
+        
+        // Chain next prefetch if needed (keep buffer full)
+        if (result.continueSimulation && !result.hasReachedCollapse) {
+           // Try to prefetch next day if buffer allows
+           // We can't call prefetchDay directly here easily due to closure/deps, 
+           // but the main loop will trigger it.
+        }
+        return result
+      })
+      .catch(err => {
+        console.error(`[Prefetch] Day ${dayNumber} failed:`, err)
+        throw err
+      })
+      .finally(() => {
+        prefetchPromiseRef.current.delete(dayNumber)
+      })
+      
+    prefetchPromiseRef.current.set(dayNumber, promise)
+  }, [])
+
+  // Get cached result or fetch synchronously
+  const getOrFetchDay = useCallback(async (dayNumber: number) => {
+    // Check cache first
+    if (prefetchCacheRef.current.has(dayNumber)) {
+      console.log(`[Prefetch] Cache HIT for day ${dayNumber}`)
+      const result = prefetchCacheRef.current.get(dayNumber)!
+      prefetchCacheRef.current.delete(dayNumber) // Remove from cache after use
+      return result
+    }
+    
+    // Check if prefetch is in progress
+    if (prefetchPromiseRef.current.has(dayNumber)) {
+       console.log(`[Prefetch] Joining in-progress fetch for day ${dayNumber}`)
+       return await prefetchPromiseRef.current.get(dayNumber)
+    }
+    
+    // Cache miss - fetch synchronously
+    console.log(`[Prefetch] Cache MISS for day ${dayNumber}, fetching...`)
+    return await simulationService.executeCollapseVisualDay(dayNumber)
+  }, [])
+
+  // Process a single day - uses prefetch cache
+  const processDay = useCallback(async (dayNumber: number) => {
+    // Only show loading indicator if we actually have to wait
+    // If it's a cache hit or in-flight promise, we might not want to flash the UI
+    const isCached = prefetchCacheRef.current.has(dayNumber)
+    const isFetching = prefetchPromiseRef.current.has(dayNumber)
+    
+    // If it's not cached AND not currently being fetched, show loading
+    // If it IS being fetched, we assume it will be ready soon and don't show the full screen overlay
+    if (!isCached && !isFetching) {
+      setIsProcessingDay(true)
+    }
+    
+    try {
+      console.log(`Processing day ${dayNumber}...`)
+      
+      // Get from cache or fetch
+      const result = await getOrFetchDay(dayNumber)
+      
+      if (!result.success) {
+        toast.error(`Error en día ${dayNumber}: ${result.message}`)
+        pauseCollapseVisual()
+        return false
+      }
+
+      // Trigger prefetch for next FEW days (buffer)
+      if (result.continueSimulation && !result.hasReachedCollapse) {
+        // Prefetch next 3 days
+        prefetchDay(dayNumber + 1)
+        prefetchDay(dayNumber + 2)
+        prefetchDay(dayNumber + 3)
+      }
+
+      // Update store with results
+      setCollapseVisualProgress(result.collapseProgress, result.statusLabel, result.cumulativeBacklog)
+      
+      // Check for collapse
+      if (result.hasReachedCollapse) {
+        setCollapseVisualCollapsed(result.collapseReason || 'UNKNOWN')
+        toast.warning(`¡Sistema colapsó en día ${dayNumber}!`, { autoClose: false })
+        return false
+      }
+
+      // Add flight instances from the actual algorithm solution
+      // MERGE STRATEGY: Combine real flights (with cargo) with scheduled flights (empty)
+      // This ensures the map looks alive even if flights are empty
+      
+      // 1. Get real instances from backend (flights with cargo)
+      const realInstances = (result.assignedFlightInstances || [])
+        .map(dto => convertToFlightInstance(dto, airports))
+        .filter((inst): inst is FlightInstance => inst !== null)
+      
+      // 2. Generate ALL scheduled instances for this day (background traffic)
+      let allScheduledInstances: FlightInstance[] = []
+      if (flightStatusesRef.current.length > 0 && airports.length > 0) {
+        const dayStart = new Date(DEFAULT_START_DATE.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000)
+        allScheduledInstances = simulationService.generateFlightInstances(
+          flightStatusesRef.current,
+          dayStart,
+          24, // 1 day duration
+          airports
+        )
+      }
+      
+      // 3. Merge them: Use real instance if available, otherwise use scheduled one
+      // Create a map of real instances by ID for fast lookup
+      const realInstanceMap = new Map(realInstances.map(i => [i.instanceId, i]))
+      
+      const mergedInstances = allScheduledInstances.map(scheduled => {
+        // If we have a real version of this flight (with cargo info), use it
+        if (realInstanceMap.has(scheduled.instanceId)) {
+          return realInstanceMap.get(scheduled.instanceId)!
+        }
+        // Otherwise use the scheduled one (empty)
+        return scheduled
+      })
+      
+      // Also add any real instances that might not have matched (safety fallback)
+      realInstances.forEach(real => {
+        if (!mergedInstances.find(m => m.instanceId === real.instanceId)) {
+          mergedInstances.push(real)
+        }
+      })
+      
+      console.log(`[Day ${dayNumber}] Merged flights: ${realInstances.length} real + ${allScheduledInstances.length} scheduled = ${mergedInstances.length} total`)
+      
+      // Update state (keep buffer of past flights)
+      setFlightInstances(prev => {
+        // Keep last 500 flights to avoid memory issues, but ensure we have current day's flights
+        const oldFlights = prev.slice(-200) 
+        return [...oldFlights, ...mergedInstances]
+      })
+
+      // Mark processing complete
+      if (!isCached && !isFetching) {
+        setIsProcessingDay(false)
+      }
+      
+      return result.continueSimulation
+      
+    } catch (error) {
+      console.error(`Error processing day ${dayNumber}:`, error)
+      toast.error('Error al procesar día')
+      pauseCollapseVisual()
+      setIsProcessingDay(false)
+      return false
+    }
+  }, [airports, pauseCollapseVisual, setCollapseVisualProgress, setCollapseVisualCollapsed, getOrFetchDay, prefetchDay, convertToFlightInstance])
+
+  // Start visual simulation
+  const handleStartVisual = useCallback(async () => {
+    setShowStartModal(false)
+    
+    // Clear prefetch cache on new start
+    prefetchCacheRef.current.clear()
+    prefetchPromiseRef.current.clear()
+    
+    // Clear previous flight instances
+    setFlightInstances([])
+    
+    try {
+      toast.info('Inicializando simulación visual...')
+      
+      // Initialize backend
+      const initResult = await simulationService.initCollapseVisual({
+        simulationStartTime: DEFAULT_START_DATE.toISOString()
+      })
+      
+      if (!initResult.success) {
+        toast.error('Error al inicializar: ' + initResult.message)
+        return
+      }
+
+      // Start store state
+      startCollapseVisual(DEFAULT_START_DATE, collapseVisualSpeed)
+      
+      // Process first day
+      const day1Success = await processDay(1)
+      
+      if (!day1Success) {
+        toast.error('Error al procesar día 1')
+        resetCollapseVisual()
+        setShowStartModal(true)
+        return
+      }
+      
+      advanceCollapseVisualDay(1)
+      
+      // IMPORTANT: Start prefetching days 2 and 3 immediately after day 1
+      // Start prefetching day 2 (sequential - only one at a time)
+      console.log('[Prefetch] Starting prefetch for day 2...')
+      prefetchDay(2)
+      prefetchDay(3)
+      prefetchDay(4)
+      
+      toast.success('Simulación iniciada - Día 1')
+      
+    } catch (error) {
+      console.error('Error starting simulation:', error)
+      toast.error('Error al iniciar simulación')
+      resetCollapseVisual()
+      setShowStartModal(true)
+    }
+  }, [collapseVisualSpeed, startCollapseVisual, advanceCollapseVisualDay, processDay, resetCollapseVisual])
+
+  // Track if we're waiting for a day to be processed
+  const waitingForDayRef = useRef<number>(0)
+
+  // Time advancement interval - runs continuously, doesn't stop for processing
+  useEffect(() => {
+    if (!isRunning || hasCollapsed) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
       return
     }
 
-    setShowConfigModal(false)
-    setIsRunning(true)
-    setResult(null)
+    // Advance time every 100ms (10fps) for smoother animation but less CPU load
+    intervalRef.current = setInterval(() => {
+      const prevTime = collapseVisualCurrentTime ? new Date(collapseVisualCurrentTime) : DEFAULT_START_DATE
+      // Calculate time increment based on speed (minutes/sec) and interval (100ms)
+      // speed * 60 * 1000 = ms per real second
+      // * (100 / 1000) = ms per interval
+      const timeToAddMs = collapseVisualSpeed * 60 * 100 
+      const newTime = new Date(prevTime.getTime() + timeToAddMs)
+      
+      updateCollapseVisualTime(newTime)
+      
+      // Check if we've crossed into a new day
+      const prevDay = Math.floor((prevTime.getTime() - DEFAULT_START_DATE.getTime()) / (24 * 60 * 60 * 1000)) + 1
+      const newDay = Math.floor((newTime.getTime() - DEFAULT_START_DATE.getTime()) / (24 * 60 * 60 * 1000)) + 1
+      
+      if (newDay > prevDay && newDay > collapseVisualCurrentDay) {
+        // Don't process if we're already waiting for this day
+        if (waitingForDayRef.current === newDay) {
+          return
+        }
+        
+        waitingForDayRef.current = newDay
+        advanceCollapseVisualDay(newDay)
+        
+        // Process day - if prefetch is ready, this is instant
+        processDay(newDay).then(() => {
+          waitingForDayRef.current = 0
+        })
+      }
+      
+    }, 100)
 
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [isRunning, hasCollapsed, collapseVisualSpeed, collapseVisualCurrentTime, collapseVisualCurrentDay, updateCollapseVisualTime, advanceCollapseVisualDay, processDay])
+
+  // Handle pause/resume
+  const handlePauseResume = useCallback(() => {
+    if (isRunning) {
+      pauseCollapseVisual()
+    } else if (isPaused) {
+      resumeCollapseVisual()
+    }
+  }, [isRunning, isPaused, pauseCollapseVisual, resumeCollapseVisual])
+
+  // Handle stop/reset
+  const handleStop = useCallback(async () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    
+    // Clear flight instances
+    setFlightInstances([])
+    
+    // Clear prefetch cache
+    prefetchCacheRef.current.clear()
+    prefetchPromiseRef.current.clear()
+    
+    try {
+      await simulationService.resetCollapseVisual()
+    } catch (e) {
+      console.error('Error resetting backend:', e)
+    }
+    
+    resetCollapseVisual()
+    setShowStartModal(true)
+    toast.info('Simulación detenida')
+  }, [resetCollapseVisual])
+
+  // Handle Demo (batch collapse for professor)
+  const handleRunDemo = useCallback(async () => {
+    setShowStartModal(false)
+    setIsDemoRunning(true)
+    
     const controller = new AbortController()
     abortControllerRef.current = controller
 
     try {
-      toast.info('Iniciando simulación de colapso...')
-
-      const simResult = await simulationService.runCollapseScenario(
-        {
-          simulationStartTime: new Date(configStartDate).toISOString(),
-          useDatabase: true,
-        },
+      toast.info('Ejecutando demo rápido (esto puede tomar varios minutos)...')
+      
+      const result = await simulationService.runCollapseScenario(
+        { simulationStartTime: DEFAULT_START_DATE.toISOString(), useDatabase: true },
         { signal: controller.signal }
       )
-
-      setResult(simResult)
-      setShowResultModal(true)
-
-      if (simResult.hasCollapsed) {
-        toast.warning(`Sistema colapsó en el día ${simResult.collapseDay}`)
+      
+      setDemoResult(result)
+      setShowDemoResultModal(true)
+      
+      if (result.hasCollapsed) {
+        toast.warning(`Demo: Sistema colapsó en día ${result.collapseDay}`)
       } else {
-        toast.success('Simulación completada sin colapso')
+        toast.success('Demo completado sin colapso')
       }
+      
     } catch (error: any) {
-      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
-        toast.info('Simulación cancelada')
-      } else {
-        console.error('Error en simulación:', error)
-        toast.error('Error durante la simulación')
+      if (error?.name !== 'CanceledError') {
+        console.error('Demo error:', error)
+        toast.error('Error en demo')
       }
     } finally {
-      setIsRunning(false)
+      setIsDemoRunning(false)
       abortControllerRef.current = null
     }
-  }, [configStartDate, hasValidConfig, simulationStartDate])
+  }, [])
 
-  // Stop simulation
-  const handleStop = useCallback(() => {
+  // Cancel demo
+  const handleCancelDemo = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
   }, [])
 
-  // Reset
-  const handleReset = useCallback(() => {
-    setShowResultModal(false)
-    setResult(null)
-    setShowConfigModal(true)
-  }, [])
-
-  // Get status
-  const getStatus = (): 'idle' | 'running' | 'collapsed' | 'success' => {
+  // Get status for badge
+  const getStatusLabel = (): 'idle' | 'running' | 'paused' | 'collapsed' | 'completed' => {
+    if (isDemoRunning) return 'running'
+    if (hasCollapsed) return 'collapsed'
     if (isRunning) return 'running'
-    if (result?.hasCollapsed) return 'collapsed'
-    if (result && !result.hasCollapsed) return 'success'
+    if (isPaused) return 'paused'
+    if (collapseVisualStatus === 'completed') return 'completed'
     return 'idle'
   }
 
   const getStatusText = () => {
-    const status = getStatus()
-    if (status === 'running') return '● Ejecutando'
-    if (status === 'collapsed') return 'Colapsado'
-    if (status === 'success') return 'Completado'
+    if (isDemoRunning) return '● Demo en ejecución'
+    if (hasCollapsed) return '✕ Colapsado'
+    if (isRunning) return '● Simulando'
+    if (isPaused) return '◐ Pausado'
+    if (collapseVisualStatus === 'completed') return '✓ Completado'
     return '○ Detenido'
   }
 
   return (
     <Wrapper>
-      {/* Config Modal */}
-      <ModalOverlay $show={showConfigModal && !isRunning}>
+      {/* Start Modal */}
+      <ModalOverlay $show={showStartModal && !isDemoRunning && collapseVisualStatus === 'idle'}>
         <ModalContent>
-          <ModalTitle>Configurar Simulación de Colapso</ModalTitle>
+          <ModalTitle>Simulación de Colapso</ModalTitle>
           <ModalSubtitle>
-            La simulación ejecutará el algoritmo día a día hasta que el sistema colapse 
-            (cuando hay órdenes sin asignar o almacenes saturados).
+            Observa cómo el sistema acumula órdenes día a día hasta alcanzar el punto de colapso,
+            donde ya no puede cumplir con los SLA de entrega.
           </ModalSubtitle>
 
-          <FormGroup>
-            <Label>Fecha de inicio de simulación</Label>
-            <Input
-              type="datetime-local"
-              value={configStartDate}
-              onChange={(e) => setConfigStartDate(e.target.value)}
-            />
-          </FormGroup>
+          <ModalInfoBox>
+            <ModalInfoTitle>Inicio de simulación</ModalInfoTitle>
+            <ModalInfoText>
+              📅 2 de Enero, 2025 a las 00:00 (inicio de data)
+            </ModalInfoText>
+          </ModalInfoBox>
 
-          <FormGroup>
-            <Label>Aeropuertos principales (capacidad infinita)</Label>
-            <InfoBox>
-              SPIM (Lima) • EBCI (Bruselas) • UBBB (Bakú)
-            </InfoBox>
-          </FormGroup>
+          <ModalInfoBox>
+            <ModalInfoTitle>Reglas de colapso (SLA)</ModalInfoTitle>
+            <ModalInfoText>
+              • Continental: máximo 48 horas<br/>
+              • Intercontinental: máximo 72 horas<br/>
+              • Colapso cuando &gt;10% productos sin asignar
+            </ModalInfoText>
+          </ModalInfoBox>
 
           <ButtonRow>
             <ModalButton onClick={() => navigate('/planificacion')}>
               Cancelar
             </ModalButton>
-            <ModalButton $primary onClick={handleStart}>
-              Iniciar Simulación
+            <ModalButton $danger onClick={handleRunDemo}>
+              🎬 Demo Rápido
+            </ModalButton>
+            <ModalButton $primary onClick={handleStartVisual}>
+              ▶ Iniciar Visual
             </ModalButton>
           </ButtonRow>
         </ModalContent>
       </ModalOverlay>
 
-      {/* Result Modal */}
-      <ModalOverlay $show={showResultModal}>
+      {/* Demo Result Modal */}
+      <ModalOverlay $show={showDemoResultModal}>
         <ResultModal>
-          {result && (
+          {demoResult && (
             <>
-              <ResultHeader $collapsed={result.hasCollapsed}>
-                <ResultIcon>
-                  {result.hasCollapsed ? '!' : '✓'}
-                </ResultIcon>
+              <ResultHeader $collapsed={demoResult.hasCollapsed}>
+                <ResultIcon>{demoResult.hasCollapsed ? '💥' : '✓'}</ResultIcon>
                 <ResultTitle>
-                  {result.hasCollapsed ? 'Sistema Colapsado' : 'Simulación Completada'}
+                  {demoResult.hasCollapsed ? 'Sistema Colapsado' : 'Sin Colapso'}
                 </ResultTitle>
                 <ResultSubtitle>
-                  {result.hasCollapsed 
-                    ? `El sistema colapsó después de ${result.collapseDay} días de operación`
-                    : `Se simularon ${result.totalDaysSimulated} días sin colapso`}
+                  {demoResult.hasCollapsed
+                    ? `Colapsó en el día ${demoResult.collapseDay}`
+                    : `${demoResult.totalDaysSimulated} días simulados`}
                 </ResultSubtitle>
               </ResultHeader>
 
               <ResultBody>
-                {result.hasCollapsed && (
-                  <ResultSection>
-                    <ResultSectionTitle>Razón del Colapso</ResultSectionTitle>
-                    <ReasonBadge>
-                      {formatCollapseReason(result.collapseReason)}
-                    </ReasonBadge>
-                  </ResultSection>
-                )}
+                <ResultGrid>
+                  <ResultCard>
+                    <ResultCardValue>{demoResult.totalDaysSimulated}</ResultCardValue>
+                    <ResultCardLabel>Días simulados</ResultCardLabel>
+                  </ResultCard>
+                  <ResultCard>
+                    <ResultCardValue>{demoResult.totalOrdersProcessed}</ResultCardValue>
+                    <ResultCardLabel>Órdenes procesadas</ResultCardLabel>
+                  </ResultCard>
+                  <ResultCard>
+                    <ResultCardValue>{demoResult.assignedProducts}</ResultCardValue>
+                    <ResultCardLabel>Productos asignados</ResultCardLabel>
+                  </ResultCard>
+                  <ResultCard $highlight={(demoResult.unassignedProducts || 0) > 0}>
+                    <ResultCardValue $danger={(demoResult.unassignedProducts || 0) > 0}>
+                      {demoResult.unassignedProducts}
+                    </ResultCardValue>
+                    <ResultCardLabel>Sin asignar</ResultCardLabel>
+                  </ResultCard>
+                </ResultGrid>
 
-                <ResultSection>
-                  <ResultSectionTitle>Estadísticas</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>{result.totalDaysSimulated}</ResultCardValue>
-                      <ResultCardLabel>Días simulados</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>{result.totalOrdersProcessed}</ResultCardValue>
-                      <ResultCardLabel>Órdenes procesadas</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>{result.assignedProducts}</ResultCardValue>
-                      <ResultCardLabel>Productos asignados</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard $highlight={(result.unassignedProducts || 0) > 0}>
-                      <ResultCardValue $danger={(result.unassignedProducts || 0) > 0}>
-                        {result.unassignedProducts}
-                      </ResultCardValue>
-                      <ResultCardLabel>Sin asignar</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
-
-                <ResultSection>
-                  <ResultSectionTitle>Rendimiento</ResultSectionTitle>
-                  <ResultGrid>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.unassignedPercentage?.toFixed(1) ?? '0.0'}%
-                      </ResultCardValue>
-                      <ResultCardLabel>% Sin asignar</ResultCardLabel>
-                    </ResultCard>
-                    <ResultCard>
-                      <ResultCardValue>
-                        {result.executionTimeSeconds.toFixed(1)}s
-                      </ResultCardValue>
-                      <ResultCardLabel>Tiempo ejecución</ResultCardLabel>
-                    </ResultCard>
-                  </ResultGrid>
-                </ResultSection>
+                <ResultGrid>
+                  <ResultCard>
+                    <ResultCardValue>
+                      {(demoResult.unassignedPercentage || 0).toFixed(1)}%
+                    </ResultCardValue>
+                    <ResultCardLabel>% Sin asignar</ResultCardLabel>
+                  </ResultCard>
+                  <ResultCard>
+                    <ResultCardValue>
+                      {demoResult.executionTimeSeconds.toFixed(0)}s
+                    </ResultCardValue>
+                    <ResultCardLabel>Tiempo ejecución</ResultCardLabel>
+                  </ResultCard>
+                </ResultGrid>
               </ResultBody>
 
               <ResultFooter>
-                <ModalButton onClick={handleReset}>
+                <ModalButton onClick={() => {
+                  setShowDemoResultModal(false)
+                  setShowStartModal(true)
+                }}>
                   Nueva Simulación
                 </ModalButton>
                 <ModalButton $primary onClick={() => navigate('/reportes')}>
@@ -901,120 +1354,172 @@ export function CollapseSimulationPage() {
         </ResultModal>
       </ModalOverlay>
 
+      {/* Header */}
       <Header>
         <TitleBlock>
           <Title>Simulación de Colapso</Title>
           <Subtitle>
-            Ejecuta el algoritmo hasta que el sistema colapse por falta de capacidad
+            Simulación visual día a día hasta el punto de colapso del sistema
           </Subtitle>
         </TitleBlock>
 
         <HeaderRight>
-          <StatusBadge $status={getStatus()}>
+          <StatusBadge $status={getStatusLabel()}>
             {getStatusText()}
           </StatusBadge>
 
-          {isRunning ? (
-            <ControlButton $variant="stop" onClick={handleStop}>
-              Detener
+          {(isRunning || isPaused) && !hasCollapsed && (
+            <>
+              <ControlButton $variant={isRunning ? 'pause' : 'play'} onClick={handlePauseResume}>
+                {isRunning ? '⏸ Pausar' : '▶ Continuar'}
+              </ControlButton>
+              <ControlButton $variant="stop" onClick={handleStop}>
+                ⏹ Detener
+              </ControlButton>
+            </>
+          )}
+
+          {hasCollapsed && (
+            <ControlButton $variant="reset" onClick={handleStop}>
+              🔄 Reiniciar
             </ControlButton>
-          ) : (
-            <ControlButton $variant="play" onClick={() => setShowConfigModal(true)}>
+          )}
+
+          {collapseVisualStatus === 'idle' && !isDemoRunning && (
+            <ControlButton $variant="play" onClick={() => setShowStartModal(true)}>
               Configurar
             </ControlButton>
           )}
         </HeaderRight>
       </Header>
 
-      <MapWrapper>
-        {/* Loading Overlay */}
-        {isRunning && (
+      {/* Map */}
+      <MapWrapper $collapsed={hasCollapsed}>
+        {/* Loading Overlay for Demo */}
+        {isDemoRunning && (
           <LoadingOverlay>
-            <LoadingContent>
-              <SpinnerContainer>
-                <Spinner />
-              </SpinnerContainer>
-
-              <LoadingTitle>Ejecutando Simulación de Colapso</LoadingTitle>
-              <LoadingSubtitle>
-                El sistema está evaluando día a día hasta detectar el punto de saturación
-              </LoadingSubtitle>
-
-              <StatusMessage>
-                <PulseDot />
-                <span>En proceso</span>
-              </StatusMessage>
-
-              <LoadingPhase>{loadingPhases[currentPhase]}</LoadingPhase>
-
-              <ProgressInfo>{getEstimatedProgress().toFixed(0)}%</ProgressInfo>
-              <ProgressBar>
-                <ProgressFill 
-                  $percent={getEstimatedProgress()} 
-                  $danger={elapsedSeconds > 180}
-                />
-              </ProgressBar>
-
-              <LoadingStats>
-                <LoadingStat>
-                  <LoadingStatValue>{formatElapsedTime(elapsedSeconds)}</LoadingStatValue>
-                  <LoadingStatLabel>Tiempo</LoadingStatLabel>
-                </LoadingStat>
-                <LoadingStat>
-                  <LoadingStatValue>~{Math.floor(elapsedSeconds / 8) + 1}</LoadingStatValue>
-                  <LoadingStatLabel>Día</LoadingStatLabel>
-                </LoadingStat>
-                <LoadingStat>
-                  <LoadingStatValue>{(elapsedSeconds * 12).toLocaleString()}</LoadingStatValue>
-                  <LoadingStatLabel>Órdenes</LoadingStatLabel>
-                </LoadingStat>
-              </LoadingStats>
-
-              <FooterNote>
-                Esta operación puede tomar varios minutos según el volumen de datos
-              </FooterNote>
-
-              <CancelButton onClick={handleStop}>
-                Cancelar
-              </CancelButton>
-            </LoadingContent>
+            <Spinner />
+            <LoadingText>Ejecutando Demo Rápido</LoadingText>
+            <LoadingSubtext>Procesando todos los días hasta el colapso...</LoadingSubtext>
+            <ControlButton $variant="stop" onClick={handleCancelDemo} style={{ marginTop: 20 }}>
+              Cancelar
+            </ControlButton>
           </LoadingOverlay>
         )}
 
-        {/* Controls Panel */}
-        {!isRunning && result && (
-          <SimulationControls>
-            <div>
-              <ControlsLabel>Último resultado</ControlsLabel>
-              {result?.hasCollapsed ? (
-                <ProgressBoxDanger>
-                  <ProgressValue>Día {result.collapseDay}</ProgressValue>
-                  <ProgressLabel>Punto de colapso</ProgressLabel>
-                </ProgressBoxDanger>
-              ) : (
-                <ProgressBox>
-                  <ProgressValue>{result?.totalDaysSimulated || 0}</ProgressValue>
-                  <ProgressLabel>Días simulados</ProgressLabel>
-                </ProgressBox>
-              )}
-            </div>
+        {/* Processing Day Indicator */}
+        {isProcessingDay && !isDemoRunning && (
+          <LoadingOverlay style={{ background: 'rgba(15, 23, 42, 0.85)' }}>
+            <Spinner />
+            <LoadingText>Ejecutando ALNS - Día {collapseVisualCurrentDay > 0 ? collapseVisualCurrentDay : 1}</LoadingText>
+            <LoadingSubtext>El algoritmo está procesando las órdenes...</LoadingSubtext>
+            <LoadingSubtext style={{ marginTop: 8, fontSize: 11, opacity: 0.7 }}>
+              Esto puede tomar entre 30 segundos y 2 minutos
+            </LoadingSubtext>
+          </LoadingOverlay>
+        )}
 
-            <StatsRow>
-              <StatLine>
-                <span>Productos asignados:</span>
-                <StatValue>{result?.assignedProducts || 0}</StatValue>
-              </StatLine>
-              <StatLine>
-                <span>Sin asignar:</span>
-                <StatValue $danger={(result?.unassignedProducts || 0) > 0}>
-                  {result?.unassignedProducts || 0}
+        {/* Collapse Overlay */}
+        {hasCollapsed && (
+          <CollapseOverlay>
+            <CollapseIcon>💥</CollapseIcon>
+            <CollapseTitle>SISTEMA COLAPSADO</CollapseTitle>
+            <CollapseSubtitle>
+              Día {collapseVisualCurrentDay} - {collapseVisualCollapseReason === 'SLA_BREACH' 
+                ? 'Demasiados pedidos sin asignar' 
+                : 'Capacidad agotada'}
+            </CollapseSubtitle>
+          </CollapseOverlay>
+        )}
+
+        {/* Controls Panel */}
+        {(isRunning || isPaused || hasCollapsed) && (
+          <SimulationControls>
+            <ClockBox $danger={hasCollapsed}>
+              <ClockLabel>Tiempo Simulación</ClockLabel>
+              <ClockValue>{formatTime(currentTime)}</ClockValue>
+              <ClockSubvalue>{formatDate(currentTime)}</ClockSubvalue>
+            </ClockBox>
+
+            <DayCounter>
+              <DayNumber>{collapseVisualCurrentDay}</DayNumber>
+              <DayLabel>días</DayLabel>
+            </DayCounter>
+
+            <ProgressSection>
+              <ProgressLabel>Progreso hacia colapso</ProgressLabel>
+              <ProgressBar>
+                <ProgressFill $percent={collapseVisualProgress} $status={collapseVisualStatusLabel} />
+              </ProgressBar>
+              <ProgressValue>
+                {collapseVisualProgress.toFixed(0)}% - {collapseVisualStatusLabel}
+              </ProgressValue>
+            </ProgressSection>
+
+            <StatsGrid>
+              <StatCard>
+                <StatValue>{collapseVisualBacklog}</StatValue>
+                <StatLabel>Backlog</StatLabel>
+              </StatCard>
+              <StatCard $highlight={collapseVisualProgress > 50}>
+                <StatValue $danger={collapseVisualProgress > 70}>
+                  {collapseVisualProgress > 70 ? '⚠️' : collapseVisualProgress > 40 ? '⚡' : '✓'}
                 </StatValue>
-              </StatLine>
-              <StatLine>
-                <span>Tiempo ejecución:</span>
-                <StatValue>{(result?.executionTimeSeconds || 0).toFixed(1)}s</StatValue>
-              </StatLine>
-            </StatsRow>
+                <StatLabel>Estado</StatLabel>
+              </StatCard>
+              <StatCard>
+                <StatValue>{flightInstances.length}</StatValue>
+                <StatLabel>Vuelos</StatLabel>
+              </StatCard>
+            </StatsGrid>
+
+            {!hasCollapsed && (
+              <SpeedControl>
+                <div style={{ 
+                  padding: '10px', 
+                  background: '#f0fdf4', 
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  marginBottom: '12px'
+                }}>
+                  <SpeedLabel style={{ color: '#15803d', marginBottom: '4px' }}>Monitor de Riesgo SLA</SpeedLabel>
+                  <div style={{ 
+                    fontSize: '12px', 
+                    fontWeight: '700', 
+                    color: collapseVisualProgress > 70 ? '#dc2626' : collapseVisualProgress > 40 ? '#d97706' : '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span style={{ fontSize: '16px' }}>
+                      {collapseVisualProgress > 70 ? '🔴' : collapseVisualProgress > 40 ? '🟡' : '🟢'}
+                    </span>
+                    {collapseVisualProgress > 70 
+                      ? 'CRÍTICO - Colapso inminente' 
+                      : collapseVisualProgress > 40 
+                        ? 'ALERTA - Backlog creciendo' 
+                        : 'ESTABLE - Operación normal'}
+                  </div>
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#374151' }}>
+                    <strong>Carga Activa:</strong> {flightInstances.filter(f => (f.assignedProducts || 0) > 0).reduce((acc, curr) => acc + (curr.assignedProducts || 0), 0)} productos
+                  </div>
+                </div>
+
+                <SpeedLabel>Velocidad</SpeedLabel>
+                <SpeedButtons>
+                  {SPEED_OPTIONS.map((opt) => (
+                    <SpeedButton
+                      key={opt.value}
+                      $active={collapseVisualSpeed === opt.value}
+                      onClick={() => setCollapseVisualSpeed(opt.value)}
+                      disabled={isProcessingDay}
+                    >
+                      {opt.label}
+                    </SpeedButton>
+                  ))}
+                </SpeedButtons>
+              </SpeedControl>
+            )}
           </SimulationControls>
         )}
 
@@ -1030,41 +1535,40 @@ export function CollapseSimulationPage() {
         >
           <Pane name="airports" style={{ zIndex: 500 }} />
           <Pane name="main-hubs" style={{ zIndex: 600 }} />
+          <Pane name="flights" style={{ zIndex: 550 }} />
 
-          <TileLayer 
-            attribution={tileAttribution} 
-            url={tileUrl} 
-            noWrap={true} 
-          />
+          <TileLayer attribution={tileAttribution} url={tileUrl} noWrap={true} />
+
+          {/* Animated Flights - Show during running, paused, OR processing */}
+          {(isRunning || isPaused || isProcessingDay) && !hasCollapsed && flightInstances.length > 0 && (
+            <AnimatedFlights
+              flightInstances={flightInstances.filter(f => (f.assignedProducts || 0) > 0)}
+              currentSimTime={currentTime}
+              isPlaying={isRunning && !isProcessingDay}
+              playbackSpeed={collapseVisualSpeed}
+            />
+          )}
 
           {/* Main warehouses */}
           {mainWarehouses.map((airport: any) => {
-            const center: LatLngTuple = [
-              parseFloat(airport.latitude),
-              parseFloat(airport.longitude),
-            ]
-            const hubFill = '#f6b53b'
-            const hubStroke = '#ebc725'
-
+            const center: LatLngTuple = [parseFloat(airport.latitude), parseFloat(airport.longitude)]
             return (
               <CircleMarker
                 key={`hub-${airport.id}`}
                 center={center}
                 radius={10}
-                color={hubStroke}
-                fillColor={hubFill}
+                color="#ebc725"
+                fillColor="#f6b53b"
                 fillOpacity={0.95}
                 weight={2.5}
                 pane="main-hubs"
-                eventHandlers={{
-                  click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-                }}
+                eventHandlers={{ click: () => setSelectedAirport(mapAirportToSimAirport(airport)) }}
               >
                 <Tooltip direction="top" offset={[0, -10]} opacity={1}>
                   <div style={{ textAlign: 'center' }}>
                     <strong>{airport.cityName}</strong>
-                    <div style={{ fontSize: '11px', color: hubStroke, fontWeight: 700 }}>
-                      Hub principal ({airport.codeIATA || airport.alias})
+                    <div style={{ fontSize: '11px', color: '#ebc725', fontWeight: 700 }}>
+                      Hub principal ({airport.codeIATA})
                     </div>
                   </div>
                 </Tooltip>
@@ -1083,16 +1587,12 @@ export function CollapseSimulationPage() {
               fillOpacity={0.8}
               weight={2}
               pane="airports"
-              eventHandlers={{
-                click: () => setSelectedAirport(mapAirportToSimAirport(airport)),
-              }}
+              eventHandlers={{ click: () => setSelectedAirport(mapAirportToSimAirport(airport)) }}
             >
               <Tooltip direction="top" offset={[0, -8]} opacity={1}>
                 <div>
                   <strong>{airport.cityName}</strong>
-                  <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                    {airport.codeIATA || airport.alias}
-                  </div>
+                  <div style={{ fontSize: '11px', color: '#6b7280' }}>{airport.codeIATA}</div>
                 </div>
               </Tooltip>
             </CircleMarker>
@@ -1106,6 +1606,8 @@ export function CollapseSimulationPage() {
           airport={selectedAirport}
           onClose={() => setSelectedAirport(null)}
           readOnly
+          flightInstances={flightInstances}
+          instanceHasProducts={{}}
         />
       )}
     </Wrapper>
