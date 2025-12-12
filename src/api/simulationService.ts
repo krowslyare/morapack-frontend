@@ -374,6 +374,59 @@ export const simulationService = {
   },
 
   /**
+   * Get flight legs for a specific product (from product_flights table)
+   * Returns all flights in the route with their sequence order
+   */
+  getProductFlightLegs: async (productId: number): Promise<{
+    success: boolean
+    productId: number
+    flightLegs: Array<{
+      flightId: number
+      flightCode: string
+      originAirportCode: string
+      destinationAirportCode: string
+      sequenceOrder: number
+      departureTime?: string
+      arrivalTime?: string
+    }>
+  }> => {
+    try {
+      const { data } = await api.get(`/query/products/${productId}/flights`)
+      return data
+    } catch (error) {
+      console.warn(`Endpoint /query/products/${productId}/flights no disponible`)
+      return { success: false, productId, flightLegs: [] }
+    }
+  },
+
+  /**
+   * Get all flight legs for an order (from product_flights table)
+   * Returns unique flights across all products of the order in sequence order
+   */
+  getOrderFlightLegs: async (orderId: number): Promise<{
+    success: boolean
+    orderId: number
+    flightLegs: Array<{
+      flightId: number
+      flightCode: string
+      originAirportCode: string
+      destinationAirportCode: string
+      sequenceOrder: number
+      departureTime?: string
+      arrivalTime?: string
+    }>
+    totalLegs: number
+  }> => {
+    try {
+      const { data } = await api.get(`/query/orders/${orderId}/flights`)
+      return data
+    } catch (error) {
+      console.warn(`Endpoint /query/orders/${orderId}/flights no disponible`)
+      return { success: false, orderId, flightLegs: [], totalLegs: 0 }
+    }
+  },
+
+  /**
    * Get orders assigned to a specific flight
    */
   getFlightOrders: async (flightCode: string): Promise<FlightOrdersResponse> => {

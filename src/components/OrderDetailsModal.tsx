@@ -1,9 +1,8 @@
 // src/components/OrderDetailsModal.tsx
 import { useState, useEffect } from 'react'
 import styled from 'styled-components'
-import type { OrderSchema, FlightSchema } from '../types'
+import type { OrderSchema } from '../types'
 import { simulationService } from '../api/simulationService'
-import { flightsService } from '../api/flightsService'
 
 const Overlay = styled.div`
   position: fixed;
@@ -245,13 +244,15 @@ const LoadingText = styled.div`
   font-size: 14px;
 `
 
-// Tipo para vuelo con datos extendidos
-interface FlightWithInstance {
-  instanceId: string
+// Tipo para vuelo (leg) de la ruta
+interface FlightLeg {
   flightId: number
-  flight: FlightSchema | null
-  departureTime: string
-  arrivalTime: string
+  flightCode: string
+  originAirportCode: string
+  destinationAirportCode: string
+  sequenceOrder: number
+  departureTime?: string
+  arrivalTime?: string
 }
 
 interface OrderDetailsModalProps {
@@ -259,31 +260,12 @@ interface OrderDetailsModalProps {
   onClose: () => void
 }
 
-// Parsear el instanceId para extraer el flightId y los tiempos
-// Formato: FL-{flightId}-DAY-{day}-{HHMM}
-function parseInstanceId(instanceId: string, baseDate: Date): { flightId: number; departureTime: Date } | null {
-  const match = instanceId.match(/^FL-(\d+)-DAY-(\d+)-(\d{4})$/)
-  if (!match) return null
-  
-  const flightId = parseInt(match[1], 10)
-  const day = parseInt(match[2], 10)
-  const timeStr = match[3]
-  const hours = parseInt(timeStr.substring(0, 2), 10)
-  const minutes = parseInt(timeStr.substring(2, 4), 10)
-  
-  const departureTime = new Date(baseDate)
-  departureTime.setDate(departureTime.getDate() + day)
-  departureTime.setHours(hours, minutes, 0, 0)
-  
-  return { flightId, departureTime }
-}
-
 export function OrderDetailsModal({
   order,
   onClose,
 }: OrderDetailsModalProps) {
   const [loading, setLoading] = useState(true)
-  const [assignedFlights, setAssignedFlights] = useState<FlightWithInstance[]>([])
+  const [flightLegs, setFlightLegs] = useState<FlightLeg[]>([])
 
   // Cargar datos de vuelos cuando se abre el modal
   useEffect(() => {
@@ -292,90 +274,26 @@ export function OrderDetailsModal({
         setLoading(false)
         return
       }
-      
+
       try {
         setLoading(true)
-        
-        // 1. Obtener productos de la orden para saber qué vuelos tiene asignados
-        const products = await simulationService.getProductsByOrderId(order.id)
-        
-        // 2. Extraer instanceIds únicos
-        const instanceIds = new Set<string>()
-        products.forEach(product => {
-          if (product.assignedFlightInstance) {
-            instanceIds.add(product.assignedFlightInstance)
-          }
-        })
-        
-        if (instanceIds.size === 0) {
-          setAssignedFlights([])
-          setLoading(false)
-          return
+
+        // Usar el nuevo endpoint que obtiene todos los vuelos de la ruta
+        const response = await simulationService.getOrderFlightLegs(order.id)
+
+        if (response.success && response.flightLegs.length > 0) {
+          setFlightLegs(response.flightLegs)
+        } else {
+          setFlightLegs([])
         }
-        
-        // 3. Para cada instanceId, extraer el flightId y cargar datos del vuelo
-        const baseDate = new Date() // Usamos fecha actual como base
-        baseDate.setHours(0, 0, 0, 0)
-        const flightPromises: Promise<FlightWithInstance>[] = []
-        
-        instanceIds.forEach(instanceId => {
-          const parsed = parseInstanceId(instanceId, baseDate)
-          if (parsed) {
-            const promise = flightsService.getById(parsed.flightId)
-              .then(flight => {
-                // Calcular arrival time basado en transportTimeDays del vuelo
-                const arrivalTime = new Date(parsed.departureTime)
-                if (flight.transportTimeDays) {
-                  arrivalTime.setTime(arrivalTime.getTime() + flight.transportTimeDays * 24 * 60 * 60 * 1000)
-                } else if (flight.arrivalTime && flight.departureTime) {
-                  // Si tiene horarios fijos, calcular duración
-                  const depTime = flight.departureTime as unknown as string
-                  const arrTime = flight.arrivalTime as unknown as string
-                  if (depTime && arrTime && depTime.includes(':') && arrTime.includes(':')) {
-                    const [depH, depM] = depTime.split(':').map(Number)
-                    const [arrH, arrM] = arrTime.split(':').map(Number)
-                    let durationMinutes = (arrH * 60 + arrM) - (depH * 60 + depM)
-                    if (durationMinutes < 0) durationMinutes += 24 * 60 // Si llega al día siguiente
-                    arrivalTime.setTime(parsed.departureTime.getTime() + durationMinutes * 60 * 1000)
-                  }
-                }
-                
-                return {
-                  instanceId,
-                  flightId: parsed.flightId,
-                  flight,
-                  departureTime: parsed.departureTime.toISOString(),
-                  arrivalTime: arrivalTime.toISOString(),
-                }
-              })
-              .catch(() => ({
-                instanceId,
-                flightId: parsed.flightId,
-                flight: null,
-                departureTime: parsed.departureTime.toISOString(),
-                arrivalTime: parsed.departureTime.toISOString(),
-              }))
-            
-            flightPromises.push(promise)
-          }
-        })
-        
-        const flights = await Promise.all(flightPromises)
-        
-        // Ordenar por tiempo de salida
-        flights.sort((a, b) => 
-          new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
-        )
-        
-        setAssignedFlights(flights)
       } catch (error) {
         console.error('Error loading flight data for order:', order.id, error)
-        setAssignedFlights([])
+        setFlightLegs([])
       } finally {
         setLoading(false)
       }
     }
-    
+
     loadFlightData()
   }, [order.id])
 
@@ -448,50 +366,50 @@ export function OrderDetailsModal({
           <Section>
             <SectionTitle>
               Vuelo(s) Asignado(s)
-              {assignedFlights.length > 1 && (
+              {flightLegs.length > 1 && (
                 <span style={{ fontWeight: 400, fontSize: 12, color: '#6b7280' }}>
-                  ({assignedFlights.length} escalas)
+                  ({flightLegs.length} escalas)
                 </span>
               )}
             </SectionTitle>
-            
+
             {loading ? (
               <LoadingText>Cargando información de vuelos...</LoadingText>
-            ) : assignedFlights.length === 0 ? (
+            ) : flightLegs.length === 0 ? (
               <NoFlights>
                 No hay vuelos asignados a este pedido aún.
                 {order.status === 'PENDING' && ' El algoritmo asignará vuelos cuando se ejecute.'}
               </NoFlights>
             ) : (
-              assignedFlights.map((flightData, index) => (
-                <FlightCard key={flightData.instanceId}>
+              flightLegs.map((leg, index) => (
+                <FlightCard key={`${leg.flightId}-${leg.sequenceOrder}`}>
                   <FlightHeader>
                     <FlightCode>
-                      {index + 1}. {flightData.flight?.code || `FL-${flightData.flightId}`}
+                      {index + 1}. {leg.flightCode}
                     </FlightCode>
-                    <StatusBadge $status={flightData.flight?.status || 'SCHEDULED'}>
-                      {flightData.flight?.status || 'SCHEDULED'}
+                    <StatusBadge $status="ACTIVE">
+                      ACTIVE
                     </StatusBadge>
                   </FlightHeader>
-                  
-                  {flightData.flight && (
-                    <FlightRoute>
-                      <FlightCity>{flightData.flight.originAirportCode}</FlightCity>
-                      <FlightArrow>→</FlightArrow>
-                      <FlightCity>{flightData.flight.destinationAirportCode}</FlightCity>
-                    </FlightRoute>
-                  )}
 
-                  <FlightTimes>
-                    <FlightTime>
-                      <TimeLabel>Despegue</TimeLabel>
-                      <TimeValue>{formatDateTime(flightData.departureTime)}</TimeValue>
-                    </FlightTime>
-                    <FlightTime>
-                      <TimeLabel>Llegada</TimeLabel>
-                      <TimeValue>{formatDateTime(flightData.arrivalTime)}</TimeValue>
-                    </FlightTime>
-                  </FlightTimes>
+                  <FlightRoute>
+                    <FlightCity>{leg.originAirportCode}</FlightCity>
+                    <FlightArrow>→</FlightArrow>
+                    <FlightCity>{leg.destinationAirportCode}</FlightCity>
+                  </FlightRoute>
+
+                  {(leg.departureTime || leg.arrivalTime) && (
+                    <FlightTimes>
+                      <FlightTime>
+                        <TimeLabel>Despegue</TimeLabel>
+                        <TimeValue>{leg.departureTime || '—'}</TimeValue>
+                      </FlightTime>
+                      <FlightTime>
+                        <TimeLabel>Llegada</TimeLabel>
+                        <TimeValue>{leg.arrivalTime || '—'}</TimeValue>
+                      </FlightTime>
+                    </FlightTimes>
+                  )}
                 </FlightCard>
               ))
             )}

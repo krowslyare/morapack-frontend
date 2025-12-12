@@ -371,12 +371,22 @@ interface AnimatedFlightsProps {
   showOnlyWithProducts: boolean
 }
 
+// Helper function to get product count for a flight - O(1) lookup
+// Only returns count if exact instanceId match exists (no fallback to flightId)
+function getProductCountForFlight(
+  flight: FlightInstance,
+  instanceHasProducts: Record<string, number>
+): number {
+  // Only exact match by instanceId - each flight instance is unique
+  return instanceHasProducts[flight.instanceId] ?? 0
+}
+
 function AnimatedFlights(props: AnimatedFlightsProps) {
-  const { 
-    flightInstances, 
-    simulationStartTime, 
-    currentSimTime, 
-    isPlaying, 
+  const {
+    flightInstances,
+    simulationStartTime,
+    currentSimTime,
+    isPlaying,
     playbackSpeed,
     speedRef,
     onFlightClick,
@@ -422,8 +432,8 @@ function AnimatedFlights(props: AnimatedFlightsProps) {
       const depMs = depDate.getTime()
       const arrMs = new Date(f.arrivalTime).getTime()
 
-      // Usar instanceId del objeto (generado consistentemente con backend)
-      const productCount = instanceHasProducts[f.instanceId] ?? 0
+      // O(1) lookup por instanceId exacto
+      const productCount = getProductCountForFlight(f, instanceHasProducts)
       const hasProducts = productCount > 0
 
       // ==========================================
