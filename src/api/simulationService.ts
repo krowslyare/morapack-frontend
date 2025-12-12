@@ -267,46 +267,162 @@ export interface CollapseDayStatistics {
   productsAssigned: number
   productsUnassigned: number
   assignmentRate: number
+  // NEW: SLA metrics per day
+  productsOnTime?: number
+  productsLate?: number
+  slaComplianceRate?: number
 }
 
-export interface AffectedAirport {
-  airportCode: string
-  airportName: string
-  cityName: string
-  latitude: number
-  longitude: number
-  unassignedProducts: number
-  affectedOrders: number
-  severity: 'critical' | 'high' | 'medium' | 'low'
-  reason: string
+// ===== VISUAL Collapse Simulation Types (Day-by-Day) =====
+
+/**
+ * Request to initialize visual collapse simulation
+ */
+export interface CollapseVisualInitRequest {
+  simulationStartTime?: string // ISO 8601, default: 2025-01-02T00:00:00
 }
 
-export interface CollapseSimulationResult {
+/**
+ * Flight instance assigned by the algorithm for visualization
+ */
+export interface FlightInstanceDTO {
+  instanceId: string           // e.g. "FL-123-DAY-1-0800"
+  flightId: number | null
+  flightCode: string | null
+  departureTime: string        // ISO 8601
+  arrivalTime: string          // ISO 8601
+  originCode: string | null    // IATA code
+  destinationCode: string | null  // IATA code
+  originLat: number | null
+  originLng: number | null
+  destLat: number | null
+  destLng: number | null
+  productCount: number         // Products assigned to this instance
+}
+
+/**
+ * Result from ONE DAY of visual collapse simulation
+ * Frontend calls this repeatedly until hasReachedCollapse=true
+ */
+export interface CollapseVisualDayResult {
   success: boolean
   message: string
-  hasCollapsed: boolean
-  collapseDay: number
-  collapseTime: string | null
-  collapseReason: 'UNASSIGNED_ORDERS' | 'WAREHOUSE_SATURATED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE' | 'SLA_BREACH'
+  
+  // Day identification
+  dayNumber: number
+  dayStart: string   // ISO 8601
+  dayEnd: string     // ISO 8601
+  
+  // Collapse status
+  hasReachedCollapse: boolean
+  collapseReason: 'SLA_BREACH' | 'CAPACITY_EXHAUSTED' | 'ERROR' | 'MAX_DAYS_REACHED' | null
+  continueSimulation: boolean
+  
+  // Today's statistics
+  ordersLoadedToday: number
+  productsAssignedToday: number
+  productsUnassignedToday: number
+  assignmentRateToday: number
+  
+  // Cumulative statistics
+  totalDaysSimulated: number
+  totalOrdersLoaded: number
+  totalProductsInSystem: number
+  cumulativeAssigned: number
+  cumulativeBacklog: number
+  cumulativeAssignmentRate: number
+  
+  // SLA metrics
+  productsOnTimeToday: number
+  productsLateToday: number
+  slaComplianceToday: number
+  
+  // Backlog trend
+  previousDayBacklog: number
+  consecutiveGrowingDays: number
+  backlogIsGrowing: boolean
+  
+  // Execution
   executionStartTime: string
   executionEndTime: string
+  executionTimeMs: number
+  
+  // UI helpers
+  collapseProgress: number      // 0-100, how close to collapse
+  statusLabel: 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'COLLAPSED' | 'ERROR' | 'INITIALIZING' | 'COMPLETED'
+  
+  // Actual flights used by the algorithm (new)
+  assignedFlightInstances?: FlightInstanceDTO[]
+  usedFlightCodes?: string[]
+}
+
+/**
+ * SLA Violation Detail - individual violation info
+ */
+export interface SLAViolationDetail {
+  orderName: string
+  originContinent: string
+  destinationContinent: string
+  isContinental: boolean        // true = same continent
+  slaMaxHours: number           // 48 for continental, 72 for intercontinental
+  actualDeliveryHours: number   // Actual time taken
+  hoursOverdue: number          // How many hours late
+  orderDate: string | null
+  expectedDeadline: string | null
+  actualDelivery: string | null
+}
+
+/**
+ * Collapse Simulation Result (SLA-based)
+ * 
+ * COLLAPSE DEFINITION:
+ * - Continental orders: must be delivered within 2 days (48 hours)
+ * - Intercontinental orders: must be delivered within 3 days (72 hours)
+ * - System collapses when SLA violation rate exceeds threshold (default: 5%)
+ */
+export interface CollapseSimulationResult {
+  success?: boolean
+  message?: string
+  hasCollapsed: boolean
+  collapseDay: number
+  collapseTime?: string | null
+  collapseReason: 'SLA_BREACH' | 'CAPACITY_EXHAUSTED' | 'NO_FLIGHTS' | 'MAX_DAYS_REACHED' | 'ERROR' | 'NONE'
+  executionStartTime?: string
+  executionEndTime?: string
   executionTimeSeconds: number
-  simulationStartTime: string
+  simulationStartTime?: string
   totalDaysSimulated: number
   totalOrdersProcessed: number
-  totalProductsProcessed: number
+  totalProductsProcessed?: number
   assignedProducts: number
   unassignedProducts: number
   unassignedPercentage: number
-  dailyStatistics?: CollapseDayStatistics[]
-  // For demo visualization
-  slaCompliancePercentage?: number
-  slaViolationPercentage?: number
-  productsOnTime?: number
-  productsLate?: number
+  
+  // NEW: SLA-based collapse metrics
+  productsOnTime?: number           // Products delivered within SLA
+  productsLate?: number             // Products delivered after SLA deadline
+  slaCompliancePercentage?: number  // % of products on time (100% = perfect)
+  slaViolationPercentage?: number   // % of products late (0% = perfect)
+  slaThresholdUsed?: number         // Threshold used to determine collapse (e.g., 5%)
+  
+  // Continental vs Intercontinental breakdown
+  continentalOrdersTotal?: number
+  continentalOrdersOnTime?: number
+  continentalOrdersLate?: number
   continentalSlaCompliance?: number
+  
+  intercontinentalOrdersTotal?: number
+  intercontinentalOrdersOnTime?: number
+  intercontinentalOrdersLate?: number
   intercontinentalSlaCompliance?: number
+  
+  // NEW: Affected airports (for map visualization)
   affectedAirports?: AffectedAirport[]
+  
+  // Detailed SLA violations (optional, for analysis)
+  slaViolations?: SLAViolationDetail[]
+  
+  dailyStatistics?: CollapseDayStatistics[]
 }
 
 // ===== Service =====
@@ -446,6 +562,7 @@ export const simulationService = {
    * Load orders for Daily Simulation with automatic cleanup and 10-minute timeframe
    * This endpoint automatically clears old data and loads orders within the simulation window
    * USE THIS FOR INITIAL START ONLY
+   * USE THIS FOR INITIAL START ONLY
    */
   loadForDailySimulation: async (startTime: string): Promise<{
     success: boolean
@@ -465,12 +582,12 @@ export const simulationService = {
       durationMinutes: number
     }
   }> => {
-    const { data } = await api.post('/data/load-for-daily', null, {
+    // Use apiLongRunning because loading files can take > 30s
+    const { data } = await apiLongRunning.post('/data/load-for-daily', null, {
       params: { startTime },
     })
     return data
   },
-
   /**
    * Refresh orders for Daily Simulation WITHOUT clearing existing orders
    * Use this when re-running the algorithm during simulation (e.g., when new order is added)
@@ -702,7 +819,7 @@ export const simulationService = {
     flights: FlightStatus[],
     currentInstances: FlightInstance[],
     simulationStartTime: Date,
-    currentDay: number,  // 👈 0-based: 0=day1, 1=day2, etc.
+    currentDay: number,
     airports: any[]
   ): FlightInstance[] => {
     // Validate inputs
@@ -798,7 +915,9 @@ export const simulationService = {
   },
 
   /**
-   * Execute collapse simulation (backend endpoint)
+   * Execute collapse simulation (backend endpoint) - BATCH MODE
+   * Runs to completion in one call (can take hours)
+   * Use for "Demo" button to quickly show professor the result
    */
   runCollapseScenario: async (
     request: CollapseSimulationRequest,
@@ -810,5 +929,53 @@ export const simulationService = {
       { signal: options?.signal }
     )
     return data
+  },
+
+  // ==================== VISUAL COLLAPSE SIMULATION (Day-by-Day) ====================
+
+  /**
+   * Initialize visual collapse simulation
+   * Must be called ONCE before starting day-by-day execution
+   * Clears database and prepares for simulation
+   * Default start: January 2, 2025 (where data begins)
+   * Uses long-running client since it clears DB and can take time
+   */
+  initCollapseVisual: async (
+    request?: CollapseVisualInitRequest
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await apiLongRunning.post<CollapseVisualDayResult>(
+      '/algorithm/collapse-visual/init',
+      request || {}
+    )
+    return data
+  },
+
+  /**
+   * Execute ONE day of visual collapse simulation
+   * Call repeatedly for each day (1, 2, 3, ...) until:
+   * - hasReachedCollapse = true (system collapsed)
+   * - continueSimulation = false (max days or error)
+   * 
+   * Frontend should animate flights between calls
+   * Uses long-running client since ALNS can take 1-5 minutes per day
+   */
+  executeCollapseVisualDay: async (
+    dayNumber: number,
+    signal?: AbortSignal
+  ): Promise<CollapseVisualDayResult> => {
+    const { data } = await apiLongRunning.post<CollapseVisualDayResult>(
+      `/algorithm/collapse-visual/day/${dayNumber}`,
+      null,
+      { signal }
+    )
+    return data
+  },
+
+  /**
+   * Reset visual collapse simulation state
+   * Call before starting a new simulation or to abort current one
+   */
+  resetCollapseVisual: async (): Promise<void> => {
+    await api.post('/algorithm/collapse-visual/reset')
   },
 }
