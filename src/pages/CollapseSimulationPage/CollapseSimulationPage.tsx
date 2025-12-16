@@ -1007,7 +1007,7 @@ export function CollapseSimulationPage() {
   const [demoResult, setDemoResult] = useState<CollapseSimulationResult | null>(null)
   const [isDemoRunning, setIsDemoRunning] = useState(false)
   const [isProcessingDay, setIsProcessingDay] = useState(false)
-  const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(false)
+  const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(true)
 
   // Flight data
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
@@ -1285,7 +1285,7 @@ export function CollapseSimulationPage() {
           dayStart,
           24, // 1 day duration
           airports,
-          { baseDay: dayNumber } // Match instanceId with backend (DAY-1, DAY-2...)
+          { baseDay: dayNumber, useLocalTime: true } // Match instanceId with backend (DAY-1, DAY-2...)
         )
       }
 
@@ -1946,17 +1946,22 @@ export function CollapseSimulationPage() {
                   ))}
                 </SpeedButtons>
 
-                <ToggleContainer>
-                  <ToggleLabel onClick={() => setShowOnlyWithProducts(!showOnlyWithProducts)}>
-                    <ToggleSwitch $active={showOnlyWithProducts} />
-                    <span>Solo vuelos con carga</span>
-                  </ToggleLabel>
-                  <ToggleHint>
-                    {showOnlyWithProducts
-                      ? 'Ocultando vuelos sin productos asignados'
-                      : 'Mostrando todos los vuelos programados'}
-                  </ToggleHint>
-                </ToggleContainer>
+                <StatusBadge $status={
+                  showOnlyWithProducts ? 'running' : 'idle'
+                }>
+                  Vuelos Cargados (Fijo)
+                </StatusBadge>
+                {/* DISABLED TEMPORARILY
+          <ToggleContainer style={{ pointerEvents: 'none', opacity: 0.5 }}>
+            <ToggleLabel>
+              <ToggleSwitch $active={showOnlyWithProducts} />
+              <div>
+                <div>Solo vuelos con carga</div>
+                <ToggleHint>Ocultar vuelos vacíos</ToggleHint>
+              </div>
+            </ToggleLabel>
+          </ToggleContainer>
+          */}
               </SpeedControl>
             )}
           </SimulationControls>
@@ -2060,6 +2065,18 @@ export function CollapseSimulationPage() {
 
       {/* Modals */}
       {/* Modals */}
+      {showDailyReport && dailyReportData && (
+        <DailyReportModal
+          show={showDailyReport}
+          dayNumber={dailyReportData.day}
+          data={dailyReportData.data}
+          trend={dailyReportData.trend}
+          onContinue={() => {
+            setShowDailyReport(false)
+            setDailyReportData(null)
+          }}
+        />
+      )}
       {selectedAirport && (
         <AirportDetailsModal
           airport={selectedAirport}
