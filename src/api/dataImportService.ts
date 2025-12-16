@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, apiLongRunning } from './client'
 
 export interface ImportResultData {
   success: boolean
@@ -78,16 +78,16 @@ export async function getDataStatus(): Promise<{
 
 export async function uploadOrdersByDateRange(
   startTime: string,
-  endTime: string    
+  endTime: string
 ): Promise<ImportResultData> {
   // ✅ Usar el mismo endpoint que Python
   const result = await api.post(
     '/data/load-orders',
     null,
-    { 
-      params: { 
+    {
+      params: {
         startTime,
-        endTime 
+        endTime
       },
       timeout: 10 * 60 * 1000
     }
@@ -99,6 +99,7 @@ export async function uploadOrdersByDateRange(
  * Clear all orders and products from database
  */
 export async function clearOrders(): Promise<ImportResultData> {
-  const response = await api.delete('/orders/all') // <- nuevo endpoint
+  // Use apiLongRunning to handle large dataset deletions (prevents 30s timeout)
+  const response = await apiLongRunning.delete('/orders/all')
   return response.data
 }

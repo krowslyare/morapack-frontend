@@ -307,23 +307,23 @@ export interface FlightInstanceDTO {
 export interface CollapseVisualDayResult {
   success: boolean
   message: string
-  
+
   // Day identification
   dayNumber: number
   dayStart: string   // ISO 8601
   dayEnd: string     // ISO 8601
-  
+
   // Collapse status
   hasReachedCollapse: boolean
   collapseReason: 'SLA_BREACH' | 'CAPACITY_EXHAUSTED' | 'ERROR' | 'MAX_DAYS_REACHED' | null
   continueSimulation: boolean
-  
+
   // Today's statistics
   ordersLoadedToday: number
   productsAssignedToday: number
   productsUnassignedToday: number
   assignmentRateToday: number
-  
+
   // Cumulative statistics
   totalDaysSimulated: number
   totalOrdersLoaded: number
@@ -331,26 +331,26 @@ export interface CollapseVisualDayResult {
   cumulativeAssigned: number
   cumulativeBacklog: number
   cumulativeAssignmentRate: number
-  
+
   // SLA metrics
   productsOnTimeToday: number
   productsLateToday: number
   slaComplianceToday: number
-  
+
   // Backlog trend
   previousDayBacklog: number
   consecutiveGrowingDays: number
   backlogIsGrowing: boolean
-  
+
   // Execution
   executionStartTime: string
   executionEndTime: string
   executionTimeMs: number
-  
+
   // UI helpers
   collapseProgress: number      // 0-100, how close to collapse
   statusLabel: 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'COLLAPSED' | 'ERROR' | 'INITIALIZING' | 'COMPLETED'
-  
+
   // Actual flights used by the algorithm (new)
   assignedFlightInstances?: FlightInstanceDTO[]
   usedFlightCodes?: string[]
@@ -397,31 +397,31 @@ export interface CollapseSimulationResult {
   assignedProducts: number
   unassignedProducts: number
   unassignedPercentage: number
-  
+
   // NEW: SLA-based collapse metrics
   productsOnTime?: number           // Products delivered within SLA
   productsLate?: number             // Products delivered after SLA deadline
   slaCompliancePercentage?: number  // % of products on time (100% = perfect)
   slaViolationPercentage?: number   // % of products late (0% = perfect)
   slaThresholdUsed?: number         // Threshold used to determine collapse (e.g., 5%)
-  
+
   // Continental vs Intercontinental breakdown
   continentalOrdersTotal?: number
   continentalOrdersOnTime?: number
   continentalOrdersLate?: number
   continentalSlaCompliance?: number
-  
+
   intercontinentalOrdersTotal?: number
   intercontinentalOrdersOnTime?: number
   intercontinentalOrdersLate?: number
   intercontinentalSlaCompliance?: number
-  
+
   // NEW: Affected airports (for map visualization)
   //affectedAirports?: AffectedAirport[]
-  
+
   // Detailed SLA violations (optional, for analysis)
   slaViolations?: SLAViolationDetail[]
-  
+
   dailyStatistics?: CollapseDayStatistics[]
 }
 
@@ -433,7 +433,7 @@ export const simulationService = {
    * Uses long-running client (90 min timeout)
    */
   executeDaily: async (
-    request: DailyAlgorithmRequest, 
+    request: DailyAlgorithmRequest,
     signal?: AbortSignal  // ✅ Agregar parámetro opcional
   ): Promise<DailyAlgorithmResponse> => {
     const { data } = await apiLongRunning.post<DailyAlgorithmResponse>(
@@ -650,7 +650,7 @@ export const simulationService = {
     startTime: Date,
     durationHours: number,
     airports: any[],
-    options?: { baseDay?: number }
+    options?: { baseDay?: number; useLocalTime?: boolean }
   ): FlightInstance[] => {
     const instances: FlightInstance[] = []
 
@@ -668,6 +668,8 @@ export const simulationService = {
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
     const durationDays = Math.ceil(durationHours / 24)
     const baseDay = options?.baseDay ?? 0  // ✅ Default is 0 for weekly simulation
+
+    const useLocalTime = options?.useLocalTime ?? false
 
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
     const parseTimeString = (timeStr?: string) => {
@@ -715,13 +717,26 @@ export const simulationService = {
 
       // Generate one instance per day (each flight operates once per day at its scheduled time)
       for (let day = 0; day < durationDays; day++) {
-        // Get the start of this simulation day in UTC
-        const dayStart = new Date(Date.UTC(
-          startTime.getUTCFullYear(),
-          startTime.getUTCMonth(),
-          startTime.getUTCDate() + day,
-          0, 0, 0, 0
-        ))
+
+        let dayStart: Date
+
+        if (useLocalTime) {
+          // Get the start of this simulation day in LOCAL user time (matching simulation clock)
+          dayStart = new Date(
+            startTime.getFullYear(),
+            startTime.getMonth(),
+            startTime.getDate() + day,
+            0, 0, 0, 0
+          )
+        } else {
+          // Get the start of this simulation day in UTC (for Weekly/Collapse compatibility)
+          dayStart = new Date(Date.UTC(
+            startTime.getUTCFullYear(),
+            startTime.getUTCMonth(),
+            startTime.getUTCDate() + day,
+            0, 0, 0, 0
+          ))
+        }
 
         let departureDateTime: Date
         let arrivalDateTime: Date
@@ -731,14 +746,27 @@ export const simulationService = {
           const hours = depTime?.hours ?? 0
           const minutes = depTime?.minutes ?? 0
 
-          departureDateTime = new Date(Date.UTC(
-            dayStart.getUTCFullYear(),
-            dayStart.getUTCMonth(),
-            dayStart.getUTCDate(),
-            hours,
-            minutes,
-            0, 0
-          ))
+          if (useLocalTime) {
+            // Construct departure using LOCAL components to match simulation clock
+            departureDateTime = new Date(
+              dayStart.getFullYear(),
+              dayStart.getMonth(),
+              dayStart.getDate(),
+              hours,
+              minutes,
+              0, 0
+            )
+          } else {
+            // Construct departure using UTC components
+            departureDateTime = new Date(Date.UTC(
+              dayStart.getUTCFullYear(),
+              dayStart.getUTCMonth(),
+              dayStart.getUTCDate(),
+              hours,
+              minutes,
+              0, 0
+            ))
+          }
 
           // 2) Duración real del vuelo según transport_time_days
           const flightDurationMs =
@@ -758,14 +786,14 @@ export const simulationService = {
         if (departureDateTime >= startTime && departureDateTime < endTime) {
           // ✅ CRITICAL FIX: Backend usa day 1-based (DAY-1, DAY-2, ...)
           // El loop itera day=0,1,2... así que sumamos baseDay+1
-          const backendDayNumber = baseDay + day 
-          
+          const backendDayNumber = baseDay + day
+
           const instanceHours = depTime ? depTime.hours : 0
           const instanceMinutes = depTime ? depTime.minutes : 0
 
           // ✅ Generate instanceId matching backend format EXACTLY
           const instanceId =
-            `FL-${flight.id}-DAY-${backendDayNumber}-${String(instanceHours).padStart(2,'0')}${String(instanceMinutes).padStart(2,'0')}`
+            `FL-${flight.id}-DAY-${backendDayNumber}-${String(instanceHours).padStart(2, '0')}${String(instanceMinutes).padStart(2, '0')}`
 
           instances.push({
             id: `${flight.code}-D${day}-${departureDateTime.getTime()}`,
@@ -796,7 +824,7 @@ export const simulationService = {
     })
 
     // Sort instances by departure time for predictable ordering
-    instances.sort((a, b) => 
+    instances.sort((a, b) =>
       new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
     )
 
