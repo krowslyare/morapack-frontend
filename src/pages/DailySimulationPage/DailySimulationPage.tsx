@@ -913,7 +913,8 @@ export function DailySimulationPage() {
         response.flights,
         simulationStartDate,
         72, // 72 hours = 3 days
-        airports
+        airports,
+        { useLocalTime: true } // ✅ Enable local time fix for Daily Simulation
       )
 
       console.log(`Generated ${instances.length} flight instances for 3 days`)

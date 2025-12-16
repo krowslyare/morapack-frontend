@@ -650,7 +650,7 @@ export const simulationService = {
     startTime: Date,
     durationHours: number,
     airports: any[],
-    options?: { baseDay?: number }
+    options?: { baseDay?: number; useLocalTime?: boolean }
   ): FlightInstance[] => {
     const instances: FlightInstance[] = []
 
@@ -668,6 +668,8 @@ export const simulationService = {
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
     const durationDays = Math.ceil(durationHours / 24)
     const baseDay = options?.baseDay ?? 0  // ✅ Default is 0 for weekly simulation
+
+    const useLocalTime = options?.useLocalTime ?? false
 
     // Helper to parse time string "HH:mm:ss" or "HH:mm" to hours and minutes
     const parseTimeString = (timeStr?: string) => {
@@ -715,13 +717,26 @@ export const simulationService = {
 
       // Generate one instance per day (each flight operates once per day at its scheduled time)
       for (let day = 0; day < durationDays; day++) {
-        // Get the start of this simulation day in LOCAL user time (matching simulation clock)
-        const dayStart = new Date(
-          startTime.getFullYear(),
-          startTime.getMonth(),
-          startTime.getDate() + day,
-          0, 0, 0, 0
-        )
+
+        let dayStart: Date
+
+        if (useLocalTime) {
+          // Get the start of this simulation day in LOCAL user time (matching simulation clock)
+          dayStart = new Date(
+            startTime.getFullYear(),
+            startTime.getMonth(),
+            startTime.getDate() + day,
+            0, 0, 0, 0
+          )
+        } else {
+          // Get the start of this simulation day in UTC (for Weekly/Collapse compatibility)
+          dayStart = new Date(Date.UTC(
+            startTime.getUTCFullYear(),
+            startTime.getUTCMonth(),
+            startTime.getUTCDate() + day,
+            0, 0, 0, 0
+          ))
+        }
 
         let departureDateTime: Date
         let arrivalDateTime: Date
@@ -731,15 +746,27 @@ export const simulationService = {
           const hours = depTime?.hours ?? 0
           const minutes = depTime?.minutes ?? 0
 
-          // Construct departure using LOCAL components to match simulation clock
-          departureDateTime = new Date(
-            dayStart.getFullYear(),
-            dayStart.getMonth(),
-            dayStart.getDate(),
-            hours,
-            minutes,
-            0, 0
-          )
+          if (useLocalTime) {
+            // Construct departure using LOCAL components to match simulation clock
+            departureDateTime = new Date(
+              dayStart.getFullYear(),
+              dayStart.getMonth(),
+              dayStart.getDate(),
+              hours,
+              minutes,
+              0, 0
+            )
+          } else {
+            // Construct departure using UTC components
+            departureDateTime = new Date(Date.UTC(
+              dayStart.getUTCFullYear(),
+              dayStart.getUTCMonth(),
+              dayStart.getUTCDate(),
+              hours,
+              minutes,
+              0, 0
+            ))
+          }
 
           // 2) Duración real del vuelo según transport_time_days
           const flightDurationMs =
