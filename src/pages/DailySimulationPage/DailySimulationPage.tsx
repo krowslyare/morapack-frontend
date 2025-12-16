@@ -8,6 +8,7 @@ import { simulationService, type FlightStatus, type FlightInstance } from '../..
 import { useAirports } from '../../hooks/api/useAirports'
 import { useOrders } from '../../hooks/api/useOrders'
 import { toast } from 'react-toastify'
+import { clearOrders } from '../../api/dataImportService'
 import { FlightPackagesModal } from '../../components/FlightPackagesModal'
 import { OrderDetailsModal } from '../../components/OrderDetailsModal'
 import { WeeklyKPICard } from '../../components/ui/WeeklyKPICard'
@@ -839,8 +840,27 @@ export function DailySimulationPage() {
     !!simulationStartDate && isDailyRunning
   )
 
-  // Extract orders from query result
-  const orders = useMemo(() => ordersData ?? [], [ordersData])
+  // Extract orders from query result and sanitize timestamps/status
+  const orders = useMemo(() => {
+    if (!ordersData) return []
+    return ordersData.map(order => {
+      // WORKAROUND: Backend sets Order status to IN_TRANSIT during algorithm run to lock them,
+      // even if they haven't departed. This confuses the UI (FlightDrawer).
+      // We check products: if all products are just 'ASSIGNED' (not delivered/moving), revert Order to 'PENDING'.
+      let displayStatus = order.status
+      if (order.status === 'IN_TRANSIT' && order.productSchemas && order.productSchemas.length > 0) {
+        // If all products are merely ASSIGNED (waiting), then the order is visually PENDING departure
+        // Note: Product 'ASSIGNED' means it has a route, but hasn't necessarily flown.
+        const allProductsWaiting = order.productSchemas.every(p =>
+          p.status === 'ASSIGNED' || p.status === 'NOT_ASSIGNED'
+        )
+        if (allProductsWaiting) {
+          displayStatus = 'PENDING'
+        }
+      }
+      return { ...order, status: displayStatus }
+    })
+  }, [ordersData])
 
   // Store flight statuses for rolling window
   const flightStatusesRef = useRef<FlightStatus[]>([])
@@ -1255,10 +1275,17 @@ export function DailySimulationPage() {
       assignedProducts: 0,
     })
 
+
     try {
+      // ✅ STEP 0: Explicitly clear database to ensure clean state
+      // This prevents backend stalls on "Calculating fresh capacity stats" due to old data
+      console.log('🧹 Clearing previous simulation data...')
+      toast.info('Limpiando base de datos...')
+      await clearOrders()
+
       // ✅ STEP 1: Auto-load orders from files to database
       console.log('📦 Loading orders for Daily Simulation...')
-      toast.info('Cargando datos de órdenes en BD...')
+      toast.info('Cargando nuevos pedidos...')
 
       // Format date as local time (NOT UTC) to match file data format
       // Files have orders in local time format (YYYYMMDD-HH-MM)
@@ -1288,6 +1315,7 @@ export function DailySimulationPage() {
       toast.success(
         `Cargados: ${loadResponse.statistics.ordersCreated} órdenes (${loadResponse.timeWindow.durationMinutes} min)`
       )
+
 
       // STEP 2: Load flight data (existing)
       console.log('✈️ Loading flight data...')
