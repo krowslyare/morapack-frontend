@@ -483,8 +483,7 @@ function AnimatedFlights({
 
     // Only process flights departing within the next 30 minutes to optimize performance
     // Older/future flights won't create markers until they're about to depart
-    const thirttyMinutesFromNow = new Date(currentSimTime.getTime() + 30 * 60 * 1000)
-    const thirtyMinutesAgo = new Date(currentSimTime.getTime() - 30 * 60 * 1000)
+    const thirtyMinutesFromNow = new Date(currentSimTime.getTime() + 30 * 60 * 1000)
 
     // Calculate currently active markers to respect limit
     const currentActiveCount = Object.keys(markersRef.current).length
@@ -492,7 +491,10 @@ function AnimatedFlights({
 
     if (availableSlots <= 0) return
 
-    // Find new instances that haven't been processed and are about to fly
+    // Find new instances that haven't been processed
+    // FIXED: Only include flights that:
+    // 1. Depart within the next 30 minutes (upcoming flights), OR
+    // 2. Are currently in-flight (departed in past, arriving in future) - these need mid-flight positioning
     const newInstances = flightInstances
       .filter((f) => {
         const dept = new Date(f.departureTime)
@@ -506,12 +508,16 @@ function AnimatedFlights({
         // If showOnlyWithProducts is FALSE, we show EVERYTHING (even empty flights)
         if (showOnlyWithProducts && !hasProducts) return false
 
-        // Include flights that: depart soon, are currently flying, or recently arrived (cleanup window)
-        return (
-          !processedIdsRef.current.has(f.id) && // use f.id (string unique instance id)
-          dept <= thirttyMinutesFromNow &&
-          arr >= thirtyMinutesAgo
-        )
+        // Already processed? Skip
+        if (processedIdsRef.current.has(f.id)) return false
+
+        // CASE 1: Upcoming flights - depart within next 30 minutes
+        const isUpcoming = dept > currentSimTime && dept <= thirtyMinutesFromNow
+
+        // CASE 2: Currently in-flight - already departed but not yet arrived
+        const isInFlight = dept <= currentSimTime && arr > currentSimTime
+
+        return isUpcoming || isInFlight
       })
       // Prioritize flights with cargo to ensure they are visualized when concurrency limit is hit
       .sort((a, b) => {
@@ -556,26 +562,6 @@ function AnimatedFlights({
       // Store animation data
       animDataRef.current[flight.id] = { origin, destination, ctrl }
 
-      // Calculate initial bearing (heading) from origin to destination
-      // Add 90 degree offset because airplane image points left (270°), not right (90°)
-      const initialBearing = calculateBearing(origin, destination)
-      const adjustedInitialBearing = (initialBearing + 90) % 360
-
-      // Create marker with rotation - use loaded class if flight has products
-      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${adjustedInitialBearing}deg);transition:transform 0.3s linear;" />`
-      const planeIcon = new DivIcon({
-        className: hasProducts ? 'plane-icon plane-icon--loaded' : 'plane-icon plane-icon--empty',
-        html: planeHTML,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
-      })
-
-      const marker = L.marker(origin, { icon: planeIcon, interactive: true })
-      marker.setOpacity(0) // Start hidden
-      marker.on('click', () => onFlightClick(flight))
-      marker.addTo(map)
-      markersRef.current[flight.id] = marker
-
       // Calculate timing
       const departureTime = new Date(flight.departureTime)
       const arrivalTime = new Date(flight.arrivalTime)
@@ -584,8 +570,49 @@ function AnimatedFlights({
       const startOffsetMs = departureTime.getTime() - simulationStartTime.getTime()
       const startOffsetSeconds = startOffsetMs / 1000
 
-      // Animation object for GSAP
-      const animObj = { progress: 0 }
+      // ✅ FIX: Check if flight is already in-flight (departed in the past)
+      const isAlreadyInFlight = departureTime <= currentSimTime && arrivalTime > currentSimTime
+
+      // Calculate initial position and bearing
+      let initialPosition: LatLngTuple
+      let initialProgress = 0
+
+      if (isAlreadyInFlight) {
+        // Flight already in progress - calculate current position
+        const elapsedFlightMs = currentSimTime.getTime() - departureTime.getTime()
+        initialProgress = Math.min(1, Math.max(0, elapsedFlightMs / flightDurationMs))
+        initialPosition = bezierPoint(initialProgress, origin, ctrl, destination)
+      } else {
+        // Flight hasn't departed yet - start at origin
+        initialPosition = origin
+      }
+
+      // Calculate bearing for the plane icon
+      const tangent = isAlreadyInFlight
+        ? bezierTangent(initialProgress, origin, ctrl, destination)
+        : [destination[0] - origin[0], destination[1] - origin[1]] as LatLngTuple
+      const bearing = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI
+      const adjustedBearing = (bearing + 90) % 360
+
+      // Create marker with rotation - use loaded class if flight has products
+      const planeHTML = `<img src="/airplane.png" alt="✈" style="width:20px;height:20px;display:block;transform-origin:50% 50%;transform:rotate(${adjustedBearing}deg);transition:transform 0.3s linear;" />`
+      const planeIcon = new DivIcon({
+        className: hasProducts ? 'plane-icon plane-icon--loaded' : 'plane-icon plane-icon--empty',
+        html: planeHTML,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      })
+
+      // ✅ FIX: Start marker at correct position (origin for upcoming, mid-flight for in-progress)
+      const marker = L.marker(initialPosition, { icon: planeIcon, interactive: true })
+      // ✅ FIX: In-flight planes should be visible immediately, upcoming planes start hidden
+      marker.setOpacity(isAlreadyInFlight ? 1 : 0)
+      marker.on('click', () => onFlightClick(flight))
+      marker.addTo(map)
+      markersRef.current[flight.id] = marker
+
+      // Animation object for GSAP - start at current progress for in-flight planes
+      const animObj = { progress: initialProgress }
 
       // Add animation to timeline at the correct time
       timeline.to(
@@ -636,9 +663,11 @@ function AnimatedFlights({
     })
 
     // Seek to current time to update new animations
+    // ✅ FIX: Use suppressEvents=true to prevent onStart from firing during seek
+    // This prevents upcoming flights from becoming visible prematurely
     const elapsedMs = currentSimTime.getTime() - simulationStartTime.getTime()
     const elapsedSeconds = elapsedMs / 1000
-    timeline.seek(elapsedSeconds, false)
+    timeline.seek(elapsedSeconds, true)
   }, [flightInstances, map, simulationStartTime, currentSimTime, onFlightClick])
 
   // Sync timeline with simulation time and play/pause state
@@ -1209,8 +1238,18 @@ export function DailySimulationPage() {
         if (currentHour > lastUpdateHour) {
           console.log(`🔄 Updating package states at ${next.toLocaleTimeString()} (Hour ${hourOfDay})`)
           lastStateUpdateHourRef.current = currentHour
+
+          // ✅ FIX: Format as LOCAL time (not UTC) to match flight departure times in database
+          const year = next.getFullYear()
+          const month = String(next.getMonth() + 1).padStart(2, '0')
+          const day = String(next.getDate()).padStart(2, '0')
+          const hrs = String(next.getHours()).padStart(2, '0')
+          const mins = String(next.getMinutes()).padStart(2, '0')
+          const secs = String(next.getSeconds()).padStart(2, '0')
+          const localTimeString = `${year}-${month}-${day}T${hrs}:${mins}:${secs}`
+
           simulationService.updateStates({
-            currentTime: next.toISOString()
+            currentTime: localTimeString
           }).then(response => {
             if (response.transitions.total > 0) {
               console.log('✅ States updated:', response.transitions)
@@ -1248,10 +1287,10 @@ export function DailySimulationPage() {
     }, 1000) // Every real second
   }, [updateDailySimTime])  // ✅ Minimal stable dependencies
 
-  // Start simulation - uses current local time as start
+  // Start simulation - uses fixed date for testing
   const handleStart = useCallback(async () => {
-    // Use current local time as simulation start, plus 30s buffer for algo loading
-    const now = new Date(Date.now() + 30 * 1000)
+    // ✅ Fixed start time: December 20, 2025 at 11:35 PM (local time)
+    const now = new Date(2025, 11, 21, 20, 35, 0) // Month is 0-indexed (11 = December)
 
     // Update the store with the current time as simulation start
     setSimulationStartDate(now)
@@ -1895,7 +1934,6 @@ export function DailySimulationPage() {
             flightInstances={flightInstances}
             instanceHasProducts={instanceHasProducts}
             simulationStartTime={simulationStartDate}
-            currentSimTime={currentSimTime ?? undefined}
             activeFlightsCount={flightInstances.filter(f => {
               if (!currentSimTime) return false
               const dept = new Date(f.departureTime)

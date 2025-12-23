@@ -119,7 +119,7 @@ export const useSimulationStore = create<SimulationStore>()(
       collapseVisualCurrentDay: 0,
       collapseVisualSimStartTime: null,
       collapseVisualCurrentTime: null,
-      collapseVisualSpeed: 30, // Default: 30 min per real second
+      collapseVisualSpeed: 10, // Default: 10 min per real second (slower for buffer)
       collapseVisualBacklog: 0,
       collapseVisualProgress: 0,
       collapseVisualStatusLabel: 'IDLE',
@@ -284,7 +284,7 @@ export const useSimulationStore = create<SimulationStore>()(
 
       // ==================== COLLAPSE VISUAL SIMULATION ACTIONS ====================
 
-      startCollapseVisual: (startTime: Date, speed: number = 30) => {
+      startCollapseVisual: (startTime: Date, speed: number = 10) => {
         set({
           collapseVisualStatus: 'running',
           collapseVisualCurrentDay: 0,
@@ -350,7 +350,7 @@ export const useSimulationStore = create<SimulationStore>()(
           collapseVisualCurrentDay: 0,
           collapseVisualSimStartTime: null,
           collapseVisualCurrentTime: null,
-          collapseVisualSpeed: 30,
+          collapseVisualSpeed: 10,
           collapseVisualBacklog: 0,
           collapseVisualProgress: 0,
           collapseVisualStatusLabel: 'IDLE',

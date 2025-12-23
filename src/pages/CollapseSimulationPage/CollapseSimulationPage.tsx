@@ -37,6 +37,7 @@ import '../WeeklySimulationPage/index.css'
 // ====================== Constants ======================
 const DEFAULT_START_DATE = new Date('2025-01-02T00:00:00')
 const SPEED_OPTIONS = [
+  { label: '10min/s', value: 10 },  // Default - gives buffer for day loading
   { label: '15min/s', value: 15 },
   { label: '30min/s', value: 30 },
 ]
@@ -989,6 +990,7 @@ export function CollapseSimulationPage() {
     collapseVisualStatusLabel,
     collapseVisualHasCollapsed,
     collapseVisualCollapseReason,
+    collapseVisualSimStartTime,
     startCollapseVisual,
     updateCollapseVisualTime,
     advanceCollapseVisualDay,
@@ -1008,6 +1010,12 @@ export function CollapseSimulationPage() {
   const [isDemoRunning, setIsDemoRunning] = useState(false)
   const [isProcessingDay, setIsProcessingDay] = useState(false)
   const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(true)
+
+  // Date picker state for simulation start date
+  const [startDate, setStartDate] = useState<Date>(DEFAULT_START_DATE)
+
+  // Collapse result data (stored when collapse occurs for display)
+  const [collapseData, setCollapseData] = useState<CollapseVisualDayResult | null>(null)
 
   // Flight data
   const [flightInstances, setFlightInstances] = useState<FlightInstance[]>([])
@@ -1156,8 +1164,8 @@ export function CollapseSimulationPage() {
       return
     }
 
-    // Limit concurrency: max 2 requests in flight
-    if (prefetchPromiseRef.current.size >= 2) {
+    // Limit concurrency: max 1 request in flight (backend processes sequentially with lock)
+    if (prefetchPromiseRef.current.size >= 1) {
       return
     }
 
@@ -1248,6 +1256,8 @@ export function CollapseSimulationPage() {
 
       // Check for collapse
       if (result.hasReachedCollapse) {
+        // Store the collapse data for detailed display
+        setCollapseData(result)
         setCollapseVisualCollapsed(result.collapseReason || 'UNKNOWN')
         toast.warning(`¡Sistema colapsó en día ${dayNumber}!`, { autoClose: false })
         return false
@@ -1279,7 +1289,9 @@ export function CollapseSimulationPage() {
       }
 
       if (flightStatusesRef.current.length > 0 && airports.length > 0) {
-        const dayStart = new Date(DEFAULT_START_DATE.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000)
+        // Use the store's start time if available, otherwise fall back to DEFAULT_START_DATE
+        const simStartTime = collapseVisualSimStartTime ? new Date(collapseVisualSimStartTime) : DEFAULT_START_DATE
+        const dayStart = new Date(simStartTime.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000)
         allScheduledInstances = simulationService.generateFlightInstances(
           flightStatusesRef.current,
           dayStart,
@@ -1323,6 +1335,11 @@ export function CollapseSimulationPage() {
         setIsProcessingDay(false)
       }
 
+      // Prefetch next day (1 day ahead buffer)
+      if (result.continueSimulation && !result.hasReachedCollapse) {
+        prefetchDay(dayNumber + 1)
+      }
+
       return result.continueSimulation
 
     } catch (error) {
@@ -1332,7 +1349,7 @@ export function CollapseSimulationPage() {
       setIsProcessingDay(false)
       return false
     }
-  }, [airports, pauseCollapseVisual, setCollapseVisualProgress, setCollapseVisualCollapsed, getOrFetchDay, prefetchDay, convertToFlightInstance])
+  }, [airports, collapseVisualSimStartTime, pauseCollapseVisual, setCollapseVisualProgress, setCollapseVisualCollapsed, getOrFetchDay, prefetchDay, convertToFlightInstance])
 
   // Start visual simulation
   const handleStartVisual = useCallback(async () => {
@@ -1345,51 +1362,64 @@ export function CollapseSimulationPage() {
 
     // Clear previous flight instances
     setFlightInstances([])
+    setCollapseData(null)
 
     try {
+      console.log('[CollapseSimulation] Starting visual simulation with date:', startDate)
       toast.info('Inicializando simulación visual...')
 
-      // Initialize backend
+      // Initialize backend with selected start date
+      console.log('[CollapseSimulation] Calling initCollapseVisual...')
       const initResult = await simulationService.initCollapseVisual({
-        simulationStartTime: DEFAULT_START_DATE.toISOString()
+        simulationStartTime: startDate.toISOString()
       })
+      console.log('[CollapseSimulation] initCollapseVisual result:', initResult)
 
       if (!initResult.success) {
         toast.error('Error al inicializar: ' + initResult.message)
-        return
-      }
-
-      // Start store state
-      startCollapseVisual(DEFAULT_START_DATE, collapseVisualSpeed)
-
-      // Process first day
-      const day1Success = await processDay(1)
-
-      if (!day1Success) {
-        toast.error('Error al procesar día 1')
-        resetCollapseVisual()
+        setIsProcessingDay(false)
         setShowStartModal(true)
         return
       }
 
-      advanceCollapseVisualDay(1)
+      // IMPORTANT: Process first day BEFORE starting the clock
+      // This prevents the clock from racing ahead while waiting for data
+      console.log('[CollapseSimulation] Processing day 1 (clock not running yet)...')
 
-      // IMPORTANT: Start prefetching days 2 and 3 immediately after day 1
-      // Start prefetching day 2 (sequential - only one at a time)
+      // Manually set processing state since we're not in "running" mode yet
+      setIsProcessingDay(true)
+
+      // Process day 1 synchronously (no prefetch during first day to avoid overload)
+      const day1Success = await processDay(1)
+      console.log('[CollapseSimulation] Day 1 result:', day1Success)
+
+      if (!day1Success) {
+        toast.error('Error al procesar día 1')
+        setShowStartModal(true)
+        setIsProcessingDay(false)
+        return
+      }
+
+      // NOW start the simulation clock - only after day 1 is ready
+      startCollapseVisual(startDate, collapseVisualSpeed)
+      advanceCollapseVisualDay(1)
+      setIsProcessingDay(false)
+
+      // Start prefetch for ONLY day 2 (1 day ahead is enough)
+      // Each subsequent day will prefetch the next one
       console.log('[Prefetch] Starting prefetch for day 2...')
       prefetchDay(2)
-      prefetchDay(3)
-      prefetchDay(4)
 
       toast.success('Simulación iniciada - Día 1')
 
     } catch (error) {
-      console.error('Error starting simulation:', error)
+      console.error('[CollapseSimulation] Error starting simulation:', error)
       toast.error('Error al iniciar simulación')
       resetCollapseVisual()
       setShowStartModal(true)
+      setIsProcessingDay(false)
     }
-  }, [collapseVisualSpeed, startCollapseVisual, advanceCollapseVisualDay, processDay, resetCollapseVisual])
+  }, [startDate, collapseVisualSpeed, startCollapseVisual, advanceCollapseVisualDay, processDay, resetCollapseVisual, prefetchDay])
 
   // Track if we're waiting for a day to be processed
   const waitingForDayRef = useRef<number>(0)
@@ -1406,6 +1436,12 @@ export function CollapseSimulationPage() {
 
     // Advance time every 100ms (10fps) for smoother animation but less CPU load
     intervalRef.current = setInterval(() => {
+      // IMPORTANT: If we're waiting for a day to load, DON'T advance the clock
+      // This prevents the timer from racing ahead while backend is processing
+      if (waitingForDayRef.current > 0) {
+        return
+      }
+
       const prevTime = collapseVisualCurrentTime ? new Date(collapseVisualCurrentTime) : DEFAULT_START_DATE
       // Calculate time increment based on speed (minutes/sec) and interval (100ms)
       // speed * 60 * 1000 = ms per real second
@@ -1416,15 +1452,12 @@ export function CollapseSimulationPage() {
       updateCollapseVisualTime(newTime)
 
       // Check if we've crossed into a new day
-      const prevDay = Math.floor((prevTime.getTime() - DEFAULT_START_DATE.getTime()) / (24 * 60 * 60 * 1000)) + 1
-      const newDay = Math.floor((newTime.getTime() - DEFAULT_START_DATE.getTime()) / (24 * 60 * 60 * 1000)) + 1
+      // Use the actual simulation start time from the store
+      const simStartMs = collapseVisualSimStartTime ?? DEFAULT_START_DATE.getTime()
+      const prevDay = Math.floor((prevTime.getTime() - simStartMs) / (24 * 60 * 60 * 1000)) + 1
+      const newDay = Math.floor((newTime.getTime() - simStartMs) / (24 * 60 * 60 * 1000)) + 1
 
       if (newDay > prevDay && newDay > collapseVisualCurrentDay) {
-        // Don't process if we're already waiting for this day
-        if (waitingForDayRef.current === newDay) {
-          return
-        }
-
         // Show report for the day that just happened (prevDay)
         // We only show it if we have data for it
         if (prevDay >= 1 && dailyResultsRef.current.has(prevDay)) {
@@ -1467,11 +1500,15 @@ export function CollapseSimulationPage() {
           setShowDailyReport(true)
         }
 
+        // Mark that we're waiting for this day's data
         waitingForDayRef.current = newDay
         advanceCollapseVisualDay(newDay)
 
-        // Process day - if prefetch is ready, this is instant
+        // Process day - when complete, clear the waiting flag to resume clock
         processDay(newDay).then(() => {
+          waitingForDayRef.current = 0
+        }).catch(() => {
+          // On error, also clear to avoid permanent pause
           waitingForDayRef.current = 0
         })
       }
@@ -1484,7 +1521,7 @@ export function CollapseSimulationPage() {
         intervalRef.current = null
       }
     }
-  }, [isRunning, hasCollapsed, collapseVisualSpeed, collapseVisualCurrentTime, collapseVisualCurrentDay, updateCollapseVisualTime, advanceCollapseVisualDay, processDay])
+  }, [isRunning, hasCollapsed, collapseVisualSpeed, collapseVisualCurrentTime, collapseVisualCurrentDay, collapseVisualSimStartTime, updateCollapseVisualTime, advanceCollapseVisualDay, processDay])
 
   // Handle pause/resume
   const handlePauseResume = useCallback(() => {
@@ -1510,6 +1547,7 @@ export function CollapseSimulationPage() {
     prefetchPromiseRef.current.clear()
     dailyResultsRef.current.clear()
     setShowDailyReport(false)
+    setCollapseData(null)
 
     try {
       await simulationService.resetCollapseVisual()
@@ -1534,7 +1572,7 @@ export function CollapseSimulationPage() {
       toast.info('Ejecutando modo rápido (esto puede tomar varios minutos)...')
 
       const result = await simulationService.runCollapseScenario(
-        { simulationStartTime: DEFAULT_START_DATE.toISOString(), useDatabase: true },
+        { simulationStartTime: startDate.toISOString(), useDatabase: true },
         { signal: controller.signal }
       )
 
@@ -1556,7 +1594,7 @@ export function CollapseSimulationPage() {
       setIsDemoRunning(false)
       abortControllerRef.current = null
     }
-  }, [])
+  }, [startDate])
 
   // Cancel demo
   const handleCancelDemo = useCallback(() => {
@@ -1672,10 +1710,35 @@ export function CollapseSimulationPage() {
           <ModalInfoBox>
             <ModalInfoTitle style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <MdCalendarToday />
-              Inicio de simulación
+              Fecha de inicio de simulación
             </ModalInfoTitle>
-            <ModalInfoText style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              2 de Enero, 2025 a las 00:00 (inicio de data)
+            <div style={{ marginTop: '8px' }}>
+              <input
+                type="date"
+                value={startDate.toISOString().split('T')[0]}
+                onChange={(e) => {
+                  const newDate = new Date(e.target.value + 'T00:00:00')
+                  if (!isNaN(newDate.getTime())) {
+                    setStartDate(newDate)
+                  }
+                }}
+                min="2025-01-02"
+                max="2025-12-31"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  fontSize: '14px',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  color: '#1e40af',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+            <ModalInfoText style={{ marginTop: '6px', fontSize: '11px', color: '#6b7280' }}>
+              Rango disponible: 2 Ene - 31 Dic 2025
             </ModalInfoText>
           </ModalInfoBox>
 
@@ -1838,10 +1901,10 @@ export function CollapseSimulationPage() {
         {isProcessingDay && !isDemoRunning && (
           <LoadingOverlay style={{ background: 'rgba(15, 23, 42, 0.85)' }}>
             <Spinner />
-            <LoadingText>Ejecutando ALNS - Día {collapseVisualCurrentDay > 0 ? collapseVisualCurrentDay : 1}</LoadingText>
-            <LoadingSubtext>El algoritmo está procesando las órdenes...</LoadingSubtext>
+            <LoadingText>Procesando día {collapseVisualCurrentDay > 0 ? collapseVisualCurrentDay : 1}</LoadingText>
+            <LoadingSubtext>Generando solución inicial...</LoadingSubtext>
             <LoadingSubtext style={{ marginTop: 8, fontSize: 11, opacity: 0.7 }}>
-              Esto puede tomar entre 30 segundos y 2 minutos
+              Esto toma unos segundos
             </LoadingSubtext>
           </LoadingOverlay>
         )}
@@ -1852,10 +1915,63 @@ export function CollapseSimulationPage() {
             <CollapseIcon>💥</CollapseIcon>
             <CollapseTitle>SISTEMA COLAPSADO</CollapseTitle>
             <CollapseSubtitle>
-              Día {collapseVisualCurrentDay} - {collapseVisualCollapseReason === 'SLA_BREACH'
-                ? 'Demasiados pedidos sin asignar'
-                : 'Capacidad agotada'}
+              Día {collapseVisualCurrentDay} - {
+                collapseVisualCollapseReason?.startsWith('SLA_VIOLATION')
+                  ? 'Violación de SLA de entrega'
+                  : collapseVisualCollapseReason?.startsWith('BACKLOG_OVERFLOW')
+                    ? 'Demasiados pedidos sin asignar'
+                    : collapseVisualCollapseReason?.startsWith('CAPACITY_EXHAUSTED')
+                      ? 'Capacidad del sistema agotada'
+                      : 'Error en el sistema'
+              }
             </CollapseSubtitle>
+
+            {/* Detailed stats from collapse data */}
+            {collapseData && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 24px',
+                background: 'rgba(255, 255, 255, 0.9)',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '16px',
+                  fontSize: '12px'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '18px' }}>
+                      {collapseData.totalProductsInSystem ?? 0}
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Total Productos</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#059669', fontSize: '18px' }}>
+                      {collapseData.cumulativeAssigned ?? 0}
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Asignados</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#dc2626', fontSize: '18px' }}>
+                      {collapseData.cumulativeBacklog ?? 0}
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Sin Asignar</div>
+                  </div>
+                </div>
+                <div style={{
+                  marginTop: '12px',
+                  padding: '8px',
+                  background: collapseData.cumulativeAssignmentRate < 90 ? '#fef2f2' : '#f0fdf4',
+                  borderRadius: '4px',
+                  color: collapseData.cumulativeAssignmentRate < 90 ? '#dc2626' : '#059669',
+                  fontWeight: 600
+                }}>
+                  Tasa de asignación: {collapseData.cumulativeAssignmentRate?.toFixed(1) ?? 0}%
+                </div>
+              </div>
+            )}
           </CollapseOverlay>
         )}
 
