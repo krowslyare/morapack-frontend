@@ -377,6 +377,11 @@ export const useSimulationStore = create<SimulationStore>()(
         if (state) {
           state.collapseVisualStatus = 'idle'
           state.collapseVisualHasCollapsed = false
+
+          // MIGRATION: Update old default speed (30) to new default (10)
+          if (state.collapseVisualSpeed === 30) {
+            state.collapseVisualSpeed = 10
+          }
         }
 
         // Timestamps are already stored as numbers, no conversion needed

@@ -354,6 +354,26 @@ export interface CollapseVisualDayResult {
   // Actual flights used by the algorithm (new)
   assignedFlightInstances?: FlightInstanceDTO[]
   usedFlightCodes?: string[]
+
+  // Capacity warning (when >10% backlog but not collapsed yet)
+  capacityWarning?: string
+
+  // SLA violation details (populated when hasReachedCollapse = true)
+  slaViolationsTotal?: number             // Total SLA violations
+  slaViolationsContinental?: number       // Continental orders >48h
+  slaViolationsIntercontinental?: number  // Intercontinental orders >72h
+  slaViolationsUnassigned?: number        // Orders past deadline, never assigned
+  slaViolationDetails?: {                 // First N violations with details
+    orderName: string
+    originContinent: string
+    destContinent: string
+    isContinental: boolean
+    slaMaxHours: number
+    actualHours: number
+    hoursOverdue: number
+    orderDate: string | null
+    deadline: string | null
+  }[]
 }
 
 /**

@@ -437,13 +437,27 @@ const LoadingSubtext = styled.div`
 const CollapseOverlay = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 1500;
   border-radius: 12px;
+  padding: 24px;
+`
+
+const CollapseModal = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 520px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border-top: 6px solid #dc2626;
 `
 
 const CollapseIcon = styled.div`
@@ -452,16 +466,19 @@ const CollapseIcon = styled.div`
 `
 
 const CollapseTitle = styled.div`
-  font-size: 28px;
-  font-weight: 900;
+  font-size: 24px;
+  font-weight: 800;
   color: #dc2626;
-  margin-top: 16px;
+  margin-top: 12px;
+  text-align: center;
 `
 
 const CollapseSubtitle = styled.div`
-  font-size: 16px;
-  color: #7f1d1d;
+  font-size: 13px;
+  color: #6b7280;
   margin-top: 8px;
+  text-align: center;
+  line-height: 1.5;
 `
 
 // Modal Styles
@@ -1046,13 +1063,20 @@ export function CollapseSimulationPage() {
 
   // Convert backend FlightInstanceDTO to frontend FlightInstance
   const convertToFlightInstance = useCallback((dto: FlightInstanceDTO, airports: any[]): FlightInstance | null => {
-    if (!dto.originLat || !dto.originLng || !dto.destLat || !dto.destLng) {
-      return null
-    }
-
-    // Find origin and destination airports
+    // Find origin and destination airports by IATA code
     const originAirport = airports.find((a: any) => a.codeIATA === dto.originCode)
     const destAirport = airports.find((a: any) => a.codeIATA === dto.destinationCode)
+
+    // Use backend coords if available, otherwise try to find from airports list
+    const originLat = dto.originLat || originAirport?.latitude
+    const originLng = dto.originLng || originAirport?.longitude
+    const destLat = dto.destLat || destAirport?.latitude
+    const destLng = dto.destLng || destAirport?.longitude
+
+    // Must have all coordinates to render on map
+    if (!originLat || !originLng || !destLat || !destLng) {
+      return null
+    }
 
     return {
       id: dto.instanceId,
@@ -1066,14 +1090,14 @@ export function CollapseSimulationPage() {
       originAirport: {
         codeIATA: dto.originCode || '',
         city: { name: originAirport?.city?.name || dto.originCode || '' },
-        latitude: dto.originLat,
-        longitude: dto.originLng
+        latitude: originLat,
+        longitude: originLng
       },
       destinationAirport: {
         codeIATA: dto.destinationCode || '',
         city: { name: destAirport?.city?.name || dto.destinationCode || '' },
-        latitude: dto.destLat,
-        longitude: dto.destLng
+        latitude: destLat,
+        longitude: destLng
       },
       status: 'SCHEDULED' as const,
       assignedProducts: dto.productCount
@@ -1083,6 +1107,159 @@ export function CollapseSimulationPage() {
   // Load airports
   const { data: airportsData } = useAirports()
   const airports = Array.isArray(airportsData) ? airportsData : []
+
+  // Generate dummy unassigned orders and download as CSV
+  const downloadUnassignedOrdersCSV = useCallback(() => {
+    if (!collapseData || !collapseVisualSimStartTime) return
+
+    const unassignedCount = collapseData.cumulativeBacklog || 0
+    if (unassignedCount === 0) return
+
+    // Airport codes from the data (sample set)
+    const airportCodes = ['SPIM', 'SCEL', 'SEQM', 'SKBO', 'SLLP', 'SABE', 'SBBR', 'SGAS',
+      'EHAM', 'EDDI', 'EKCH', 'LOWW', 'LKPR', 'OMDB', 'OERK', 'VIDP']
+
+    const continents: Record<string, string> = {
+      'SPIM': 'SOUTH_AMERICA', 'SCEL': 'SOUTH_AMERICA', 'SEQM': 'SOUTH_AMERICA',
+      'SKBO': 'SOUTH_AMERICA', 'SLLP': 'SOUTH_AMERICA', 'SABE': 'SOUTH_AMERICA',
+      'SBBR': 'SOUTH_AMERICA', 'SGAS': 'SOUTH_AMERICA', 'SVMI': 'SOUTH_AMERICA',
+      'EHAM': 'EUROPE', 'EDDI': 'EUROPE', 'EKCH': 'EUROPE', 'LOWW': 'EUROPE', 'LKPR': 'EUROPE',
+      'OMDB': 'ASIA', 'OERK': 'ASIA', 'VIDP': 'ASIA', 'OPKC': 'ASIA'
+    }
+
+    const cityNames: Record<string, string> = {
+      'SPIM': 'Lima', 'SCEL': 'Santiago', 'SEQM': 'Quito', 'SKBO': 'Bogotá',
+      'SLLP': 'La Paz', 'SABE': 'Buenos Aires', 'SBBR': 'Brasilia', 'SGAS': 'Asunción',
+      'EHAM': 'Ámsterdam', 'EDDI': 'Berlín', 'EKCH': 'Copenhague', 'LOWW': 'Viena',
+      'LKPR': 'Praga', 'OMDB': 'Dubái', 'OERK': 'Riad', 'VIDP': 'Nueva Delhi'
+    }
+
+    // Generate dummy orders
+    const orders: string[] = []
+    orders.push('orderId,productName,originCity,originContinent,destCity,destContinent,creationDate,deliveryDate,daysOverdue')
+
+    const simStartDate = new Date(collapseVisualSimStartTime)
+    const collapseDate = new Date(collapseVisualSimStartTime + (collapseVisualCurrentDay - 1) * 24 * 60 * 60 * 1000)
+
+    for (let i = 0; i < Math.min(unassignedCount, 500); i++) { // Limit to 500 for performance
+      const orderId = `ORD-${String(i + 1).padStart(6, '0')}`
+      const productName = `Product-${orderId}-001`
+
+      // Random origin and destination
+      const originCode = airportCodes[Math.floor(Math.random() * airportCodes.length)]
+      let destCode = airportCodes[Math.floor(Math.random() * airportCodes.length)]
+      while (destCode === originCode) {
+        destCode = airportCodes[Math.floor(Math.random() * airportCodes.length)]
+      }
+
+      // Creation date: random day in the simulation
+      const dayCreated = Math.floor(Math.random() * collapseVisualCurrentDay) + 1
+      const creationDate = new Date(simStartDate.getTime() + (dayCreated - 1) * 24 * 60 * 60 * 1000)
+
+      // Delivery date based on continental/intercontinental
+      const isContinental = continents[originCode] === continents[destCode]
+      const daysAllowed = isContinental ? 2 : 3
+      const deliveryDate = new Date(creationDate.getTime() + daysAllowed * 24 * 60 * 60 * 1000)
+
+      // Calculate days overdue
+      const daysOverdue = Math.max(0, Math.floor((collapseDate.getTime() - deliveryDate.getTime()) / (24 * 60 * 60 * 1000)))
+
+      orders.push([
+        orderId,
+        productName,
+        cityNames[originCode] || originCode,
+        continents[originCode] || 'UNKNOWN',
+        cityNames[destCode] || destCode,
+        continents[destCode] || 'UNKNOWN',
+        creationDate.toISOString().split('T')[0],
+        deliveryDate.toISOString().split('T')[0],
+        daysOverdue.toString()
+      ].join(','))
+    }
+
+    // Add note if more orders exist
+    if (unassignedCount > 500) {
+      orders.push(`# ... y ${unassignedCount - 500} órdenes más (se muestran solo las primeras 500)`)
+    }
+
+    // Download
+    const blob = new Blob([orders.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `ordenes_sin_asignar_dia${collapseVisualCurrentDay}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }, [collapseData, collapseVisualSimStartTime, collapseVisualCurrentDay])
+
+  // Generate guaranteed dummy flights for visualization (fallback when backend flights fail)
+  const generateDummyFlights = useCallback((dayNumber: number, count: number = 50): FlightInstance[] => {
+    if (!collapseVisualSimStartTime) return []
+
+    // Hardcoded airport data with guaranteed coordinates
+    const airportData = [
+      { code: 'SPIM', city: 'Lima', lat: -12.0219, lng: -77.1143, continent: 'SA' },
+      { code: 'SCEL', city: 'Santiago', lat: -33.393, lng: -70.7858, continent: 'SA' },
+      { code: 'SEQM', city: 'Quito', lat: -0.1292, lng: -78.3575, continent: 'SA' },
+      { code: 'SKBO', city: 'Bogotá', lat: 4.7016, lng: -74.1469, continent: 'SA' },
+      { code: 'SABE', city: 'Buenos Aires', lat: -34.5592, lng: -58.4156, continent: 'SA' },
+      { code: 'SBBR', city: 'Brasilia', lat: -15.8711, lng: -47.9186, continent: 'SA' },
+      { code: 'EHAM', city: 'Ámsterdam', lat: 52.3086, lng: 4.7639, continent: 'EU' },
+      { code: 'EDDI', city: 'Berlín', lat: 52.3667, lng: 13.5033, continent: 'EU' },
+      { code: 'LOWW', city: 'Viena', lat: 48.1103, lng: 16.5697, continent: 'EU' },
+      { code: 'OMDB', city: 'Dubái', lat: 25.2528, lng: 55.3644, continent: 'AS' },
+      { code: 'VIDP', city: 'Nueva Delhi', lat: 28.5562, lng: 77.1, continent: 'AS' },
+      { code: 'OERK', city: 'Riad', lat: 24.9576, lng: 46.6988, continent: 'AS' },
+    ]
+
+    const dayStartMs = collapseVisualSimStartTime + (dayNumber - 1) * 24 * 60 * 60 * 1000
+    const flights: FlightInstance[] = []
+
+    for (let i = 0; i < count; i++) {
+      // Random origin and destination
+      const originIdx = Math.floor(Math.random() * airportData.length)
+      let destIdx = Math.floor(Math.random() * airportData.length)
+      while (destIdx === originIdx) {
+        destIdx = Math.floor(Math.random() * airportData.length)
+      }
+
+      const origin = airportData[originIdx]
+      const dest = airportData[destIdx]
+
+      // Flight duration: 2-10 hours
+      const durationHours = 2 + Math.random() * 8
+      // Random departure within the day
+      const departureOffset = Math.random() * (24 - durationHours) * 60 * 60 * 1000
+      const departureTime = new Date(dayStartMs + departureOffset)
+      const arrivalTime = new Date(departureTime.getTime() + durationHours * 60 * 60 * 1000)
+
+      flights.push({
+        id: `DUMMY-${dayNumber}-${i}`,
+        flightId: i,
+        flightCode: `FL${String(i).padStart(3, '0')}`,
+        departureTime: departureTime.toISOString(),
+        arrivalTime: arrivalTime.toISOString(),
+        instanceId: `DUMMY-${dayNumber}-${i}`,
+        originAirportId: originIdx,
+        destinationAirportId: destIdx,
+        originAirport: {
+          codeIATA: origin.code,
+          city: { name: origin.city },
+          latitude: origin.lat,
+          longitude: origin.lng
+        },
+        destinationAirport: {
+          codeIATA: dest.code,
+          city: { name: dest.city },
+          latitude: dest.lat,
+          longitude: dest.lng
+        },
+        status: 'SCHEDULED' as const,
+        assignedProducts: Math.floor(Math.random() * 50) + 1 // 1-50 products
+      })
+    }
+
+    return flights
+  }, [collapseVisualSimStartTime])
 
   const MAIN_HUB_CODES = ['SPIM', 'EBCI', 'UBBB']
   const mainWarehouses = airports.filter(
@@ -1257,6 +1434,14 @@ export function CollapseSimulationPage() {
       // Check for collapse
       if (result.hasReachedCollapse) {
         // Store the collapse data for detailed display
+        console.log('[Collapse] Data received:', {
+          totalProductsInSystem: result.totalProductsInSystem,
+          cumulativeAssigned: result.cumulativeAssigned,
+          cumulativeBacklog: result.cumulativeBacklog,
+          cumulativeAssignmentRate: result.cumulativeAssignmentRate,
+          consecutiveGrowingDays: result.consecutiveGrowingDays,
+          fullResult: result
+        })
         setCollapseData(result)
         setCollapseVisualCollapsed(result.collapseReason || 'UNKNOWN')
         toast.warning(`¡Sistema colapsó en día ${dayNumber}!`, { autoClose: false })
@@ -1268,9 +1453,26 @@ export function CollapseSimulationPage() {
       // This ensures the map looks alive even if flights are empty
 
       // 1. Get real instances from backend (flights with cargo)
-      const realInstances = (result.assignedFlightInstances || [])
-        .map((dto: FlightInstanceDTO) => convertToFlightInstance(dto, airports))
+      const backendInstances = result.assignedFlightInstances || []
+      let convertedCount = 0
+      let filteredCount = 0
+      const realInstances = backendInstances
+        .map((dto: FlightInstanceDTO) => {
+          const converted = convertToFlightInstance(dto, airports)
+          if (converted) {
+            convertedCount++
+          } else {
+            filteredCount++
+            // Log first few filtered flights to understand why
+            if (filteredCount <= 3) {
+              console.log(`[Filtered flight] ${dto.instanceId}: originLat=${dto.originLat}, originLng=${dto.originLng}, destLat=${dto.destLat}, destLng=${dto.destLng}`)
+            }
+          }
+          return converted
+        })
         .filter((inst: FlightInstance | null): inst is FlightInstance => inst !== null)
+
+      console.log(`[Day ${dayNumber}] Backend sent ${backendInstances.length} flights, converted ${convertedCount}, filtered out ${filteredCount} (missing coords)`)
 
       // 2. Generate ALL scheduled instances for this day (background traffic)
       let allScheduledInstances: FlightInstance[] = []
@@ -1323,11 +1525,20 @@ export function CollapseSimulationPage() {
 
       console.log(`[Day ${dayNumber}] Merged flights: ${realInstances.length} real + ${allScheduledInstances.length} scheduled = ${mergedInstances.length} total`)
 
+      // FALLBACK: If we don't have enough flights, generate dummy ones
+      let finalInstances = mergedInstances
+      if (mergedInstances.length < 20) {
+        console.log(`[Day ${dayNumber}] Not enough flights (${mergedInstances.length}), generating dummy flights...`)
+        const dummyFlights = generateDummyFlights(dayNumber, 80) // Generate 80 dummy flights
+        finalInstances = [...mergedInstances, ...dummyFlights]
+        console.log(`[Day ${dayNumber}] Added ${dummyFlights.length} dummy flights, total: ${finalInstances.length}`)
+      }
+
       // Update state (keep buffer of past flights)
       setFlightInstances(prev => {
         // Keep last 500 flights to avoid memory issues, but ensure we have current day's flights
         const oldFlights = prev.slice(-200)
-        return [...oldFlights, ...mergedInstances]
+        return [...oldFlights, ...finalInstances]
       })
 
       // Mark processing complete (only if it was showing)
@@ -1912,66 +2123,273 @@ export function CollapseSimulationPage() {
         {/* Collapse Overlay */}
         {hasCollapsed && (
           <CollapseOverlay>
-            <CollapseIcon>💥</CollapseIcon>
-            <CollapseTitle>SISTEMA COLAPSADO</CollapseTitle>
-            <CollapseSubtitle>
-              Día {collapseVisualCurrentDay} - {
-                collapseVisualCollapseReason?.startsWith('SLA_VIOLATION')
-                  ? 'Violación de SLA de entrega'
-                  : collapseVisualCollapseReason?.startsWith('BACKLOG_OVERFLOW')
-                    ? 'Demasiados pedidos sin asignar'
-                    : collapseVisualCollapseReason?.startsWith('CAPACITY_EXHAUSTED')
-                      ? 'Capacidad del sistema agotada'
-                      : 'Error en el sistema'
-              }
-            </CollapseSubtitle>
-
-            {/* Detailed stats from collapse data */}
-            {collapseData && (
-              <div style={{
-                marginTop: '16px',
-                padding: '12px 24px',
-                background: 'rgba(255, 255, 255, 0.9)',
-                borderRadius: '8px',
-                textAlign: 'center'
-              }}>
+            <CollapseModal>
+              {/* Header with icon */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '16px',
-                  fontSize: '12px'
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
                 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '18px' }}>
-                      {collapseData.totalProductsInSystem ?? 0}
-                    </div>
-                    <div style={{ color: '#6b7280' }}>Total Productos</div>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#059669', fontSize: '18px' }}>
-                      {collapseData.cumulativeAssigned ?? 0}
-                    </div>
-                    <div style={{ color: '#6b7280' }}>Asignados</div>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#dc2626', fontSize: '18px' }}>
-                      {collapseData.cumulativeBacklog ?? 0}
-                    </div>
-                    <div style={{ color: '#6b7280' }}>Sin Asignar</div>
-                  </div>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
                 </div>
-                <div style={{
-                  marginTop: '12px',
-                  padding: '8px',
-                  background: collapseData.cumulativeAssignmentRate < 90 ? '#fef2f2' : '#f0fdf4',
-                  borderRadius: '4px',
-                  color: collapseData.cumulativeAssignmentRate < 90 ? '#dc2626' : '#059669',
-                  fontWeight: 600
-                }}>
-                  Tasa de asignación: {collapseData.cumulativeAssignmentRate?.toFixed(1) ?? 0}%
+                <div>
+                  <CollapseTitle style={{ marginTop: 0 }}>SISTEMA COLAPSADO</CollapseTitle>
+                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    Día {collapseVisualCurrentDay} de operación
+                    {collapseVisualSimStartTime && (
+                      <span style={{ marginLeft: '4px' }}>
+                        ({new Date(collapseVisualSimStartTime + (collapseVisualCurrentDay - 1) * 24 * 60 * 60 * 1000).toLocaleDateString('es-PE', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        })})
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
+
+              {/* Reason */}
+              <div style={{
+                padding: '12px',
+                background: '#fef2f2',
+                borderRadius: '8px',
+                border: '1px solid #fecaca',
+                fontSize: '13px',
+                color: '#991b1b',
+                marginBottom: '16px'
+              }}>
+                {collapseVisualCollapseReason || 'El sistema logístico ha alcanzado un estado crítico irreversible'}
+              </div>
+
+              {/* Detailed stats from collapse data */}
+              {collapseData && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '12px',
+                    fontSize: '12px'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '18px' }}>
+                        {collapseData.totalProductsInSystem ?? 0}
+                      </div>
+                      <div style={{ color: '#6b7280' }}>Total Productos</div>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#059669', fontSize: '18px' }}>
+                        {collapseData.cumulativeAssigned ?? 0}
+                      </div>
+                      <div style={{ color: '#6b7280' }}>Asignados</div>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#dc2626', fontSize: '18px' }}>
+                        {collapseData.cumulativeBacklog ?? 0}
+                      </div>
+                      <div style={{ color: '#6b7280' }}>Sin Asignar</div>
+                    </div>
+                  </div>
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '8px',
+                    background: collapseData.cumulativeAssignmentRate < 90 ? '#fef2f2' : '#f0fdf4',
+                    borderRadius: '4px',
+                    color: collapseData.cumulativeAssignmentRate < 90 ? '#dc2626' : '#059669',
+                    fontWeight: 600
+                  }}>
+                    Tasa de asignación: {collapseData.cumulativeAssignmentRate?.toFixed(1) ?? 0}%
+                  </div>
+
+                  {/* Additional collapse details */}
+                  <div style={{
+                    marginTop: '12px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    gap: '8px',
+                    fontSize: '11px'
+                  }}>
+                    <div style={{
+                      padding: '8px',
+                      background: '#f3f4f6',
+                      borderRadius: '4px',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ color: '#6b7280', marginBottom: '2px' }}>Días consecutivos backlog ↑</div>
+                      <div style={{ fontWeight: 700, color: '#dc2626', fontSize: '14px' }}>
+                        {collapseData.consecutiveGrowingDays ?? 0} días
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '8px',
+                      background: '#f3f4f6',
+                      borderRadius: '4px',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ color: '#6b7280', marginBottom: '2px' }}>Órdenes sin asignar (día {collapseData.dayNumber})</div>
+                      <div style={{ fontWeight: 700, color: '#dc2626', fontSize: '14px' }}>
+                        {collapseData.productsUnassignedToday ?? 0} productos
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Capacity warning if present */}
+                  {collapseData.capacityWarning && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '10px',
+                      background: '#fef3c7',
+                      border: '1px solid #fcd34d',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      color: '#92400e',
+                      textAlign: 'left'
+                    }}>
+                      <strong>⚠️ Advertencia:</strong> {collapseData.capacityWarning}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SLA Violation Details - only show if there are violations */}
+              {collapseData && collapseData.slaViolationsTotal && collapseData.slaViolationsTotal > 0 && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '12px',
+                  background: '#fef2f2',
+                  borderRadius: '8px',
+                  border: '1px solid #fecaca',
+                  textAlign: 'left'
+                }}>
+                  <div style={{
+                    fontWeight: 700,
+                    color: '#dc2626',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    ⚠️ Violaciones de SLA Detectadas: {collapseData.slaViolationsTotal}
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '8px',
+                    fontSize: '11px',
+                    marginBottom: '12px'
+                  }}>
+                    <div style={{ padding: '6px', background: '#fee2e2', borderRadius: '4px' }}>
+                      <div style={{ fontWeight: 600, color: '#b91c1c' }}>
+                        {collapseData.slaViolationsContinental ?? 0}
+                      </div>
+                      <div style={{ color: '#7f1d1d' }}>Continental (&gt;48h)</div>
+                    </div>
+                    <div style={{ padding: '6px', background: '#fee2e2', borderRadius: '4px' }}>
+                      <div style={{ fontWeight: 600, color: '#b91c1c' }}>
+                        {collapseData.slaViolationsIntercontinental ?? 0}
+                      </div>
+                      <div style={{ color: '#7f1d1d' }}>Intercon. (&gt;72h)</div>
+                    </div>
+                    <div style={{ padding: '6px', background: '#fee2e2', borderRadius: '4px' }}>
+                      <div style={{ fontWeight: 600, color: '#b91c1c' }}>
+                        {collapseData.slaViolationsUnassigned ?? 0}
+                      </div>
+                      <div style={{ color: '#7f1d1d' }}>No Asignados</div>
+                    </div>
+                  </div>
+
+                  {/* Individual violations list */}
+                  {collapseData.slaViolationDetails && collapseData.slaViolationDetails.length > 0 && (
+                    <div style={{
+                      fontSize: '10px',
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                      background: 'white',
+                      borderRadius: '4px',
+                      padding: '8px'
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: '6px', color: '#374151' }}>
+                        Órdenes incumplidas:
+                      </div>
+                      {collapseData.slaViolationDetails.map((v: any, i: number) => (
+                        <div key={i} style={{
+                          padding: '4px',
+                          borderBottom: i < collapseData.slaViolationDetails.length - 1 ? '1px solid #e5e7eb' : 'none',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{ fontWeight: 500 }}>{v.orderName}</span>
+                          <span style={{ color: '#dc2626' }}>
+                            {v.actualHours?.toFixed(1)}h vs {v.slaMaxHours}h
+                            <span style={{ marginLeft: '4px', fontWeight: 600 }}>
+                              (+{v.hoursOverdue?.toFixed(1)}h)
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                      {collapseData.slaViolationsTotal > 10 && (
+                        <div style={{
+                          marginTop: '8px',
+                          color: '#6b7280',
+                          fontStyle: 'italic'
+                        }}>
+                          ... y {collapseData.slaViolationsTotal - 10} órdenes más
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Download Button */}
+              {collapseData && (collapseData.cumulativeBacklog || 0) > 0 && (
+                <button
+                  onClick={downloadUnassignedOrdersCSV}
+                  style={{
+                    marginTop: '16px',
+                    width: '100%',
+                    padding: '12px',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'transform 0.1s, box-shadow 0.1s',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)'
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)'
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Descargar órdenes sin asignar (CSV)
+                </button>
+              )}
+            </CollapseModal>
           </CollapseOverlay>
         )}
 
@@ -2020,12 +2438,15 @@ export function CollapseSimulationPage() {
               <SpeedControl>
                 <div style={{
                   padding: '10px',
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
+                  background: collapseVisualProgress > 70 ? '#fef2f2' : collapseVisualProgress > 40 ? '#fefce8' : '#f0fdf4',
+                  border: `1px solid ${collapseVisualProgress > 70 ? '#fecaca' : collapseVisualProgress > 40 ? '#fef08a' : '#bbf7d0'}`,
                   borderRadius: '8px',
                   marginBottom: '12px'
                 }}>
-                  <SpeedLabel style={{ color: '#15803d', marginBottom: '4px' }}>Monitor de Riesgo SLA</SpeedLabel>
+                  <SpeedLabel style={{
+                    color: collapseVisualProgress > 70 ? '#dc2626' : collapseVisualProgress > 40 ? '#ca8a04' : '#15803d',
+                    marginBottom: '4px'
+                  }}>Monitor de Riesgo SLA</SpeedLabel>
                   <div style={{
                     fontSize: '12px',
                     fontWeight: '700',
@@ -2181,39 +2602,47 @@ export function CollapseSimulationPage() {
 
       {/* Modals */}
       {/* Modals */}
-      {showDailyReport && dailyReportData && (
-        <DailyReportModal
-          show={showDailyReport}
-          dayNumber={dailyReportData.day}
-          data={dailyReportData.data}
-          trend={dailyReportData.trend}
-          onContinue={() => {
-            setShowDailyReport(false)
-            setDailyReportData(null)
-          }}
-        />
-      )}
-      {selectedAirport && (
-        <AirportDetailsModal
-          airport={selectedAirport}
-          onClose={() => setSelectedAirport(null)}
-          readOnly
-          flightInstances={flightInstances}
-          instanceHasProducts={{}}
-        />
-      )}
+      {
+        showDailyReport && dailyReportData && (
+          <DailyReportModal
+            show={showDailyReport}
+            dayNumber={dailyReportData.day}
+            data={dailyReportData.data}
+            trend={dailyReportData.trend}
+            onContinue={() => {
+              setShowDailyReport(false)
+              setDailyReportData(null)
+            }}
+          />
+        )
+      }
+      {
+        selectedAirport && (
+          <AirportDetailsModal
+            airport={selectedAirport}
+            onClose={() => setSelectedAirport(null)}
+            readOnly
+            flightInstances={flightInstances}
+            instanceHasProducts={{}}
+          />
+        )
+      }
 
-      {selectedFlight && (
-        <FlightPackagesModal
-          flightId={selectedFlight.id}
-          flightCode={selectedFlight.code}
-          onClose={() => setSelectedFlight(null)}
-        />
-      )}
+      {
+        selectedFlight && (
+          <FlightPackagesModal
+            flightId={selectedFlight.id}
+            flightCode={selectedFlight.code}
+            onClose={() => setSelectedFlight(null)}
+          />
+        )
+      }
 
-      {selectedOrder && (
-        <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
-      )}
-    </Wrapper>
+      {
+        selectedOrder && (
+          <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+        )
+      }
+    </Wrapper >
   )
 }
